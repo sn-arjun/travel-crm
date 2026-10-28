@@ -330,4 +330,270 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get hindi => 'الهندية';
+
+  @override
+  String get dutch => 'الهولندية';
+
+  @override
+  String get loginTagline =>
+      'Your trips, check-ins and navigation in one place';
+
+  @override
+  String get tripsLoadError => 'Couldn\'t load your trips';
+
+  @override
+  String get tripLoadError => 'Couldn\'t load this trip';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get emptyTripsHint =>
+      'New assignments from dispatch will appear here.';
+
+  @override
+  String get showingSavedTrips => 'Showing saved trips. Pull down to refresh.';
+
+  @override
+  String get noMatchingTrips => 'No trips match your search';
+
+  @override
+  String get tryDifferentFilter => 'Try a different search or date range.';
+
+  @override
+  String get route => 'Route';
+
+  @override
+  String get openInMaps => 'Open in Maps';
+
+  @override
+  String get callPassenger => 'Call passenger';
+
+  @override
+  String get tripDetails => 'Trip details';
+
+  @override
+  String get dropTime => 'Drop time';
+
+  @override
+  String get booking => 'Booking';
+
+  @override
+  String get tripType => 'Trip type';
+
+  @override
+  String get estimatedCost => 'Estimated cost';
+
+  @override
+  String get actualCost => 'Actual cost';
+
+  @override
+  String get distance => 'Distance';
+
+  @override
+  String get profileLoadError => 'Couldn\'t load your profile';
+
+  @override
+  String get documentsLoadError => 'Couldn\'t load your documents';
+
+  @override
+  String get noDocuments => 'No documents uploaded';
+
+  @override
+  String get noDocumentsHint =>
+      'Upload your licence and ID so dispatch can verify them.';
+
+  @override
+  String get docValid => 'Valid';
+
+  @override
+  String get docExpiringSoon => 'Expiring soon';
+
+  @override
+  String get docExpired => 'Expired';
+
+  @override
+  String get docNoExpiry => 'No expiry';
+
+  @override
+  String expiresOn(String date) {
+    return 'Expires $date';
+  }
+
+  @override
+  String get agencyTitle => 'ابحث عن وكالتك';
+
+  @override
+  String get agencySubtitle => 'أدخل رمز الوكالة الذي أعطته لك شركتك';
+
+  @override
+  String get agencyCodeHint => 'رمز الوكالة';
+
+  @override
+  String get agencyCodeRequired => 'أدخل رمز الوكالة';
+
+  @override
+  String get agencyContinue => 'متابعة';
+
+  @override
+  String get agencyConfirmPrompt => 'هل هذه وكالتك؟';
+
+  @override
+  String get agencyConfirm => 'نعم، متابعة';
+
+  @override
+  String get agencyNotYours => 'ليست وكالتك؟';
+
+  @override
+  String get agencyInvalid =>
+      'لم نتمكن من العثور على رمز الوكالة هذا. تحقق منه مع شركتك.';
+
+  @override
+  String get changeAgency => 'تغيير الوكالة';
+
+  @override
+  String get changeAgencyConfirm =>
+      'سيتم تسجيل خروجك وإزالة الوكالة من هذا الهاتف. ستحتاج إلى رمز الوكالة مرة أخرى.';
+
+  @override
+  String get agencyLabel => 'الوكالة';
+
+  @override
+  String get selectCountry => 'اختر الدولة';
+
+  @override
+  String get countrySearchHint => 'ابحث عن دولة أو رمز';
+
+  @override
+  String get noCountryFound => 'لم يتم العثور على دولة';
+
+  @override
+  String get stopsTitle => 'Stops';
+
+  @override
+  String coachSummary(int stops, int passengers) {
+    String _temp0 = intl.Intl.pluralLogic(
+      stops,
+      locale: localeName,
+      other: '$stops stops',
+      one: '1 stop',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      passengers,
+      locale: localeName,
+      other: '$passengers passengers',
+      one: '1 passenger',
+    );
+    return '$_temp0, $_temp1';
+  }
+
+  @override
+  String nextStopAt(String name, String time) {
+    return 'Next: $name at $time';
+  }
+
+  @override
+  String nextStopOnly(String name) {
+    return 'Next: $name';
+  }
+
+  @override
+  String get crewTourLeader => 'Tour leader';
+
+  @override
+  String get stopStatusPending => 'Pending';
+
+  @override
+  String get stopStatusArrived => 'Arrived';
+
+  @override
+  String get stopStatusDeparted => 'Departed';
+
+  @override
+  String get stopStatusSkipped => 'Skipped';
+
+  @override
+  String get stopArrived => 'Arrived';
+
+  @override
+  String get stopDepart => 'Depart';
+
+  @override
+  String get documentsCheckBadge => 'Documents check';
+
+  @override
+  String get documentsChecked => 'Documents checked';
+
+  @override
+  String get markDocumentsChecked => 'Mark documents checked';
+
+  @override
+  String get passengerBoarded => 'Boarded';
+
+  @override
+  String get passengerNoShow => 'No-show';
+
+  @override
+  String get passengerMore => 'More';
+
+  @override
+  String passengerSeats(int count) {
+    return '$count seats';
+  }
+
+  @override
+  String get completeStop => 'Complete stop';
+
+  @override
+  String get completeStopPendingTitle => 'Passengers not ticked';
+
+  @override
+  String completeStopPendingBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count passengers have',
+      one: '1 passenger has',
+    );
+    return '$_temp0 not been ticked yet. Complete the stop anyway?';
+  }
+
+  @override
+  String get headcountThisStop => 'This stop';
+
+  @override
+  String get headcountOverall => 'Overall';
+
+  @override
+  String headcountBoarded(int boarded, int expected) {
+    return '$boarded of $expected boarded';
+  }
+
+  @override
+  String headcountNoShow(int count) {
+    return '$count no-show';
+  }
+
+  @override
+  String get passengersAtStop => 'Passengers boarding here';
+
+  @override
+  String get noPassengersAtStop => 'No passengers board here';
+
+  @override
+  String changesWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count changes waiting to be sent',
+      one: '1 change waiting to be sent',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get savedTripNoSignal => 'No signal. Showing the saved trip.';
+
+  @override
+  String get stopGone => 'This stop is no longer on the trip.';
 }

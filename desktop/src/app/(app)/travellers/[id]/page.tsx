@@ -1,39 +1,37 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Loader2, AlertCircle, User, FileText, Edit, Trash2, Globe, Mail, Phone,
-  Upload, Download, File, Plus,
+  Loader2, AlertCircle, Pencil, Trash2, Plus, FileText, Globe, Link2, Link2Off, Upload, Download,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { DetailPage, RelationCombobox } from '@/components/domain';
+import {
+  Button, Tag, SectionCard, Label,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { travellersApi, visaApi, type Traveller, type VisaRecord, type UpdateTravellerRequest } from '@/lib/api/visa';
+import { travellersApi, visaApi, normalizeTraveller, travellerDocumentsApi, visaTypeLabel, type Traveller, type VisaRecord } from '@/lib/api/visa';
 import { documentsApi, type Document as DocType } from '@/lib/api/documents';
+import { contactsApi } from '@/lib/api/contacts';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import type { Contact } from '@travelcrm/shared';
 import { toast } from 'sonner';
 
-function getInitials(first: string, last: string) {
-  return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'approved') return 'success';
+  if (status === 'rejected') return 'danger';
+  if (status === 'processing') return 'warning';
+  return 'info';
 }
 
-function getStatusColor(status: string) {
-  const colors: Record<string, string> = {
-    applied: 'bg-blue-100 text-blue-900',
-    processing: 'bg-amber-100 text-amber-900',
-    approved: 'bg-green-100 text-green-900',
-    rejected: 'bg-red-100 text-red-900',
-  };
-  return colors[status] ?? 'bg-gray-100 text-gray-900';
+function formatDate(value?: string) {
+  return value
+    ? formatLocaleDate(value, { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
 }
 
 export default function TravellerDetailPage() {
@@ -41,9 +39,11 @@ export default function TravellerDetailPage() {
   const params = useParams();
   const travellerId = params.id as string;
 
-  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
-  const [editForm, setEditForm] = React.useState<UpdateTravellerRequest>({});
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
+  const [linkContactId, setLinkContactId] = React.useState<string | null>(null);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const { data: travellerResponse, loading, error, refetch } = useApiQuery(
     () => travellersApi.getById(travellerId),
@@ -51,134 +51,51 @@ export default function TravellerDetailPage() {
   );
 
   const { data: visaResponse } = useApiQuery(
-    () => visaApi.list({ page: 1, limit: 100 }),
-    [],
+    () => visaApi.list({ traveller_id: travellerId, page: 1, limit: 100 }),
+    [travellerId],
   );
 
-  const { mutate: updateTraveller, loading: isUpdating } = useApiMutation<UpdateTravellerRequest, any>(
-    (data) => travellersApi.update(travellerId, data),
-  );
-
-  const { mutate: deleteTraveller, loading: isDeleting } = useApiMutation<string, any>(
+  const { mutate: deleteTraveller, loading: isDeleting } = useApiMutation<string, unknown>(
     () => travellersApi.delete(travellerId),
   );
 
+  const { mutate: linkContact, loading: isLinking } = useApiMutation<string, unknown>(
+    (contactId) => travellersApi.linkContact(travellerId, contactId),
+  );
+
+  const { mutate: unlinkContact, loading: isUnlinking } = useApiMutation<void, unknown>(
+    () => travellersApi.unlinkContact(travellerId),
+  );
+
   const { data: docsResponse, refetch: refetchDocs } = useApiQuery(
-    () => documentsApi.list({ search: travellerId, limit: 100 }),
+    () => travellerDocumentsApi.list(travellerId),
     [travellerId],
   );
 
   const documents: DocType[] = React.useMemo(() => {
-    if (!docsResponse?.data) return [];
-    const d = (docsResponse.data as any)?.data ?? docsResponse.data;
-    return Array.isArray(d) ? d : [];
+    if (!docsResponse) return [];
+    return unwrapList<DocType>(docsResponse).data;
   }, [docsResponse]);
 
-  const [isUploading, setIsUploading] = React.useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const traveller: Traveller | undefined = React.useMemo(() => {
+    const raw = unwrapEntity<unknown>(travellerResponse);
+    return raw && typeof raw === 'object' ? normalizeTraveller(raw) : undefined;
+  }, [travellerResponse]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      await documentsApi.upload({
-        file,
-        name: file.name,
-        category: 'traveller',
-        tags: [travellerId, 'traveller-document'],
-      });
-      toast.success('Document uploaded successfully!');
-      refetchDocs();
-    } catch {
-      toast.error('Failed to upload document');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+  // The traveller endpoint returns only contact_id; resolve the name for display.
+  const linkedContactId = traveller?.contactId;
+  const { data: contactResponse } = useApiQuery(
+    () => (linkedContactId ? contactsApi.getById(linkedContactId) : Promise.resolve(null)),
+    [linkedContactId],
+  );
+  const linkedContactName: string | undefined = React.useMemo(() => {
+    if (!contactResponse) return undefined;
+    const c = unwrapEntity<Contact | undefined>(contactResponse);
+    return c?.name || undefined;
+  }, [contactResponse]);
 
-  const handleDocDownload = async (doc: DocType) => {
-    try {
-      const blob = await documentsApi.download(doc.id);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = doc.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Failed to download document');
-    }
-  };
-
-  const handleDocDelete = async (doc: DocType) => {
-    if (!confirm(`Delete "${doc.name}"?`)) return;
-    try {
-      await documentsApi.delete(doc.id);
-      toast.success('Document deleted');
-      refetchDocs();
-    } catch {
-      toast.error('Failed to delete document');
-    }
-  };
-
-  // API returns { data: { first_name, last_name, ... } } — normalize snake_case to camelCase
-  const travellerRaw = ((travellerResponse?.data as any)?.data ?? travellerResponse?.data) as any;
-  const traveller: Traveller | undefined = travellerRaw ? {
-    ...travellerRaw,
-    firstName: travellerRaw.firstName ?? travellerRaw.first_name ?? '',
-    lastName: travellerRaw.lastName ?? travellerRaw.last_name ?? '',
-    passportNumber: travellerRaw.passportNumber ?? travellerRaw.passport_number ?? '',
-    dateOfBirth: travellerRaw.dateOfBirth ?? travellerRaw.date_of_birth,
-    nationality: travellerRaw.nationality,
-    email: travellerRaw.email,
-    phone: travellerRaw.phone,
-    passportExpiryDate: travellerRaw.passportExpiryDate ?? travellerRaw.passport_expiry_date,
-    passportIssuingCountry: travellerRaw.passportIssuingCountry ?? travellerRaw.passport_issuing_country,
-    emergencyContactName: travellerRaw.emergencyContactName ?? travellerRaw.emergency_contact_name,
-    emergencyContactPhone: travellerRaw.emergencyContactPhone ?? travellerRaw.emergency_contact_phone,
-    mealPreference: travellerRaw.mealPreference ?? travellerRaw.meal_preference,
-    seatPreference: travellerRaw.seatPreference ?? travellerRaw.seat_preference,
-    medicalNotes: travellerRaw.medicalNotes ?? travellerRaw.medical_notes,
-    frequentFlyerNumbers: travellerRaw.frequentFlyerNumbers ?? travellerRaw.frequent_flyer_numbers,
-    createdBy: travellerRaw.createdBy ?? travellerRaw.created_by ?? '',
-    createdAt: travellerRaw.createdAt ?? travellerRaw.created_at ?? '',
-    updatedAt: travellerRaw.updatedAt ?? travellerRaw.updated_at ?? '',
-  } : undefined;
-
-  const visaRecords: VisaRecord[] = React.useMemo(() => {
-    if (!visaResponse?.data) return [];
-    const all = Array.isArray(visaResponse.data) ? visaResponse.data : (visaResponse.data as any)?.data ?? [];
-    return all.filter((v: VisaRecord) => v.passportNumber === traveller?.passportNumber || v.travelerId === travellerId);
-  }, [visaResponse, traveller, travellerId]);
-
-  React.useEffect(() => {
-    if (traveller) {
-      setEditForm({
-        firstName: traveller.firstName,
-        lastName: traveller.lastName,
-        passportNumber: traveller.passportNumber,
-        dateOfBirth: traveller.dateOfBirth ?? '',
-        nationality: traveller.nationality ?? '',
-        email: traveller.email ?? '',
-        phone: traveller.phone ?? '',
-      });
-    }
-  }, [traveller]);
-
-  async function handleSaveEdit() {
-    const result = await updateTraveller(editForm);
-    if (result) {
-      toast.success('Traveller updated');
-      setIsEditDialogOpen(false);
-      refetch();
-    } else {
-      toast.error('Failed to update traveller');
-    }
-  }
+  // visaApi.list already resolves to normalised, camelCase rows filtered server-side.
+  const visaRecords: VisaRecord[] = visaResponse?.data ?? [];
 
   async function handleDelete() {
     const result = await deleteTraveller(travellerId);
@@ -190,30 +107,76 @@ export default function TravellerDetailPage() {
     }
   }
 
+  async function handleLinkContact() {
+    if (!linkContactId) return;
+    const result = await linkContact(linkContactId);
+    if (result) {
+      toast.success('Contact linked');
+      setIsLinkDialogOpen(false);
+      setLinkContactId(null);
+      refetch();
+    } else {
+      toast.error('Failed to link contact');
+    }
+  }
+
+  async function handleUnlinkContact() {
+    const result = await unlinkContact();
+    if (result !== undefined) {
+      toast.success('Contact unlinked');
+      refetch();
+    } else {
+      toast.error('Failed to unlink contact');
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      await travellerDocumentsApi.upload(travellerId, file);
+      toast.success('Document uploaded');
+      refetchDocs();
+    } catch {
+      toast.error('Failed to upload document');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleDocDownload(doc: DocType) {
+    try {
+      const blob = await documentsApi.download(doc.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download document');
+    }
+  }
+
+  async function handleDocDelete(doc: DocType) {
+    try {
+      await documentsApi.delete(doc.id);
+      toast.success('Document deleted');
+      refetchDocs();
+    } catch {
+      toast.error('Failed to delete document');
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-8 w-8 rounded" />
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <div className="space-y-2">
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-32" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-9 w-20" />
-            <Skeleton className="h-9 w-20" />
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Skeleton className="h-40 rounded-lg" />
-            <Skeleton className="h-40 rounded-lg" />
-          </div>
-          <Skeleton className="h-24 rounded-lg" />
-        </div>
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <Loader2 className="h-12 w-12 animate-spin text-ds-foreground-muted" />
+        <p className="text-ds-foreground-muted">Loading traveller...</p>
       </div>
     );
   }
@@ -221,300 +184,266 @@ export default function TravellerDetailPage() {
   if (error || !traveller) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="h-12 w-12 text-destructive" />
-        <p className="text-destructive">Failed to load traveller</p>
+        <AlertCircle className="h-12 w-12 text-ds-danger" />
+        <p className="text-ds-danger">Failed to load traveller</p>
         <Button variant="outline" onClick={() => router.push('/travellers')}>Back to Travellers</Button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Avatar className="h-12 w-12">
-            <AvatarFallback className="text-base">{getInitials(traveller.firstName, traveller.lastName)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              {traveller.firstName} {traveller.lastName}
-            </h1>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
-              <span className="font-mono">{traveller.passportNumber}</span>
-              {traveller.nationality && <span className="flex items-center gap-1"><Globe className="h-3 w-3" />{traveller.nationality}</span>}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setIsEditDialogOpen(true)}>
-            <Edit className="h-4 w-4 mr-1.5" /> Edit
-          </Button>
-          <Button variant="destructive" size="sm" onClick={() => setIsDeleteDialogOpen(true)}>
-            <Trash2 className="h-4 w-4 mr-1.5" /> Delete
-          </Button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="details" className="flex-1 flex flex-col">
-        <div className="px-6 pt-3 border-b">
-          <TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="visa">Visa Applications ({visaRecords.length})</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
-          </TabsList>
-        </div>
-
-        <div className="flex-1 overflow-auto p-6">
-          {/* Details */}
-          <TabsContent value="details" className="mt-0">
-            <div className="max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader><CardTitle className="text-base">Personal Information</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">First Name</span>
-                    <span className="text-sm font-medium">{traveller.firstName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Last Name</span>
-                    <span className="text-sm font-medium">{traveller.lastName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Date of Birth</span>
-                    <span className="text-sm font-medium">
-                      {traveller.dateOfBirth
-                        ? new Date(traveller.dateOfBirth).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                        : '--'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Nationality</span>
-                    <span className="text-sm font-medium">{traveller.nationality || '--'}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle className="text-base">Passport & Contact</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Passport Number</span>
-                    <span className="text-sm font-mono font-medium">{traveller.passportNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Email</span>
-                    <span className="text-sm font-medium flex items-center gap-1">
-                      {traveller.email ? <><Mail className="h-3 w-3" />{traveller.email}</> : '--'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Phone</span>
-                    <span className="text-sm font-medium flex items-center gap-1">
-                      {traveller.phone ? <><Phone className="h-3 w-3" />{traveller.phone}</> : '--'}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-2">
-                <CardHeader><CardTitle className="text-base">Metadata</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p>Created {new Date(traveller.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                  <p>Last updated {new Date(traveller.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Visa Applications */}
-          <TabsContent value="visa" className="mt-0">
-            <div className="max-w-5xl space-y-4">
-              <div className="flex justify-end">
-                <Button asChild size="sm">
-                  <a href={`/visa/new?travellerId=${travellerId}&travellerName=${encodeURIComponent(traveller.firstName + ' ' + traveller.lastName)}`}>
-                    <Plus className="h-4 w-4 mr-1.5" /> New Visa Application
-                  </a>
-                </Button>
-              </div>
-              {visaRecords.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No visa applications found</p>
-                  </CardContent>
-                </Card>
-              ) : (
+    <>
+      <DetailPage
+        entity={traveller}
+        title={`${traveller.firstName} ${traveller.lastName}`}
+        subtitle={traveller.nationality ? `${traveller.passportNumber} · ${traveller.nationality}` : traveller.passportNumber}
+        status={traveller.passportExpiryDate ? (
+          <Tag tone={new Date(traveller.passportExpiryDate).getTime() < Date.now() ? 'danger' : 'success'}>
+            Passport {new Date(traveller.passportExpiryDate).getTime() < Date.now() ? 'expired' : `valid till ${formatDate(traveller.passportExpiryDate)}`}
+          </Tag>
+        ) : undefined}
+        onBack={() => router.push('/travellers')}
+        actions={[
+          { label: 'Edit', icon: <Pencil aria-hidden="true" />, onSelect: () => router.push(`/travellers/${travellerId}/edit`) },
+          traveller.contactId
+            ? { label: 'Unlink contact', icon: <Link2Off aria-hidden="true" />, onSelect: handleUnlinkContact, disabled: isUnlinking }
+            : { label: 'Link contact', icon: <Link2 aria-hidden="true" />, onSelect: () => setIsLinkDialogOpen(true) },
+          { label: 'Delete', icon: <Trash2 aria-hidden="true" />, destructive: true, separatorBefore: true, onSelect: () => setIsDeleteDialogOpen(true) },
+        ]}
+        messaging={{
+          recipientId: traveller.contactId || traveller.id,
+          recipientName: `${traveller.firstName} ${traveller.lastName}`,
+          email: traveller.email,
+          phone: traveller.phone,
+        }}
+        overview={
+          <div className="flex flex-col gap-ds-4">
+            <SectionCard title="Personal Information">
+              <div className="grid gap-ds-6 sm:grid-cols-2">
                 <div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Country</TableHead>
-                      <TableHead>Visa Type</TableHead>
-                      <TableHead>Application Date</TableHead>
-                      <TableHead>Expiry Date</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visaRecords.map((v) => (
-                      <TableRow key={v.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/visa/${v.id}`)}>
-                        <TableCell className="font-medium text-sm">{v.countryName}</TableCell>
-                        <TableCell className="text-sm">{v.visaType || '--'}</TableCell>
-                        <TableCell className="text-sm">
-                          {v.applicationDate ? new Date(v.applicationDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '--'}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {v.expiryDate ? new Date(v.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '--'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn('text-xs capitalize', getStatusColor(v.status))}>{v.status}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">First Name</p>
+                  <p className="text-sm font-medium mt-1">{traveller.firstName}</p>
                 </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Documents */}
-          <TabsContent value="documents" className="mt-0">
-            <div className="max-w-3xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Traveller Documents</h3>
                 <div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={handleFileUpload}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                  >
-                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Upload className="h-4 w-4 mr-1.5" />}
-                    Upload Document
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Last Name</p>
+                  <p className="text-sm font-medium mt-1">{traveller.lastName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Date of Birth</p>
+                  <p className="text-sm font-medium mt-1">{formatDate(traveller.dateOfBirth)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Nationality</p>
+                  <p className="text-sm font-medium mt-1 flex items-center gap-1">
+                    {traveller.nationality ? <><Globe className="size-3.5" aria-hidden="true" />{traveller.nationality}</> : '—'}
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Passport & Contact">
+              <div className="grid gap-ds-6 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Passport Number</p>
+                  <p className="text-sm font-mono font-medium mt-1">{traveller.passportNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Passport Expiry</p>
+                  <p className="text-sm font-medium mt-1">{formatDate(traveller.passportExpiryDate)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Email</p>
+                  <p className="text-sm font-medium mt-1">{traveller.email || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Phone</p>
+                  <p className="text-sm font-medium mt-1">{traveller.phone || '—'}</p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Preferences & Emergency Contact">
+              <div className="grid gap-ds-6 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Frequent Flyer Numbers</p>
+                  <p className="text-sm font-medium mt-1">{traveller.frequentFlyerNumbers || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Meal Preference</p>
+                  <p className="text-sm font-medium mt-1">{traveller.mealPreference || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Seat Preference</p>
+                  <p className="text-sm font-medium mt-1">{traveller.seatPreference || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Emergency Contact</p>
+                  <p className="text-sm font-medium mt-1">{traveller.emergencyContactName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Emergency Phone</p>
+                  <p className="text-sm font-medium mt-1">{traveller.emergencyContactPhone || '—'}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Medical Notes</p>
+                  <p className="text-sm font-medium mt-1">{traveller.medicalNotes || '—'}</p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Linked Contact"
+              actions={
+                traveller.contactId ? (
+                  <Button size="sm" variant="outline" onClick={handleUnlinkContact} disabled={isUnlinking}>
+                    <Link2Off aria-hidden="true" /> Unlink
                   </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setIsLinkDialogOpen(true)}>
+                    <Link2 aria-hidden="true" /> Link contact
+                  </Button>
+                )
+              }
+            >
+              {traveller.contactId ? (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">{traveller.contactName || linkedContactName || 'Loading contact…'}</p>
+                  <Button variant="ghost" size="sm" onClick={() => router.push(`/contacts/${traveller.contactId}`)}>View contact</Button>
                 </div>
-              </div>
-              {documents.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No documents uploaded yet</p>
-                    <p className="text-xs mt-1">Upload passport copies, photos, and other travel documents</p>
-                  </CardContent>
-                </Card>
               ) : (
-                <div className="space-y-2">
-                  {documents.map((doc) => (
-                    <Card key={doc.id}>
-                      <CardContent className="p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <File className="h-5 w-5 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">{doc.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {(doc.size / 1024).toFixed(1)} KB • {new Date(doc.createdAt).toLocaleDateString('en-IN')}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => handleDocDownload(doc)}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" className="text-destructive" onClick={() => handleDocDelete(doc)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                <p className="text-sm text-ds-foreground-muted text-center py-4">No contact linked yet</p>
               )}
-            </div>
-          </TabsContent>
-        </div>
-      </Tabs>
+            </SectionCard>
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <SectionCard title="Metadata">
+              <div className="flex flex-col gap-1 text-sm text-ds-foreground-muted">
+                <p>Created {formatDate(traveller.createdAt)}</p>
+                <p>Last updated {formatDate(traveller.updatedAt)}</p>
+              </div>
+            </SectionCard>
+          </div>
+        }
+        related={[
+          {
+            title: 'Visa Applications',
+            action: (
+              <Button size="sm" variant="outline" onClick={() => router.push(`/visa/new?travellerId=${travellerId}&travellerName=${encodeURIComponent(`${traveller.firstName} ${traveller.lastName}`)}`)}>
+                <Plus aria-hidden="true" /> New visa application
+              </Button>
+            ),
+            content: visaRecords.length === 0 ? (
+              <p className="text-sm text-ds-foreground-muted text-center py-4">No visa applications found</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Country</TableHead>
+                    <TableHead>Visa Type</TableHead>
+                    <TableHead>Application Date</TableHead>
+                    <TableHead>Expiry Date</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visaRecords.map((v) => (
+                    <TableRow key={v.id} className="cursor-pointer hover:bg-ds-surface-sunken" onClick={() => router.push(`/visa/${v.id}`)}>
+                      <TableCell className="font-medium text-sm">{v.countryName}</TableCell>
+                      <TableCell className="text-sm">{visaTypeLabel(v.visaType)}</TableCell>
+                      <TableCell className="text-sm">{formatDate(v.applicationDate)}</TableCell>
+                      <TableCell className="text-sm">{formatDate(v.expiryDate)}</TableCell>
+                      <TableCell><Tag tone={statusTone(v.status)}>{v.status}</Tag></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ),
+          },
+        ]}
+        documents={
+          <div className="flex flex-col gap-ds-3">
+            <div className="flex justify-end">
+              <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={handleFileUpload} />
+              <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+                Upload document
+              </Button>
+            </div>
+            {documents.length === 0 ? (
+              <p className="text-sm text-ds-foreground-muted text-center py-4">No documents uploaded yet</p>
+            ) : (
+              <div className="flex flex-col gap-ds-2">
+                {documents.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-ds-2 rounded-ds-md hover:bg-ds-surface-sunken">
+                    <div className="flex items-center gap-ds-2">
+                      <FileText className="size-4 text-ds-foreground-muted" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium">{doc.name}</p>
+                        <p className="text-xs text-ds-foreground-muted">{(doc.size / 1024).toFixed(1)} KB · {formatDate(doc.createdAt)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon-sm" aria-label="Download" onClick={() => handleDocDownload(doc)}><Download /></Button>
+                      <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => handleDocDelete(doc)}><Trash2 /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      {/* Link Contact Dialog */}
+      <Dialog open={isLinkDialogOpen} onOpenChange={(open) => { setIsLinkDialogOpen(open); if (!open) setLinkContactId(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Traveller</DialogTitle>
+            <DialogTitle>Link Contact</DialogTitle>
+            <DialogDescription>Associate this traveller with an existing contact.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-firstName">First Name</Label>
-                <Input id="edit-firstName" value={editForm.firstName ?? ''} onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-lastName">Last Name</Label>
-                <Input id="edit-lastName" value={editForm.lastName ?? ''} onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-passport">Passport Number</Label>
-              <Input id="edit-passport" value={editForm.passportNumber ?? ''} onChange={(e) => setEditForm({ ...editForm, passportNumber: e.target.value.toUpperCase() })} className="font-mono" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-nationality">Nationality</Label>
-              <Input id="edit-nationality" value={editForm.nationality ?? ''} onChange={(e) => setEditForm({ ...editForm, nationality: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-dob">Date of Birth</Label>
-              <Input id="edit-dob" type="date" value={editForm.dateOfBirth ?? ''} onChange={(e) => setEditForm({ ...editForm, dateOfBirth: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input id="edit-email" type="email" value={editForm.email ?? ''} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Phone</Label>
-                <Input id="edit-phone" value={editForm.phone ?? ''} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
-              </div>
-            </div>
+          <div className="space-y-2">
+            <Label>Contact</Label>
+            <RelationCombobox
+              value={linkContactId}
+              onChange={(id) => setLinkContactId(id)}
+              fetcher={async (q, page) => {
+                const list = unwrapList<Contact>(await contactsApi.list({ search: q, page, limit: 20 }));
+                return { items: list.data, total: list.pagination?.total ?? list.data.length };
+              }}
+              getOptionId={(c: Contact) => c.id}
+              getOptionLabel={(c: Contact) => c.name}
+              getOptionDescription={(c: Contact) => c.email ?? undefined}
+              placeholder="Select a contact"
+              searchPlaceholder="Search contacts..."
+            />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isUpdating}>Cancel</Button>
-            <Button onClick={handleSaveEdit} disabled={isUpdating}>
-              {isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Save Changes
+            <Button variant="outline" onClick={() => setIsLinkDialogOpen(false)} disabled={isLinking}>Cancel</Button>
+            <Button onClick={handleLinkContact} disabled={isLinking || !linkContactId}>
+              {isLinking && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              Link Contact
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Delete Confirmation */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Traveller</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {traveller.firstName} {traveller.lastName}? This cannot be undone.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete <strong>{traveller.firstName} {traveller.lastName}</strong>? This cannot be undone.
-          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isDeleting && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
               Delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

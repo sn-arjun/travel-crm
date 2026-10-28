@@ -1,0 +1,372 @@
+/**
+ * Departures API (R139), mounted at /departures and gated by the plan feature group_departures in index.ts.
+ * Seat bookings of one departure are here (R143, /:id/bookings); the others are under /seat-bookings. The manifest and departure
+ * messages are added by later batches under the same mount.
+ */
+
+import { Hono } from 'hono';
+import type { Context } from 'hono';
+import { zValidator } from '../utils/validator';
+import type { AppContext } from '../types';
+import { success, created, notFound } from '../utils/response';
+import { rbac, requirePermission } from '../middleware/rbac';
+import { logActivity } from '../utils/activity-logger';
+import { guarded } from '../services/departures/common';
+import {
+  changeDepartureStatus, createDeparture, createDeparturesBulk, deleteDeparture, getCosts, getDepartureDetail, getDeparturePrices,
+  getDepartureRow, getDepartureStops, getVehicles, listDepartures, replaceCosts, replaceDepartureStops, replaceDeparturePrices,
+  replaceVehicles, updateDeparture,
+} from '../services/departures/departures';
+import { createTripsFromDeparture, departureHeadcount, type CoachCtx } from '../services/fleet/coach-trips';
+import { requireFeature } from '../middleware/feature-gate';
+import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
+import { seedDefaultRules } from '../services/departures/scheduled-messages';
+import { announceSeats, emit, loadDepartureContext, seatCtxFromRequest } from '../services/departures/seat-support';
+import { buildManifest, manifestCsv, manifestPdf, saveRoomGroups, suggestRooms } from '../services/departures/manifest';
+import { hasPermission, type Role } from '../constants/permissions';
+import { getBookingDetail, listBookings, requestSeats } from '../services/departures/seats';
+import { runWaitlistStep } from '../services/departures/waitlist';
+import {
+  bulkDepartureSchema, costsBodySchema, extrasBodySchema, createDepartureSchema, departureListSchema, departureStatusBodySchema, groupToursSettingsSchema,
+  manifestQuerySchema, roomAssignmentsSchema, pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
+} from '../validators/departures';
+import { bookingListSchema, requestSeatsBodySchema } from '../validators/seat-bookings';
+import { activeLinkFor, createLink, revoke } from '../services/public-links';
+import { resolveFeature } from '../services/features/resolve';
+import { bookingUrl } from '../utils/app-urls';
+import { extrasOverview, replaceDepartureExtras } from '../services/departures/extras';
+
+const departures = new Hono<AppContext>();
+
+/** More seats than before: tell the automations and let the waitlist have the new seats. */
+async function afterCapacityChange(c: Context<AppContext>, id: string, before: number | undefined): Promise<void> {
+  const after = (await getDepartureRow(c.get('tenantDb'), id))?.capacity;
+  if (before === undefined || after === undefined || after <= before) return;
+  const ctx = seatCtxFromRequest(c);
+  await emit(ctx, 'departure.capacity_changed', 'departure', id, { departureId: id, from: before, to: after });
+  await runWaitlistStep(ctx, id);
+}
+
+// ---- agency settings (group_tours): registered before /:id so "settings" is not read as a departure id
+
+departures.get('/settings', requirePermission('departures', 'view'), async (c) => success(c, await getGroupToursSettings(c.get('tenantDb'))));
+
+departures.put('/settings', rbac(['admin']), zValidator('json', groupToursSettingsSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const before = await getGroupToursSettings(db);
+  const saved = await putGroupToursSettings(db, c.req.valid('json'), c.get('userId'));
+  // The first time group tours are switched on the agency gets the three inactive starter rules for departure messages (R154).
+  if (saved.enabled && !before.enabled) await seedDefaultRules(db, c.get('userId'));
+  await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'setting', details: JSON.stringify({ key: 'group_tours' }) });
+  return success(c, saved);
+});
+
+// ---- list, create, bulk
+
+departures.get('/', requirePermission('departures', 'view'), zValidator('query', departureListSchema), async (c) => {
+  const filters = c.req.valid('query');
+  const { items, total, hasMore, nextCursor } = await listDepartures(c.get('tenantDb'), filters);
+  return c.json({ success: true, data: items, pagination: { total, limit: filters.limit, hasMore, nextCursor } });
+});
+
+departures.post('/', requirePermission('departures', 'create'), zValidator('json', createDepartureSchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = await createDeparture(db, c.req.valid('json'), c.get('userId'));
+    await logActivity(db, { userId: c.get('userId'), action: 'create', entityType: 'departure', entityId: id });
+    return created(c, await getDepartureDetail(db, id));
+  }),
+);
+
+departures.post('/bulk', requirePermission('departures', 'create'), zValidator('json', bulkDepartureSchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const { code: _ignored, ...input } = c.req.valid('json');
+    const result = await createDeparturesBulk(db, input, c.get('userId'));
+    for (const id of result.created) await logActivity(db, { userId: c.get('userId'), action: 'create', entityType: 'departure', entityId: id });
+    const items = [];
+    for (const id of result.created) items.push(await getDepartureDetail(db, id));
+    return created(c, { created: items, skipped: result.skipped });
+  }),
+);
+
+// ---- one departure
+
+departures.get('/:id', requirePermission('departures', 'view'), async (c) => {
+  const detail = await getDepartureDetail(c.get('tenantDb'), c.req.param('id'));
+  return detail ? success(c, detail) : notFound(c, 'Departure');
+});
+
+departures.put('/:id', requirePermission('departures', 'edit'), zValidator('json', updateDepartureSchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const before = await getDepartureRow(db, id);
+    if (!(await updateDeparture(db, id, c.req.valid('json'), c.get('userId')))) return notFound(c, 'Departure');
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id });
+    await afterCapacityChange(c, id, before?.capacity);
+    return success(c, await getDepartureDetail(db, id));
+  }),
+);
+
+departures.post('/:id/status', requirePermission('departures', 'edit'), zValidator('json', departureStatusBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const { status, reason } = c.req.valid('json');
+    const from = (await getDepartureRow(db, id))?.status;
+    const updated = await changeDepartureStatus(db, id, status, reason, c.get('userId'));
+    if (!updated) return notFound(c, 'Departure');
+    await logActivity(db, { userId: c.get('userId'), action: 'status_change', entityType: 'departure', entityId: id, details: JSON.stringify({ status, reason }) });
+    await emit(seatCtxFromRequest(c), 'departure.status_changed', 'departure', id, { departureId: id, from, to: status, ...(reason && { reason }) });
+    return success(c, await getDepartureDetail(db, id));
+  }),
+);
+
+departures.delete('/:id', requirePermission('departures', 'delete'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await deleteDeparture(db, id))) return notFound(c, 'Departure');
+    await logActivity(db, { userId: c.get('userId'), action: 'delete', entityType: 'departure', entityId: id });
+    return success(c, { id, deleted: true });
+  }),
+);
+
+// ---- coaches
+
+departures.get('/:id/vehicles', requirePermission('departures', 'view'), async (c) => {
+  const db = c.get('tenantDb');
+  if (!(await getDepartureRow(db, c.req.param('id')))) return notFound(c, 'Departure');
+  return success(c, await getVehicles(db, c.req.param('id')));
+});
+
+departures.put('/:id/vehicles', requirePermission('departures', 'edit'), zValidator('json', vehiclesBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const before = await getDepartureRow(db, id);
+    if (!before) return notFound(c, 'Departure');
+    await replaceVehicles(db, id, c.req.valid('json').vehicles, c.get('userId'));
+    await afterCapacityChange(c, id, before.capacity);
+    return success(c, await getDepartureDetail(db, id));
+  }),
+);
+
+// ---- stops
+
+departures.get('/:id/stops', requirePermission('departures', 'view'), async (c) => {
+  const db = c.get('tenantDb');
+  if (!(await getDepartureRow(db, c.req.param('id')))) return notFound(c, 'Departure');
+  return success(c, await getDepartureStops(db, c.req.param('id')));
+});
+
+departures.put('/:id/stops', requirePermission('departures', 'edit'), zValidator('json', stopsBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    await replaceDepartureStops(db, id, c.req.valid('json').stops);
+    return success(c, await getDepartureStops(db, id));
+  }),
+);
+
+// ---- prices: the tour's rows with this departure's overrides applied; PUT replaces the overrides
+
+departures.get('/:id/prices', requirePermission('departures', 'view'), async (c) => {
+  const prices = await getDeparturePrices(c.get('tenantDb'), c.req.param('id'));
+  return prices ? success(c, prices) : notFound(c, 'Departure');
+});
+
+departures.put('/:id/prices', requirePermission('departures', 'edit'), zValidator('json', pricesBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    await replaceDeparturePrices(db, id, c.req.valid('json').prices);
+    return success(c, await getDeparturePrices(db, id));
+  }),
+);
+
+// ---- costs
+
+departures.get('/:id/costs', requirePermission('departures', 'view'), async (c) => {
+  const db = c.get('tenantDb');
+  if (!(await getDepartureRow(db, c.req.param('id')))) return notFound(c, 'Departure');
+  return success(c, await getCosts(db, c.req.param('id')));
+});
+
+departures.put('/:id/costs', requirePermission('departures', 'edit'), zValidator('json', costsBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    await replaceCosts(db, id, c.req.valid('json').costs, c.get('userId'));
+    return success(c, await getCosts(db, id));
+  }),
+);
+
+// ---- seat bookings of one departure (R143)
+
+departures.get('/:id/bookings', requirePermission('departures', 'view'), zValidator('query', bookingListSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+  const filters = c.req.valid('query');
+  const { items, total, hasMore, nextCursor } = await listBookings(db, id, filters);
+  return c.json({ success: true, data: items, pagination: { total, limit: filters.limit, hasMore, nextCursor } });
+});
+
+departures.post('/:id/bookings', requirePermission('departures', 'create'), zValidator('json', requestSeatsBodySchema), (c) =>
+  guarded(c, async () => {
+    const { hold: _hold, ...body } = c.req.valid('json');
+    const booking = await requestSeats(seatCtxFromRequest(c), { ...body, departureId: c.req.param('id'), source: 'staff' });
+    await logActivity(c.get('tenantDb'), { userId: c.get('userId'), action: 'create', entityType: 'seat_booking', entityId: booking.id, details: JSON.stringify({ status: booking.status, seats: booking.seats }) });
+    return created(c, booking);
+  }),
+);
+
+// ---- public booking page (R148): the link behind the "Public page" card. The page itself is routes/public-booking.ts.
+
+departures.get('/:id/public-link', requirePermission('departures', 'view'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const row = await getDepartureRow(db, id);
+    if (!row) return notFound(c, 'Departure');
+    const available = (await resolveFeature(c.env, c.get('tenantId'), 'public_booking')).enabled;
+    const token = row.public_booking_enabled ? await activeLinkFor(c.env, 'departure_booking', id, c.get('tenantId')) : null;
+    return success(c, { available, enabled: !!token, url: token ? bookingUrl(c.env, token) : null });
+  }),
+);
+
+// Switches the page on for this departure and returns its address (the same address while it stays on).
+departures.post('/:id/public-link', requireFeature('public_booking'), requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    const token = await createLink(c.env, 'departure_booking', id, c.get('tenantId'));
+    await db.prepare('UPDATE departures SET public_booking_enabled = 1, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ publicPage: 'enabled' }) });
+    return success(c, { available: true, enabled: true, url: bookingUrl(c.env, token) });
+  }),
+);
+
+// Switches the page off and stops its address; switching on again makes a new address.
+departures.delete('/:id/public-link', requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    await revoke(c.env, 'departure_booking', id, c.get('tenantId'));
+    await db.prepare('UPDATE departures SET public_booking_enabled = 0, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ publicPage: 'disabled' }) });
+    return success(c, { available: true, enabled: false, url: null });
+  }),
+);
+
+// ---- extras (R150): what the departure sells (the tour's catalogue with this departure's overrides), the sales, and what each passenger chose
+
+departures.get('/:id/extras', requirePermission('departures', 'view'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    return success(c, await extrasOverview(db, await loadDepartureContext(db, c.req.param('id'))));
+  }),
+);
+
+departures.put('/:id/extras', requirePermission('departures', 'edit'), zValidator('json', extrasBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const row = await getDepartureRow(db, id);
+    if (!row) return notFound(c, 'Departure');
+    await replaceDepartureExtras(db, row.tour_id, id, c.req.valid('json').extras);
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ extras: c.req.valid('json').extras.length }) });
+    return success(c, await extrasOverview(db, await loadDepartureContext(db, id)));
+  }),
+);
+
+// ---- manifest (R146): pickup list, rooming list and the full list, as JSON, CSV or PDF
+
+departures.get('/:id/manifest', requirePermission('departures', 'view'), zValidator('query', manifestQuerySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const { view, format, bookings } = c.req.valid('query');
+    // Passport and document numbers are personal data: only roles that may export travellers see them, and only in the full view.
+    const canSeeDocuments = hasPermission(c.get('role') as Role, 'travellers', 'export');
+    const manifest = await buildManifest(db, id, view, { userId: c.get('userId'), canSeeDocuments, bookings });
+    if (format === 'json') return success(c, manifest);
+    await logActivity(db, { userId: c.get('userId'), action: 'export', entityType: 'departure', entityId: id, details: JSON.stringify({ manifest: view, format }) });
+    const fileName = `${manifest.departure.code}-${view}`.replace(/[^A-Za-z0-9._-]+/g, '_');
+    if (format === 'csv') {
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', `attachment; filename="${fileName}.csv"`);
+      return c.body(manifestCsv(manifest));
+    }
+    const pdf = await manifestPdf(manifest);
+    c.header('Content-Type', 'application/pdf');
+    c.header('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+    return c.body(pdf as unknown as ArrayBuffer);
+  }),
+);
+
+// Rooms: a suggestion that pairs the passengers who agreed to share, and the save of the groups staff confirmed.
+departures.get('/:id/rooms/suggestions', requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(c.get('tenantDb'), id))) return notFound(c, 'Departure');
+    return success(c, await suggestRooms(c.get('tenantDb'), id));
+  }),
+);
+
+departures.put('/:id/rooms', requirePermission('departures', 'edit'), zValidator('json', roomAssignmentsSchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    const updated = await saveRoomGroups(db, id, c.req.valid('json').assignments);
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ rooms: updated }) });
+    await announceSeats(seatCtxFromRequest(c), id, 'departure.rooms_changed');
+    return success(c, { updated });
+  }),
+);
+
+// ---- coach trips of one departure (R145): they need coach_trips on top of group_departures (the mount already checks the latter)
+
+departures.post('/:id/trips', requireFeature('coach_trips'), requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    let waiter: CoachCtx['waiter'];
+    try { waiter = c.executionCtx; } catch { waiter = undefined; }
+    const ctx: CoachCtx = { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), userId: c.get('userId'), waiter };
+    const id = c.req.param('id');
+    const result = await createTripsFromDeparture(ctx, id, { replace: c.req.query('replace') === '1' });
+    if (result.created) {
+      await logActivity(ctx.db, { userId: c.get('userId'), action: 'create', entityType: 'departure', entityId: id, details: JSON.stringify({ coachTrips: result.tripIds.length }) });
+    }
+    const trips = [];
+    for (const tripId of result.tripIds) {
+      const row = await ctx.db.prepare(
+        `SELECT ta.id, ta.vehicle_id, ta.driver_id, ta.tour_leader_id, ta.status, ta.pickup_datetime, ta.drop_datetime,
+                v.registration_number, d.name AS driver_name, tl.name AS tour_leader_name
+         FROM trip_assignments ta LEFT JOIN vehicles v ON v.id = ta.vehicle_id LEFT JOIN drivers d ON d.id = ta.driver_id LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
+         WHERE ta.id = ?`,
+      ).bind(tripId).first<Record<string, any>>();
+      trips.push({
+        id: tripId, vehicleId: row?.vehicle_id ?? null, vehicleRegistration: row?.registration_number ?? null, driverId: row?.driver_id ?? null,
+        driverName: row?.driver_name ?? null, tourLeaderId: row?.tour_leader_id ?? null, tourLeaderName: row?.tour_leader_name ?? null,
+        status: row?.status, pickupDatetime: row?.pickup_datetime ?? null, dropDatetime: row?.drop_datetime ?? null,
+      });
+    }
+    const body = { created: result.created, trips };
+    return result.created ? created(c, body) : success(c, body);
+  }),
+);
+
+departures.get('/:id/headcount', requireFeature('coach_trips'), requirePermission('departures', 'view'), async (c) => {
+  const db = c.get('tenantDb');
+  if (!(await getDepartureRow(db, c.req.param('id')))) return notFound(c, 'Departure');
+  return success(c, await departureHeadcount(db, c.req.param('id')));
+});
+
+export default departures;

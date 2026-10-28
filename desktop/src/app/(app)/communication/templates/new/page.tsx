@@ -1,30 +1,23 @@
 'use client';
 
 import * as React from 'react';
+import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft, Save, Eye, Mail, MessageSquare, Phone, Loader2, Variable,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { Eye, Mail, MessageSquare, Phone, Variable } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
+import {
+  Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, DialogContent, DialogHeader,
+  DialogTitle, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Textarea,
+} from '@/components/ui';
+import { contactsApi } from '@/lib/api/contacts';
+import type { Contact } from '@travelcrm/shared';
 import { templatesApi } from '@/lib/api/templates';
-import { useApiMutation } from '@/hooks/use-api';
+import { DepartureVariables } from '../_components/departure-variables';
 
 type TemplateChannel = 'email' | 'sms' | 'whatsapp';
 
-const categories: { value: string; label: string }[] = [
+const categories = [
   { value: 'greeting', label: 'Greeting / Welcome' },
   { value: 'follow_up', label: 'Follow-up' },
   { value: 'quotation', label: 'Quotation / Proposal' },
@@ -33,6 +26,19 @@ const categories: { value: string; label: string }[] = [
   { value: 'wish', label: 'Thank You / Wish' },
   { value: 'offer', label: 'Promotional / Offer' },
   { value: 'visa', label: 'Visa / Travel Docs' },
+];
+
+const languages = [
+  { value: 'en', label: 'English' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'ta', label: 'Tamil' },
+  { value: 'te', label: 'Telugu' },
+  { value: 'mr', label: 'Marathi' },
+  { value: 'gu', label: 'Gujarati' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'es', label: 'Spanish' },
 ];
 
 const availableVariables = [
@@ -48,329 +54,241 @@ const availableVariables = [
   { key: '{agent_name}', label: 'Agent Name' },
 ];
 
+const schema = z.object({
+  name: z.string().min(1, 'Template name is required'),
+  channel: z.enum(['email', 'sms', 'whatsapp']),
+  category: z.string().min(1, 'Please select a category'),
+  language: z.string(),
+  subject: z.string().optional(),
+  content: z.string().min(1, 'Template content is required'),
+}).refine((v) => v.channel !== 'email' || !!v.subject?.trim(), {
+  message: 'Subject is required for email templates',
+  path: ['subject'],
+});
+
+type TemplateForm = z.infer<typeof schema>;
+
+function fillVariables(text: string, contact: Contact | null) {
+  if (!contact) return text;
+  return text
+    .replace(/\{customer_name\}/g, contact.name ?? 'John Doe')
+    .replace(/\{first_name\}/g, contact.name?.split(' ')[0] ?? 'John')
+    .replace(/\{email\}/g, contact.email ?? 'john@example.com')
+    .replace(/\{phone\}/g, contact.phone ?? '+91 98765 43210')
+    .replace(/\{company\}/g, contact.company ?? 'Acme Corp')
+    .replace(/\{destination\}/g, 'Maldives')
+    .replace(/\{travel_date\}/g, '2026-04-15')
+    .replace(/\{amount\}/g, 'INR 1,50,000')
+    .replace(/\{booking_ref\}/g, 'TCM-2026-0042')
+    .replace(/\{agent_name\}/g, 'Sarah');
+}
+
 export default function NewTemplatePage() {
   const router = useRouter();
-  const [name, setName] = React.useState('');
-  const [channel, setChannel] = React.useState<TemplateChannel>('email');
-  const [category, setCategory] = React.useState('');
-  const [language, setLanguage] = React.useState('en');
-  const [subject, setSubject] = React.useState('');
-  const [body, setBody] = React.useState('');
   const [showPreview, setShowPreview] = React.useState(false);
-
-  const { mutate: createTemplate, loading: isSaving } = useApiMutation(
-    (data: Parameters<typeof templatesApi.create>[0]) => templatesApi.create(data),
-  );
-
-  const bodyRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const insertVariable = (variable: string) => {
-    const textarea = bodyRef.current;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newBody = body.substring(0, start) + variable + body.substring(end);
-      setBody(newBody);
-      // Set cursor position after the inserted variable
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + variable.length, start + variable.length);
-      }, 0);
-    } else {
-      setBody((prev) => prev + variable);
-    }
-  };
-
-  const getPreviewBody = () => {
-    return body
-      .replace(/\{\{name\}\}/g, 'John Doe')
-      .replace(/\{\{firstName\}\}/g, 'John')
-      .replace(/\{\{email\}\}/g, 'john@example.com')
-      .replace(/\{\{phone\}\}/g, '+91 98765 43210')
-      .replace(/\{\{company\}\}/g, 'Acme Corp')
-      .replace(/\{\{destination\}\}/g, 'Maldives')
-      .replace(/\{\{travelDate\}\}/g, '2026-04-15')
-      .replace(/\{\{amount\}\}/g, 'INR 1,50,000')
-      .replace(/\{\{bookingRef\}\}/g, 'TCM-2026-0042')
-      .replace(/\{\{agentName\}\}/g, 'Sarah');
-  };
-
-  const getPreviewSubject = () => {
-    return subject
-      .replace(/\{\{name\}\}/g, 'John Doe')
-      .replace(/\{\{firstName\}\}/g, 'John')
-      .replace(/\{\{destination\}\}/g, 'Maldives')
-      .replace(/\{\{bookingRef\}\}/g, 'TCM-2026-0042');
-  };
-
-  const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error('Please enter a template name');
-      return;
-    }
-    if (!category) {
-      toast.error('Please select a category');
-      return;
-    }
-    if (!body.trim()) {
-      toast.error('Please enter template content');
-      return;
-    }
-    if (channel === 'email' && !subject.trim()) {
-      toast.error('Please enter an email subject');
-      return;
-    }
-
-    const result = await createTemplate({
-      name,
-      channel,
-      category,
-      language,
-      subject: channel === 'email' ? subject : undefined,
-      content: body,
-    });
-    if (result) {
-      toast.success('Template saved successfully!');
-      router.push('/communication/templates');
-    } else {
-      toast.error('Failed to save template');
-    }
-  };
+  const [previewContact, setPreviewContact] = React.useState<Contact | null>(null);
+  const bodyRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Create Template
-            </h1>
-            <p className="text-sm text-muted-foreground">Create a new message template</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
-            <Eye className="h-4 w-4 mr-1.5" />
-            Preview
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-1.5" />
-            )}
-            Save Template
-          </Button>
-        </div>
-      </div>
+    <EntityForm<TemplateForm>
+      title="Create Template"
+      description="Create a new message template"
+      schema={schema}
+      defaultValues={{ name: '', channel: 'email', category: '', language: 'en', subject: '', content: '' }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        await templatesApi.create({
+          name: v.name,
+          channel: v.channel,
+          category: v.category,
+          language: v.language,
+          subject: v.channel === 'email' ? v.subject : undefined,
+          content: v.content,
+        });
+        toast.success('Template saved successfully!');
+        router.push('/communication/templates');
+      }}
+      submitLabel="Save Template"
+      renderSections={(form) => {
+        const channel = form.watch('channel');
+        const content = form.watch('content');
+        const subject = form.watch('subject') ?? '';
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-3 gap-6">
-            {/* Left: Form */}
-            <div className="col-span-2 space-y-6">
-              {/* Basic Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Template Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-sm mb-1.5 block">Template Name *</Label>
-                    <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g., Welcome Email - Standard"
-                      className="h-9"
-                    />
-                  </div>
+        const insertVariable = (variable: string) => {
+          const textarea = bodyRef.current;
+          const current = form.getValues('content') ?? '';
+          if (textarea) {
+            const start = textarea.selectionStart ?? current.length;
+            const end = textarea.selectionEnd ?? current.length;
+            const next = current.substring(0, start) + variable + current.substring(end);
+            form.setValue('content', next, { shouldDirty: true, shouldValidate: true });
+            requestAnimationFrame(() => {
+              textarea.focus();
+              textarea.setSelectionRange(start + variable.length, start + variable.length);
+            });
+          } else {
+            form.setValue('content', current + variable, { shouldDirty: true, shouldValidate: true });
+          }
+        };
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Channel *</Label>
-                      <Select value={channel} onValueChange={(v) => setChannel(v as TemplateChannel)}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="email">
-                            <span className="flex items-center gap-2">
-                              <Mail className="h-3.5 w-3.5" /> Email
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="sms">
-                            <span className="flex items-center gap-2">
-                              <Phone className="h-3.5 w-3.5" /> SMS
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="whatsapp">
-                            <span className="flex items-center gap-2">
-                              <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+        return (
+          <>
+            <div className="grid gap-ds-4 lg:grid-cols-3">
+              <div className="lg:col-span-2 space-y-ds-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-ds-sm">Template Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-ds-4">
+                    <FormRow name="name" label="Template Name" required>
+                      <Input {...form.register('name')} id="name" placeholder="e.g., Welcome Email - Standard" />
+                    </FormRow>
+                    <div className="grid grid-cols-3 gap-ds-4">
+                      <FormRow name="channel" label="Channel" required>
+                        <Select
+                          value={channel}
+                          onValueChange={(v) => form.setValue('channel', v as TemplateChannel, { shouldDirty: true })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="email"><span className="flex items-center gap-ds-2"><Mail className="h-3.5 w-3.5" /> Email</span></SelectItem>
+                            <SelectItem value="sms"><span className="flex items-center gap-ds-2"><Phone className="h-3.5 w-3.5" /> SMS</span></SelectItem>
+                            <SelectItem value="whatsapp"><span className="flex items-center gap-ds-2"><MessageSquare className="h-3.5 w-3.5" /> WhatsApp</span></SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormRow>
+                      <FormRow name="category" label="Category" required hint={form.formState.errors.category?.message}>
+                        <Select value={form.watch('category')} onValueChange={(v) => form.setValue('category', v, { shouldDirty: true, shouldValidate: true })}>
+                          <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                          <SelectContent>
+                            {categories.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </FormRow>
+                      <FormRow name="language" label="Language">
+                        <Select value={form.watch('language')} onValueChange={(v) => form.setValue('language', v, { shouldDirty: true })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {languages.map((l) => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </FormRow>
                     </div>
+                    {channel === 'email' && (
+                      <FormRow name="subject" label="Subject" required hint={form.formState.errors.subject?.message}>
+                        <Input {...form.register('subject')} id="subject" placeholder="Email subject line (variables allowed)" />
+                      </FormRow>
+                    )}
+                  </CardContent>
+                </Card>
 
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Category *</Label>
-                      <Select value={category} onValueChange={setCategory}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Language</Label>
-                      <Select value={language} onValueChange={setLanguage}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="en">English</SelectItem>
-                          <SelectItem value="hi">Hindi</SelectItem>
-                          <SelectItem value="ar">Arabic</SelectItem>
-                          <SelectItem value="fr">French</SelectItem>
-                          <SelectItem value="de">German</SelectItem>
-                          <SelectItem value="es">Spanish</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {channel === 'email' && (
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Subject *</Label>
-                      <Input
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                        placeholder="Email subject line (variables allowed)"
-                        className="h-9"
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-ds-sm">Template Content</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <FormRow name="content" label="Content" required hint={form.formState.errors.content?.message}>
+                      <Textarea
+                        {...form.register('content')}
+                        ref={(el) => {
+                          form.register('content').ref(el);
+                          bodyRef.current = el;
+                        }}
+                        placeholder={`Write your ${channel} template here...\n\nUse variables like {customer_name}, {destination} for personalization.`}
+                        className="min-h-72 font-mono leading-relaxed resize-none"
                       />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Body */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Template Content</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <textarea
-                    ref={bodyRef}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder={`Write your ${channel} template here...\n\nUse variables like {customer_name}, {destination} for personalization.`}
-                    className="w-full min-h-[280px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono leading-relaxed resize-none"
-                  />
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-muted-foreground">
-                      {body.length} characters
-                      {channel === 'sms' && body.length > 160 && (
-                        <span className="text-amber-600 ml-2">
-                          ({Math.ceil(body.length / 160)} SMS segments)
-                        </span>
+                    </FormRow>
+                    <p className="text-ds-xs text-ds-foreground-subtle mt-ds-2">
+                      {content.length} characters
+                      {channel === 'sms' && content.length > 160 && (
+                        <span className="text-ds-warning ml-ds-2">({Math.ceil(content.length / 160)} SMS segments)</span>
                       )}
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-            {/* Right: Variables */}
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Variable className="h-4 w-4" />
-                    Insert Variables
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
+              <div className="space-y-ds-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-ds-sm flex items-center gap-ds-2">
+                      <Variable className="h-4 w-4" /> Insert Variables
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-ds-2">
                     {availableVariables.map((v) => (
                       <button
                         key={v.key}
+                        type="button"
                         onClick={() => insertVariable(v.key)}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-md text-left text-sm hover:bg-muted transition-colors"
+                        className="w-full flex items-center justify-between px-ds-3 py-ds-2 rounded-ds-md text-left text-ds-sm hover:bg-ds-surface-sunken transition-colors"
                       >
-                        <span className="text-muted-foreground">{v.label}</span>
-                        <code className="text-xs font-mono text-primary">{v.key}</code>
+                        <span className="text-ds-foreground-muted">{v.label}</span>
+                        <code className="text-ds-xs font-mono text-ds-primary">{v.key}</code>
                       </button>
                     ))}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Tips</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="text-xs text-muted-foreground space-y-2">
-                    <li>Use variables like <code className="text-primary">{'{customer_name}'}</code> for personalization</li>
-                    <li>Keep SMS under 160 chars for single segment</li>
-                    <li>WhatsApp templates may need approval</li>
-                    <li>Preview before saving to check formatting</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-ds-sm">Preview with a contact</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-ds-3">
+                    <RelationCombobox<Contact>
+                      value={previewContact?.id ?? null}
+                      onChange={(_id, item) => setPreviewContact(item)}
+                      fetcher={async (q, page) => {
+                        const r = await contactsApi.list({ search: q, page, limit: 20 });
+                        const items = r.data?.data ?? (Array.isArray(r.data) ? r.data : []);
+                        return { items, total: r.data?.pagination?.total ?? items.length };
+                      }}
+                      getOptionId={(c) => c.id}
+                      getOptionLabel={(c) => c.name}
+                      getOptionDescription={(c) => c.email ?? undefined}
+                      placeholder="Pick a contact to preview"
+                    />
+                    <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setShowPreview(true)}>
+                      <Eye className="h-4 w-4 mr-ds-1" /> Preview
+                    </Button>
+                  </CardContent>
+                </Card>
 
-      {/* Preview Dialog */}
-      <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Template Preview</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                {channel === 'email' && <Mail className="h-3 w-3 mr-1" />}
-                {channel === 'sms' && <Phone className="h-3 w-3 mr-1" />}
-                {channel === 'whatsapp' && <MessageSquare className="h-3 w-3 mr-1" />}
-                {channel.toUpperCase()}
-              </Badge>
-              {category && <Badge variant="secondary">{category}</Badge>}
-            </div>
-
-            {channel === 'email' && subject && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Subject</p>
-                <p className="text-sm font-medium">{getPreviewSubject()}</p>
+                <DepartureVariables onInsert={insertVariable} />
               </div>
-            )}
-
-            <Separator />
-
-            <div className="rounded-lg border p-4 bg-muted/30 min-h-[200px]">
-              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                {getPreviewBody() || 'No content yet'}
-              </pre>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Variables are shown with sample data. Actual values will be filled at send time.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <Dialog open={showPreview} onOpenChange={setShowPreview}>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Template Preview</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-ds-4">
+                  <div className="flex items-center gap-ds-2">
+                    <Badge variant="outline">{channel.toUpperCase()}</Badge>
+                    {form.watch('category') && <Badge variant="secondary">{form.watch('category')}</Badge>}
+                  </div>
+                  {channel === 'email' && subject && (
+                    <div>
+                      <p className="text-ds-xs text-ds-foreground-subtle mb-ds-1">Subject</p>
+                      <p className="text-ds-sm font-medium">{fillVariables(subject, previewContact)}</p>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="rounded-ds-lg border border-ds-border p-ds-4 bg-ds-surface-sunken min-h-48">
+                    <pre className="text-ds-sm whitespace-pre-wrap font-sans leading-relaxed">
+                      {fillVariables(content, previewContact) || 'No content yet'}
+                    </pre>
+                  </div>
+                  <p className="text-ds-xs text-ds-foreground-subtle">
+                    {previewContact ? `Showing sample data for ${previewContact.name}.` : 'Pick a contact for a real preview, or view with sample data.'}
+                  </p>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        );
+      }}
+    />
   );
 }

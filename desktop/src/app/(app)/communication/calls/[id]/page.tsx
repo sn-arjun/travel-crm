@@ -1,20 +1,18 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  ArrowLeft, Phone, PhoneIncoming, PhoneOutgoing, Clock,
-  Play, Pause, Download, FileText, User, Briefcase,
-  Loader, AlertCircle, Volume2,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
-import { voipApi, type Call, type Transcript } from '@/lib/api/voip';
+import { PhoneForwarded, PhoneOff, Trash2, User, Briefcase } from 'lucide-react';
+import { DetailPage } from '@/components/domain';
+import { Button, Tag, SectionCard, Skeleton, Input, EmptyState } from '@/components/ui';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { CallRecordingPlayer } from '@/components/domain/call-recording';
+import { CallTranscriptPanel } from '@/components/domain/call-transcript-panel';
+import { voipApi, type Call, type RecordingSettings } from '@/lib/api/voip';
+import { toast } from 'sonner';
 
 function formatDuration(seconds: number): string {
   if (!seconds) return '0s';
@@ -26,71 +24,70 @@ function formatDuration(seconds: number): string {
   return `${secs}s`;
 }
 
-function statusColor(status: string) {
-  switch (status) {
-    case 'completed': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-    case 'in_progress': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-    case 'failed': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-    case 'no_answer': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
-  }
+function statusTone(status: Call['status']): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'completed') return 'success';
+  if (status === 'no-answer' || status === 'failed' || status === 'busy' || status === 'canceled') return 'danger';
+  if (status === 'in-progress' || status === 'ringing') return 'info';
+  return 'neutral';
 }
 
-function AudioPlayer({ src }: { src: string }) {
-  const [playing, setPlaying] = React.useState(false);
-  const [progress, setProgress] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-
-  React.useEffect(() => {
-    const audio = new Audio(src);
-    audioRef.current = audio;
-
-    audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
-    audio.addEventListener('timeupdate', () => {
-      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
-    });
-    audio.addEventListener('ended', () => {
-      setPlaying(false);
-      setProgress(0);
-    });
-
-    return () => {
-      audio.pause();
-      audio.remove();
-    };
-  }, [src]);
-
-  const toggle = () => {
-    if (!audioRef.current) return;
-    if (playing) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setPlaying(!playing);
-  };
-
+/** The agency's recording state for this call, in words. */
+function RecordingSection({ call }: { call: Call }) {
+  const consent =
+    call.recordingConsent === 'announced' ? 'The caller heard the recording announcement.'
+    : call.recordingConsent === 'given' ? 'The agent confirmed the caller agreed to be recorded.'
+    : null;
+  const expires = call.recordingExpiresAt ? formatLocaleDate(call.recordingExpiresAt) : null;
   return (
-    <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-4">
-      <Button variant="outline" size="icon" onClick={toggle} className="shrink-0">
-        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </Button>
-      <div className="flex-1 space-y-1">
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{formatDuration(Math.floor((progress / 100) * duration))}</span>
-          <span>{formatDuration(Math.floor(duration))}</span>
-        </div>
+    <SectionCard title="Recording">
+      <div className="flex flex-col gap-ds-3">
+        {call.hasRecording ? (
+          <>
+            <CallRecordingPlayer callId={call.id} />
+            {expires && <p className="text-xs text-ds-foreground-muted">Kept until {expires}, then deleted. The call record and summary stay.</p>}
+          </>
+        ) : call.recordingState === 'expired' ? (
+          <p className="text-sm text-ds-foreground-muted" data-testid="recording-expired">This recording was deleted after the retention period.</p>
+        ) : call.recordingState === 'provider' || call.recordingState === 'failed' ? (
+          <p className="text-sm text-ds-foreground-muted" data-testid="recording-pending">This recording is being saved. It will be playable in a few minutes.</p>
+        ) : (
+          <p className="text-sm text-ds-foreground-muted">This call was not recorded.</p>
+        )}
+        {consent && <p className="text-xs text-ds-foreground-muted">{consent}</p>}
       </div>
-      <a href={src} download>
-        <Button variant="ghost" size="icon-sm">
-          <Download className="h-4 w-4" />
+    </SectionCard>
+  );
+}
+
+/** For agencies that record on request: the line to read to the caller, and a tick that starts the recording. */
+function ConsentSection({ call, onGiven }: { call: Call; onGiven: () => void }) {
+  const { data } = useApiQuery<{ data: RecordingSettings }>(() => voipApi.recordingSettings.get(), []);
+  const settings = data?.data;
+  const [busy, setBusy] = React.useState(false);
+  const live = call.status === 'in-progress' || call.status === 'ringing';
+  if (!settings || !live || settings.consentMode !== 'on_request' || call.recordingConsent === 'given') return null;
+  const tick = async () => {
+    setBusy(true);
+    try {
+      await voipApi.calls.recordingConsent(call.id);
+      toast.success('Recording started');
+      onGiven();
+    } catch (error) {
+      toast.error((error as { message?: string } | null)?.message || 'Could not start recording');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SectionCard title="Recording consent">
+      <div className="flex flex-col gap-ds-3" data-testid="recording-consent">
+        <p className="text-sm text-ds-foreground-muted">Read this to the caller and start recording only if they agree.</p>
+        <blockquote className="rounded-ds-md bg-ds-surface-sunken p-ds-3 text-sm">{settings.effectiveAnnouncement}</blockquote>
+        <Button onClick={() => void tick()} disabled={busy} className="self-start" data-testid="recording-consent-given">
+          Consent given: start recording
         </Button>
-      </a>
-    </div>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -98,244 +95,220 @@ export default function CallDetailPage() {
   const params = useParams();
   const router = useRouter();
   const callId = params.id as string;
+  const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
+  const [transferTo, setTransferTo] = React.useState('');
+  const [transferring, setTransferring] = React.useState(false);
 
-  const { data: callResponse, loading: callLoading, error: callError } = useApiQuery<any>(
+  const { data: callResponse, loading: callLoading, error: callError, refetch } = useApiQuery<{ data: Call }>(
     () => voipApi.calls.getById(callId),
     [callId],
   );
 
-  const { data: transcriptResponse } = useApiQuery<any>(
-    () => voipApi.transcripts.getByCall(callId),
-    [callId],
-  );
+  const { mutate: endCall, loading: ending } = useApiMutation<void, { data: { message: string } }>(() => voipApi.calls.end(callId));
+  const { mutate: deleteCall } = useApiMutation<void, unknown>(() => voipApi.calls.remove(callId));
 
-  const call: Call | null = callResponse?.data ?? null;
-  const transcript: Transcript | null = transcriptResponse?.data ?? null;
+  const call = callResponse?.data ?? null;
+
+  if (gateLoading) return <Skeleton className="h-9 w-32" />;
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-9 text-center">
+        <PhoneOff className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
+        <p className="text-sm text-ds-foreground-muted">
+          {reason === 'country_unavailable'
+            ? 'Calling is not available for agencies in your country yet.'
+            : reason === 'cap_exceeded' ? 'Call limit reached for your plan.' : 'VoIP calling is not enabled on your plan.'}
+        </p>
+        {reason !== 'country_unavailable' && (
+          <Button asChild size="sm">
+            <a href={upgradeHref}>Upgrade to enable</a>
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (callLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
 
   if (callError || !call) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="h-10 w-10 text-muted-foreground" />
-        <p className="text-muted-foreground">Failed to load call details</p>
-        <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
-      </div>
+      <EmptyState
+        title="Call not found"
+        description="This call log could not be loaded."
+        action={<Button variant="outline" onClick={() => router.back()}>Go back</Button>}
+      />
     );
   }
 
   const isInbound = call.direction === 'inbound';
 
+  async function handleEnd() {
+    const result = await endCall(undefined);
+    if (result) {
+      toast.success('Call ended');
+      refetch();
+    } else {
+      toast.error('Failed to end call');
+    }
+  }
+
+  async function handleTransfer() {
+    if (!transferTo.trim()) return;
+    setTransferring(true);
+    const result = await voipApi.calls.transfer(callId, { targetNumber: transferTo.trim() }).catch(() => null);
+    setTransferring(false);
+    if (result) {
+      toast.success(`Transferred to ${transferTo}`);
+      setTransferTo('');
+      refetch();
+    } else {
+      toast.error('Failed to transfer call');
+    }
+  }
+
+  async function handleDelete() {
+    const result = await deleteCall(undefined);
+    if (result !== undefined) {
+      toast.success('Call log deleted');
+      router.push('/communication/calls');
+    } else {
+      toast.error('Failed to delete call log');
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+    <DetailPage<Call>
+      entity={call}
+      title={`${isInbound ? 'Inbound' : 'Outbound'} call`}
+      subtitle={formatLocaleDateTime(call.createdAt)}
+      status={<Tag tone={statusTone(call.status)}>{call.status.replace('-', ' ')}</Tag>}
+      onBack={() => router.back()}
+      primaryActions={
+        (call.status === 'in-progress' || call.status === 'ringing') ? (
+          <Button variant="outline" size="sm" onClick={handleEnd} disabled={ending} className="gap-ds-2">
+            <PhoneOff aria-hidden="true" /> End call
           </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Call Detail
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {isInbound ? 'Inbound' : 'Outbound'} call - {new Date(call.startTime).toLocaleString('en-IN')}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className={cn('border-transparent', statusColor(call.status))}>
-            {call.status.replace('_', ' ')}
-          </Badge>
-        </div>
-      </div>
+        ) : undefined
+      }
+      actions={[
+        { label: 'Delete', icon: <Trash2 />, onSelect: handleDelete, destructive: true, separatorBefore: true },
+      ]}
+      messaging={
+        call.contactId
+          ? { recipientId: call.contactId, recipientName: call.contactName ?? (isInbound ? call.fromNumber : call.toNumber), phone: isInbound ? call.fromNumber : call.toNumber }
+          : undefined
+      }
+      overview={
+        <div className="grid gap-ds-4 sm:grid-cols-2">
+          <SectionCard title="Call information">
+            <div className="grid grid-cols-2 gap-ds-4">
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">Direction</p>
+                <p className="text-sm font-medium">{isInbound ? 'Inbound' : 'Outbound'}</p>
+              </div>
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">Status</p>
+                <Tag tone={statusTone(call.status)}>{call.status.replace('-', ' ')}</Tag>
+              </div>
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">From</p>
+                <p className="font-mono text-sm font-medium">{call.fromNumber}</p>
+              </div>
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">To</p>
+                <p className="font-mono text-sm font-medium">{call.toNumber}</p>
+              </div>
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">Duration</p>
+                <p className="text-sm font-medium">{formatDuration(call.durationSeconds)}</p>
+              </div>
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">Start time</p>
+                <p className="text-sm">{formatLocaleDateTime(call.createdAt)}</p>
+              </div>
+            </div>
+            {call.notes && (
+              <p className="mt-ds-4 border-t border-ds-border pt-ds-4 text-sm">{call.notes}</p>
+            )}
+          </SectionCard>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Call Info */}
-          <div className="grid grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Phone className="h-4 w-4" /> Call Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Direction</p>
-                    <div className="flex items-center gap-2">
-                      {isInbound ? (
-                        <PhoneIncoming className="h-4 w-4 text-blue-500" />
-                      ) : (
-                        <PhoneOutgoing className="h-4 w-4 text-green-500" />
-                      )}
-                      <span className="text-sm font-medium">{isInbound ? 'Inbound' : 'Outbound'}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Status</p>
-                    <Badge variant="outline" className={cn('border-transparent', statusColor(call.status))}>
-                      {call.status.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">From</p>
-                    <p className="text-sm font-medium font-mono">{call.from}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">To</p>
-                    <p className="text-sm font-medium font-mono">{call.to}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Duration</p>
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm font-medium">{formatDuration(call.duration)}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Start Time</p>
-                    <p className="text-sm">{new Date(call.startTime).toLocaleString('en-IN')}</p>
-                  </div>
-                  {call.endTime && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">End Time</p>
-                      <p className="text-sm">{new Date(call.endTime).toLocaleString('en-IN')}</p>
-                    </div>
-                  )}
-                </div>
-                {call.notes && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                      <p className="text-sm">{call.notes}</p>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Related Entities */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <User className="h-4 w-4" /> Related Records
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {call.contactId ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                        <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Contact</p>
-                        <p className="text-xs text-muted-foreground">{call.contactId}</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/contacts/${call.contactId}`}>View</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg border border-dashed text-center">
-                    <p className="text-sm text-muted-foreground">No contact linked</p>
-                  </div>
-                )}
-
-                {call.leadId ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                        <Briefcase className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Lead</p>
-                        <p className="text-xs text-muted-foreground">{call.leadId}</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/leads/${call.leadId}`}>View</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg border border-dashed text-center">
-                    <p className="text-sm text-muted-foreground">No lead linked</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recording */}
-          {call.recordingUrl && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Volume2 className="h-4 w-4" /> Recording
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AudioPlayer src={call.recordingUrl} />
-              </CardContent>
-            </Card>
+          {(call.status === 'in-progress' || call.status === 'ringing') && (
+            <SectionCard title="Transfer call">
+              <div className="flex items-end gap-ds-2">
+                <Input
+                  placeholder="Transfer to number"
+                  value={transferTo}
+                  onChange={(e) => setTransferTo(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={handleTransfer} disabled={transferring || !transferTo.trim()} className="gap-ds-2">
+                  <PhoneForwarded aria-hidden="true" /> Transfer
+                </Button>
+              </div>
+            </SectionCard>
           )}
 
-          {/* Transcript */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Transcript
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {transcript ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    {transcript.sentiment && (
-                      <Badge variant="outline" className={cn(
-                        'border-transparent',
-                        transcript.sentiment === 'positive' && 'bg-green-100 text-green-700',
-                        transcript.sentiment === 'neutral' && 'bg-gray-100 text-gray-700',
-                        transcript.sentiment === 'negative' && 'bg-red-100 text-red-700',
-                      )}>
-                        Sentiment: {transcript.sentiment}
-                      </Badge>
-                    )}
-                    {transcript.language && (
-                      <Badge variant="outline">{transcript.language}</Badge>
-                    )}
-                  </div>
-                  {transcript.keywords && transcript.keywords.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                      {transcript.keywords.map((kw, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">{kw}</Badge>
-                      ))}
+          <ConsentSection call={call} onGiven={refetch} />
+          <RecordingSection call={call} />
+
+          <div className="sm:col-span-2">
+            <CallTranscriptPanel callId={call.id} />
+          </div>
+        </div>
+      }
+      related={[
+        {
+          title: 'Related records',
+          content: (
+            <div className="grid gap-ds-3 sm:grid-cols-2">
+              {call.contactId ? (
+                <div className="flex items-center justify-between rounded-ds-md border border-ds-border p-ds-3">
+                  <div className="flex items-center gap-ds-3">
+                    <div className="flex size-9 items-center justify-center rounded-ds-full bg-ds-info-subtle">
+                      <User className="size-4 text-ds-info-on-subtle" />
                     </div>
-                  )}
-                  <div className="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap leading-relaxed">
-                    {transcript.text}
+                    <div>
+                      <p className="text-sm font-medium">Contact</p>
+                      <p className="text-xs text-ds-foreground-muted">{call.contactName ?? call.contactId}</p>
+                    </div>
                   </div>
+                  <Button variant="outline" size="sm" onClick={() => router.push(`/contacts/${call.contactId}`)}>View</Button>
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>No transcript available for this call</p>
+                <div className="rounded-ds-md border border-dashed border-ds-border p-ds-3 text-center text-sm text-ds-foreground-muted">
+                  No contact linked
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+              {call.leadId ? (
+                <div className="flex items-center justify-between rounded-ds-md border border-ds-border p-ds-3">
+                  <div className="flex items-center gap-ds-3">
+                    <div className="flex size-9 items-center justify-center rounded-ds-full bg-ds-primary-subtle">
+                      <Briefcase className="size-4 text-ds-primary-on-subtle" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Lead</p>
+                      <p className="text-xs text-ds-foreground-muted">{call.leadTitle ?? call.leadId}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => router.push(`/leads/${call.leadId}`)}>View</Button>
+                </div>
+              ) : (
+                <div className="rounded-ds-md border border-dashed border-ds-border p-ds-3 text-center text-sm text-ds-foreground-muted">
+                  No lead linked
+                </div>
+              )}
+            </div>
+          ),
+        },
+      ]}
+    />
   );
 }

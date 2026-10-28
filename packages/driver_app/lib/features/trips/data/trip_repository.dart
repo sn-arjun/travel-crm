@@ -8,12 +8,12 @@ class TripRepository {
 
   Future<Map<String, dynamic>> getTrips({
     required String tab,
+    int page = 1,
     int limit = 20,
-    int offset = 0,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.driverAppTrips,
-      queryParameters: {'tab': tab, 'limit': limit, 'offset': offset},
+      queryParameters: {'tab': tab, 'page': page, 'limit': limit},
     );
     return response.data;
   }
@@ -86,6 +86,58 @@ class TripRepository {
         'photo': ?photoBase64,
       },
     );
+    return response.data;
+  }
+
+  // ── Coach trips (R145 API) ──────────────────────────────
+
+  /// Marks a stop arrived or departed. Repeating the call is harmless.
+  Future<Map<String, dynamic>> setStopStatus(
+    String tripId,
+    String stopId,
+    String action, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final url = action == 'arrive'
+        ? ApiEndpoints.driverTripStopArrive(tripId, stopId)
+        : ApiEndpoints.driverTripStopDepart(tripId, stopId);
+    final response = await _dio.post(url, data: {
+      'lat': ?latitude,
+      'lng': ?longitude,
+    });
+    return response.data;
+  }
+
+  /// One tick. [opId] makes a retry safe; [at] is when the tick was made
+  /// (ticks sent from the offline queue arrive late).
+  Future<Map<String, dynamic>> tickPassenger(
+    String tripId,
+    String passengerId, {
+    String? boarding,
+    bool? documentsChecked,
+    required String opId,
+    String? at,
+  }) async {
+    final response = await _dio.put(
+      ApiEndpoints.driverTripPassenger(tripId, passengerId),
+      data: {
+        'boarding': ?boarding,
+        'documentsChecked': ?documentsChecked,
+        'opId': opId,
+        'at': ?at,
+      },
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getPassengers(String tripId) async {
+    final response = await _dio.get(ApiEndpoints.driverTripPassengers(tripId));
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getHeadcount(String tripId) async {
+    final response = await _dio.get(ApiEndpoints.driverTripHeadcount(tripId));
     return response.data;
   }
 }

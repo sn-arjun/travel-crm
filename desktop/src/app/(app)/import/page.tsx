@@ -9,12 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Progress } from '@/components/ui/progress';
+import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { importsApi } from '@/lib/api/imports';
-import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { unwrapEntity } from '@/lib/api/envelope';
+import { PageContainer } from '@/components/layout/page-container';
+import { useRealtimeEvent } from '@/hooks/use-realtime-event';
 
 type EntityType = 'contacts' | 'leads' | 'suppliers' | 'rate_cards' | 'travellers';
 type DuplicateStrategy = 'skip' | 'merge' | 'create';
@@ -34,7 +37,6 @@ const CRM_FIELDS: Record<EntityType, Array<{ value: string; label: string; requi
     { value: 'email', label: 'Email', required: true },
     { value: 'phone', label: 'Phone' },
     { value: 'company', label: 'Company' },
-    { value: 'type', label: 'Type' },
     { value: 'tags', label: 'Tags' },
   ],
   leads: [
@@ -119,6 +121,30 @@ function autoMap(headers: string[], entityType: EntityType): Record<string, stri
 
 type Step = 1 | 2 | 3 | 4;
 
+/** What the upload endpoint answers beyond the bare job record. */
+interface UploadedJob {
+  jobId?: string;
+  id?: string;
+  headers?: string[];
+  previewData?: Record<string, string>[];
+  totalRows?: number;
+}
+
+type ImportEvent = ImportProgress & { jobId?: string };
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+interface ImportProgress {
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  processedRows?: number;
+  totalRows?: number;
+  successCount?: number;
+  duplicateCount?: number;
+  errorCount?: number;
+}
+
 export default function ImportPage() {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>(1);
@@ -134,16 +160,13 @@ export default function ImportPage() {
   const [duplicateStrategy, setDuplicateStrategy] = React.useState<DuplicateStrategy>('skip');
   // Step 4: progress
   const [isImporting, setIsImporting] = React.useState(false);
-  const [progress, setProgress] = React.useState<any>(null);
+  const [progress, setProgress] = React.useState<ImportProgress | null>(null);
   const [importDone, setImportDone] = React.useState(false);
   const [isCancelling, setIsCancelling] = React.useState(false);
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const wsConnected = useRealtimeConnected();
-  const useRealtimeConnectedRef = React.useRef(wsConnected);
-  React.useEffect(() => { useRealtimeConnectedRef.current = wsConnected; }, [wsConnected]);
 
   // Real-time import progress via WebSocket
-  useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data) => {
+  useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data: ImportEvent) => {
     if (data?.jobId === uploadedJobId) {
       setProgress(data);
       if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
@@ -217,22 +240,22 @@ export default function ImportPage() {
     if (!file || !entityType) return;
     setIsUploading(true);
     try {
-      const res = await importsApi.upload({ file, type: entityType, skipHeader: true }) as any;
-      const data = res?.data ?? res;
+      const res = await importsApi.upload({ file, type: entityType, skipHeader: true });
+      const data = unwrapEntity<UploadedJob>(res);
       const jobId = data?.jobId ?? data?.id;
-      const uploadHeaders: string[] = data?.headers ?? [];
-      const preview: Record<string, string>[] = data?.previewData ?? [];
+      const uploadHeaders = data?.headers ?? [];
+      const preview = data?.previewData ?? [];
       const rows = data?.totalRows ?? 0;
 
-      setUploadedJobId(jobId);
+      setUploadedJobId(jobId ?? null);
       setHeaders(uploadHeaders);
       setPreviewData(preview);
       setTotalRows(rows);
       // Auto-map columns
       setMappings(autoMap(uploadHeaders, entityType as EntityType));
       setStep(2);
-    } catch (err: any) {
-      toast.error(err?.message || 'Upload failed');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Upload failed'));
     } finally {
       setIsUploading(false);
     }
@@ -254,12 +277,12 @@ export default function ImportPage() {
         duplicateStrategy,
       });
 
-      // Start fallback polling (only active when WS is disconnected; WS events handle it otherwise)
+      // Always poll as a safety net — WS events update progress faster when they
+      // arrive, but polling must not depend on the WS connection flag being accurate.
       pollRef.current = setInterval(async () => {
-        if (useRealtimeConnectedRef.current) return; // WS handles it
         try {
-          const res = await importsApi.getProgress(uploadedJobId) as any;
-          const job = res?.data ?? res;
+          const res = await importsApi.getProgress(uploadedJobId);
+          const job = unwrapEntity<ImportProgress>(res);
           setProgress(job);
           if (job?.status === 'completed' || job?.status === 'failed' || job?.status === 'cancelled') {
             clearInterval(pollRef.current!);
@@ -269,8 +292,8 @@ export default function ImportPage() {
         } catch { /* ignore poll errors */ }
       }, 2000);
 
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to start import');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to start import'));
       setIsImporting(false);
     }
   }
@@ -326,43 +349,42 @@ export default function ImportPage() {
   const STEP_LABELS = ['Upload', 'Map Columns', 'Preview & Duplicates', 'Import'];
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Import Data
-          </h1>
-          <p className="text-sm text-muted-foreground">Step {step} of 4 — {STEP_LABELS[step - 1]}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {entityType && (
-            <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
-              <Download className="h-4 w-4 mr-1.5" /> Download Template
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => router.push('/settings/import')}>
-            View Import History
-          </Button>
-        </div>
+    <PageContainer>
+      <div>
+        <PageHeader
+          title="Import Data"
+          description={`Step ${step} of 4 — ${STEP_LABELS[step - 1]}`}
+          actions={
+            <>
+              {entityType && (
+                <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="gap-ds-2">
+                  <Download aria-hidden="true" /> Download Template
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => router.push('/settings/import')}>
+                View Import History
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Step Indicator */}
-      <div className="px-6 py-4 border-b">
+      <div className="border-b border-ds-border pb-ds-4">
         <div className="flex items-center">
           {STEP_LABELS.map((label, i) => (
             <React.Fragment key={i}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-ds-2">
                 <div className={cn(
-                  'h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold',
-                  step > i + 1 ? 'bg-primary text-white' : step === i + 1 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
+                  'flex size-8 items-center justify-center rounded-ds-full text-sm font-semibold',
+                  step >= i + 1 ? 'bg-ds-primary text-ds-primary-foreground' : 'bg-ds-surface-sunken text-ds-foreground-muted',
                 )}>
-                  {step > i + 1 ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+                  {step > i + 1 ? <CheckCircle2 className="size-4" /> : i + 1}
                 </div>
-                <span className={cn('text-xs font-medium hidden sm:block', step === i + 1 ? 'text-foreground' : 'text-muted-foreground')}>{label}</span>
+                <span className={cn('hidden text-xs font-medium sm:block', step === i + 1 ? 'text-ds-foreground' : 'text-ds-foreground-muted')}>{label}</span>
               </div>
               {i < STEP_LABELS.length - 1 && (
-                <div className={cn('flex-1 h-0.5 mx-3', step > i + 1 ? 'bg-primary' : 'bg-muted')} />
+                <div className={cn('mx-ds-3 h-0.5 flex-1', step > i + 1 ? 'bg-ds-primary' : 'bg-ds-surface-sunken')} />
               )}
             </React.Fragment>
           ))}
@@ -370,8 +392,8 @@ export default function ImportPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
+      <div>
+        <div className="mx-auto max-w-4xl space-y-ds-4">
 
           {/* STEP 1: Upload */}
           {step === 1 && (
@@ -379,20 +401,20 @@ export default function ImportPage() {
               <CardHeader>
                 <CardTitle>Select Import Type & Upload File</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-ds-6">
                 {/* Entity Type — icon card grid */}
-                <div className="space-y-2">
-                  <Label>Import As <span className="text-destructive">*</span></Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="space-y-ds-2">
+                  <Label>Import As <span className="text-ds-danger">*</span></Label>
+                  <div className="grid grid-cols-2 gap-ds-3 sm:grid-cols-5">
                     {ENTITY_TYPES.map(et => (
                       <button
                         key={et.value}
                         onClick={() => setEntityType(et.value)}
                         className={cn(
-                          'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors text-sm font-medium',
+                          'flex flex-col items-center gap-ds-2 rounded-ds-lg border-2 p-ds-4 text-sm font-medium transition-colors',
                           entityType === et.value
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-muted hover:border-muted-foreground/40',
+                            ? 'border-ds-primary bg-ds-primary-subtle text-ds-primary-on-subtle'
+                            : 'border-ds-border hover:border-ds-border-strong',
                         )}
                       >
                         <span className="text-2xl">{et.icon}</span>
@@ -403,29 +425,29 @@ export default function ImportPage() {
                 </div>
 
                 {/* File upload */}
-                <div className="space-y-2">
-                  <Label>File <span className="text-destructive">*</span></Label>
+                <div className="space-y-ds-2">
+                  <Label>File <span className="text-ds-danger">*</span></Label>
                   <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     className={cn(
-                      'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
-                      dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25',
+                      'rounded-ds-lg border-2 border-dashed p-ds-8 text-center transition-colors',
+                      dragOver ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border',
                     )}
                   >
-                    <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                    <p className="font-medium text-sm mb-1">Drag & drop your file here</p>
-                    <p className="text-xs text-muted-foreground mb-4">CSV or Excel (XLSX) — max 20MB</p>
+                    <Upload className="mx-auto mb-ds-3 size-8 text-ds-foreground-muted" />
+                    <p className="mb-ds-1 text-sm font-medium">Drag & drop your file here</p>
+                    <p className="mb-ds-4 text-xs text-ds-foreground-muted">CSV or Excel (XLSX) — max 20MB</p>
                     <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileInput} className="hidden" id="fileInput" />
                     <label htmlFor="fileInput">
                       <Button variant="outline" size="sm" asChild><span>Browse Files</span></Button>
                     </label>
                     {file && (
-                      <div className="mt-4 flex items-center justify-center gap-2">
-                        <Badge variant="outline">{file.name} ({(file.size / 1024).toFixed(0)} KB)</Badge>
-                        <button onClick={() => setFile(null)} className="text-muted-foreground hover:text-foreground">
-                          <X className="h-3 w-3" />
+                      <div className="mt-ds-4 flex items-center justify-center gap-ds-2">
+                        <Tag tone="neutral">{file.name} ({(file.size / 1024).toFixed(0)} KB)</Tag>
+                        <button onClick={() => setFile(null)} className="text-ds-foreground-muted hover:text-ds-foreground">
+                          <X className="size-3" />
                         </button>
                       </div>
                     )}
@@ -433,7 +455,7 @@ export default function ImportPage() {
                 </div>
 
                 <Alert>
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertCircle className="size-4" />
                   <AlertDescription>
                     First row must contain column headers. Use UTF-8 encoding. Max 20MB file size.
                   </AlertDescription>
@@ -448,43 +470,41 @@ export default function ImportPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Map Columns</CardTitle>
-                  <Button variant="ghost" size="sm" onClick={() => setMappings(autoMap(headers, entityType as EntityType))}>
-                    <RefreshCw className="h-4 w-4 mr-1.5" /> Reset Auto-Map
+                  <Button variant="ghost" size="sm" onClick={() => setMappings(autoMap(headers, entityType as EntityType))} className="gap-ds-2">
+                    <RefreshCw aria-hidden="true" /> Reset Auto-Map
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-ds-4">
                 {unmappedRequired.length > 0 && (
                   <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
+                    <AlertCircle className="size-4" />
                     <AlertDescription>
                       Required fields not yet mapped: <strong>{unmappedRequired.map(r => availableFields.find(f => f.value === r)?.label ?? r).join(', ')}</strong>
                     </AlertDescription>
                   </Alert>
                 )}
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-ds-foreground-muted">
                   Match your file columns to CRM fields. File has <strong>{headers.length}</strong> columns and <strong>{totalRows}</strong> rows.
                 </p>
-                <div className="space-y-3">
+                <div className="space-y-ds-3">
                   {headers.map(header => {
                     const sampleVal = previewData[0]?.[header] ?? '';
                     const isMapped = mappings[header] && mappings[header] !== '__skip';
-                    const mappedField = availableFields.find(f => f.value === mappings[header]);
-                    const isRequired = mappedField?.required;
                     return (
                       <div key={header} className={cn(
-                        'flex items-start gap-3 p-3 rounded-lg border',
-                        isMapped ? 'border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-900/10' : 'border-border',
+                        'flex items-start gap-ds-3 rounded-ds-lg border p-ds-3',
+                        isMapped ? 'border-ds-success bg-ds-success-subtle' : 'border-ds-border',
                       )}>
-                        <div className="flex-1 space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-ds-2">
                             {isMapped
-                              ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                              : <div className="h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/30 shrink-0" />
+                              ? <CheckCircle2 className="size-3.5 shrink-0 text-ds-success" />
+                              : <div className="size-3.5 shrink-0 rounded-ds-full border-2 border-ds-border-strong" />
                             }
-                            <span className="text-sm font-medium truncate">{header}</span>
+                            <span className="truncate text-sm font-medium">{header}</span>
                           </div>
-                          {sampleVal && <p className="text-xs text-muted-foreground pl-5 truncate">Sample: {sampleVal}</p>}
+                          {sampleVal && <p className="truncate pl-5 text-xs text-ds-foreground-muted">Sample: {sampleVal}</p>}
                         </div>
                         <Select
                           value={mappings[header] ?? ''}
@@ -512,16 +532,16 @@ export default function ImportPage() {
 
           {/* STEP 3: Preview + Duplicate Strategy */}
           {step === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-ds-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Data Preview</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
+                <CardContent className="space-y-ds-4">
+                  <p className="text-sm text-ds-foreground-muted">
                     First {previewData.length} of <strong>{totalRows}</strong> rows
                   </p>
-                  <div className="overflow-x-auto border rounded-lg">
+                  <div className="overflow-x-auto rounded-ds-lg border border-ds-border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -530,7 +550,7 @@ export default function ImportPage() {
                             return (
                               <TableHead key={h} className="text-xs">
                                 {field?.label ?? h}
-                                {field?.required && <span className="text-destructive ml-0.5">*</span>}
+                                {field?.required && <span className="ml-0.5 text-ds-danger">*</span>}
                               </TableHead>
                             );
                           })}
@@ -539,7 +559,7 @@ export default function ImportPage() {
                       <TableBody>
                         {previewData.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={99} className="text-center text-sm text-muted-foreground py-8">No preview data available</TableCell>
+                            <TableCell colSpan={99} className="py-ds-8 text-center text-sm text-ds-foreground-muted">No preview data available</TableCell>
                           </TableRow>
                         ) : previewData.map((row, idx) => (
                           <TableRow key={idx}>
@@ -558,7 +578,7 @@ export default function ImportPage() {
                 <CardHeader>
                   <CardTitle>Duplicate Handling</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-ds-3">
                   {[
                     { value: 'skip', label: 'Skip Duplicates', desc: 'Duplicate records will be skipped — existing data stays unchanged' },
                     { value: 'merge', label: 'Update Existing', desc: 'Matching records will be updated with data from the import file' },
@@ -567,8 +587,8 @@ export default function ImportPage() {
                     <label
                       key={opt.value}
                       className={cn(
-                        'flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors',
-                        duplicateStrategy === opt.value ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
+                        'flex cursor-pointer items-start gap-ds-3 rounded-ds-lg border p-ds-4 transition-colors',
+                        duplicateStrategy === opt.value ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border hover:bg-ds-surface-sunken',
                       )}
                     >
                       <input
@@ -577,11 +597,11 @@ export default function ImportPage() {
                         value={opt.value}
                         checked={duplicateStrategy === opt.value as DuplicateStrategy}
                         onChange={() => setDuplicateStrategy(opt.value as DuplicateStrategy)}
-                        className="h-4 w-4 mt-0.5"
+                        className="mt-0.5 size-4"
                       />
                       <div>
                         <p className="text-sm font-medium">{opt.label}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                        <p className="mt-0.5 text-xs text-ds-foreground-muted">{opt.desc}</p>
                       </div>
                     </label>
                   ))}
@@ -601,19 +621,19 @@ export default function ImportPage() {
                    'Importing...'}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-ds-6">
                 {/* Summary before start */}
                 {!isImporting && !importDone && (
-                  <div className="space-y-3 text-sm">
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Import Type:</span><span className="font-medium capitalize">{entityType?.replace('_', ' ')}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">File:</span><span className="font-medium">{file?.name}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Total Rows:</span><span className="font-medium">{totalRows}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Mapped Columns:</span><span className="font-medium">{Object.values(mappings).filter(v => v && v !== '__skip').length}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Duplicate Strategy:</span><span className="font-medium capitalize">{duplicateStrategy}</span></div>
+                  <div className="space-y-ds-3 text-sm">
+                    <div className="space-y-ds-2 rounded-ds-lg bg-ds-surface-sunken p-ds-4">
+                      <div className="flex justify-between"><span className="text-ds-foreground-muted">Import Type:</span><span className="font-medium capitalize">{entityType?.replace('_', ' ')}</span></div>
+                      <div className="flex justify-between"><span className="text-ds-foreground-muted">File:</span><span className="font-medium">{file?.name}</span></div>
+                      <div className="flex justify-between"><span className="text-ds-foreground-muted">Total Rows:</span><span className="font-medium">{totalRows}</span></div>
+                      <div className="flex justify-between"><span className="text-ds-foreground-muted">Mapped Columns:</span><span className="font-medium">{Object.values(mappings).filter(v => v && v !== '__skip').length}</span></div>
+                      <div className="flex justify-between"><span className="text-ds-foreground-muted">Duplicate Strategy:</span><span className="font-medium capitalize">{duplicateStrategy}</span></div>
                     </div>
                     <Alert>
-                      <AlertCircle className="h-4 w-4" />
+                      <AlertCircle className="size-4" />
                       <AlertDescription>
                         This will start the import process in the background. Large files may take a few minutes.
                       </AlertDescription>
@@ -623,54 +643,54 @@ export default function ImportPage() {
 
                 {/* Progress bar */}
                 {(isImporting || (importDone && progress)) && (
-                  <div className="space-y-4">
+                  <div className="space-y-ds-4">
                     {!importDone && (
-                      <div className="space-y-2">
+                      <div className="space-y-ds-2">
                         <div className="flex justify-between text-sm">
                           <span>Processing rows...</span>
                           <span>{progress?.processedRows ?? 0} / {progress?.totalRows ?? totalRows}</span>
                         </div>
                         <Progress
-                          value={progress?.totalRows ? Math.round((progress.processedRows / progress.totalRows) * 100) : 0}
+                          value={progress?.totalRows ? Math.round(((progress.processedRows ?? 0) / progress.totalRows) * 100) : 0}
                           className="h-2"
                         />
                       </div>
                     )}
 
                     {progress && (
-                      <div className="grid grid-cols-3 gap-4 text-center">
-                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                          <p className="text-2xl font-bold text-green-600">{progress.successCount ?? 0}</p>
-                          <p className="text-xs text-muted-foreground">Imported</p>
+                      <div className="grid grid-cols-3 gap-ds-4 text-center">
+                        <div className="rounded-ds-lg border border-ds-success bg-ds-success-subtle p-ds-4">
+                          <p className="text-2xl font-bold text-ds-success">{progress.successCount ?? 0}</p>
+                          <p className="text-xs text-ds-foreground-muted">Imported</p>
                         </div>
-                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                          <p className="text-2xl font-bold text-amber-600">{progress.duplicateCount ?? 0}</p>
-                          <p className="text-xs text-muted-foreground">Duplicates</p>
+                        <div className="rounded-ds-lg border border-ds-warning bg-ds-warning-subtle p-ds-4">
+                          <p className="text-2xl font-bold text-ds-warning">{progress.duplicateCount ?? 0}</p>
+                          <p className="text-xs text-ds-foreground-muted">Duplicates</p>
                         </div>
-                        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                          <p className="text-2xl font-bold text-red-600">{progress.errorCount ?? 0}</p>
-                          <p className="text-xs text-muted-foreground">Errors</p>
+                        <div className="rounded-ds-lg border border-ds-danger bg-ds-danger-subtle p-ds-4">
+                          <p className="text-2xl font-bold text-ds-danger">{progress.errorCount ?? 0}</p>
+                          <p className="text-xs text-ds-foreground-muted">Errors</p>
                         </div>
                       </div>
                     )}
 
                     {importDone && progress?.status === 'completed' && (
-                      <Alert className="border-green-200 bg-green-50 dark:bg-green-900/20">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-700 dark:text-green-300">
+                      <Alert className="border-ds-success bg-ds-success-subtle">
+                        <CheckCircle2 className="size-4 text-ds-success" />
+                        <AlertDescription className="text-ds-success-on-subtle">
                           Import completed successfully!
                         </AlertDescription>
                       </Alert>
                     )}
                     {importDone && progress?.status === 'failed' && (
                       <Alert variant="destructive">
-                        <XCircle className="h-4 w-4" />
+                        <XCircle className="size-4" />
                         <AlertDescription>Import failed. Download the error report for details.</AlertDescription>
                       </Alert>
                     )}
                     {importDone && progress?.status === 'cancelled' && (
                       <Alert>
-                        <AlertCircle className="h-4 w-4" />
+                        <AlertCircle className="size-4" />
                         <AlertDescription>Import was cancelled.</AlertDescription>
                       </Alert>
                     )}
@@ -683,7 +703,7 @@ export default function ImportPage() {
       </div>
 
       {/* Footer Navigation */}
-      <div className="border-t px-6 py-4 bg-background flex items-center justify-between">
+      <div className="flex items-center justify-between border-t border-ds-border bg-ds-background px-ds-6 py-ds-4">
         {/* LEFT */}
         {step === 4 && importDone ? (
           <Button variant="outline" onClick={handleReset}>
@@ -702,19 +722,19 @@ export default function ImportPage() {
         )}
 
         {/* RIGHT */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-ds-2">
           {/* Cancel import during progress */}
           {step === 4 && isImporting && !importDone && (
-            <Button variant="outline" onClick={handleCancel} disabled={isCancelling}>
-              {isCancelling && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+            <Button variant="outline" onClick={handleCancel} disabled={isCancelling} className="gap-ds-2">
+              {isCancelling && <Loader2 className="size-4 animate-spin" />}
               Cancel Import
             </Button>
           )}
 
           {/* Download errors after done with errors */}
-          {step === 4 && importDone && progress?.errorCount > 0 && (
-            <Button variant="outline" onClick={handleDownloadErrors}>
-              <Download className="h-4 w-4 mr-1.5" /> Download Error Report
+          {step === 4 && importDone && (progress?.errorCount ?? 0) > 0 && (
+            <Button variant="outline" onClick={handleDownloadErrors} className="gap-ds-2">
+              <Download aria-hidden="true" /> Download Error Report
             </Button>
           )}
 
@@ -727,8 +747,8 @@ export default function ImportPage() {
 
           {/* Step 1 → 2: upload file */}
           {step === 1 && (
-            <Button onClick={handleUpload} disabled={!file || !entityType || isUploading}>
-              {isUploading ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Uploading...</> : <>Next <ChevronRight className="h-4 w-4 ml-1" /></>}
+            <Button onClick={handleUpload} disabled={!file || !entityType || isUploading} className="gap-ds-2">
+              {isUploading ? <><Loader2 className="size-4 animate-spin" />Uploading...</> : <>Next <ChevronRight className="size-4" /></>}
             </Button>
           )}
 
@@ -738,26 +758,27 @@ export default function ImportPage() {
               onClick={() => setStep(3)}
               disabled={unmappedRequired.length > 0}
               title={unmappedRequired.length > 0 ? `Map required fields: ${unmappedRequired.join(', ')}` : ''}
+              className="gap-ds-2"
             >
-              Next <ChevronRight className="h-4 w-4 ml-1" />
+              Next <ChevronRight className="size-4" />
             </Button>
           )}
 
           {/* Step 3 → 4 */}
           {step === 3 && (
-            <Button onClick={() => setStep(4)}>
-              Next <ChevronRight className="h-4 w-4 ml-1" />
+            <Button onClick={() => setStep(4)} className="gap-ds-2">
+              Next <ChevronRight className="size-4" />
             </Button>
           )}
 
           {/* Step 4: Start import */}
           {step === 4 && !isImporting && !importDone && (
-            <Button onClick={handleStartImport}>
-              <Upload className="h-4 w-4 mr-1.5" /> Start Import
+            <Button onClick={handleStartImport} className="gap-ds-2">
+              <Upload aria-hidden="true" /> Start Import
             </Button>
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

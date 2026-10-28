@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
+import { getTenantTimeZone, localClock } from '../utils/tz';
 
 export interface NotificationInput {
   userId: string;
@@ -181,8 +182,8 @@ async function isInQuietHours(db: D1Database, userId: string): Promise<boolean> 
     }
 
     const quietHours = JSON.parse(result.value);
-    const now = new Date();
-    const currentHour = now.getHours();
+    // quiet hours are wall-clock hours in the tenant's timezone, not the server's (UTC)
+    const currentHour = localClock(await getTenantTimeZone(db)).hour;
 
     if (quietHours.startHour < quietHours.endHour) {
       // Normal range (e.g., 9-17)

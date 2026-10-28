@@ -6,6 +6,9 @@
  */
 
 import type { VoipSettingsRow } from './voip-provider';
+import { voipClientIdentity } from './voip-base';
+import { significantNumber } from '../utils/countries';
+import { tenantPhoneCountry } from '../utils/phone';
 
 export interface RoutingResult {
   type: 'assigned_agent' | 'round_robin' | 'least_recent' | 'voicemail' | 'default';
@@ -17,11 +20,52 @@ export interface RoutingResult {
 }
 
 /**
- * Normalize a phone number to last 10 digits for matching.
+ * The digits that identify a caller inside their country (R204): the national number once the caller's country is
+ * known (the number's own calling code, else the agency's phone country), so a UK 07911 123456, a stored
+ * +447911123456 and a dialled +44 7911 123456 all match. Indian numbers keep matching on their ten digits.
  */
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/[\s\-\(\)\+]/g, '');
-  return digits.length > 10 ? digits.slice(-10) : digits;
+function matchSuffix(phone: string, defaultCountry: string): string {
+  return significantNumber(phone, defaultCountry);
+}
+
+/**
+ * The contact a phone number belongs to: last 10 digits of contacts.phone (the only phone column contacts
+ * has), ignoring spaces, dashes, brackets and a leading +. Customers win over other contact types.
+ */
+export async function findContactByPhone(
+  db: D1Database,
+  phone: string,
+  defaultCountry?: string,
+): Promise<{ id: string; name: string; company: string | null; type: string; phone: string | null; email: string | null } | null> {
+  const suffix = matchSuffix(phone, defaultCountry ?? (await tenantPhoneCountry(db)));
+  if (suffix.length < 5) return null;
+  return db.prepare(`
+    SELECT c.id, c.name, c.company, c.type, c.phone, c.email
+    FROM contacts c
+    WHERE c.is_deleted = 0
+      AND c.phone IS NOT NULL
+      AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?
+    ORDER BY
+      CASE c.type WHEN 'customer' THEN 1 WHEN 'lead' THEN 2 ELSE 3 END,
+      c.updated_at DESC
+    LIMIT 1
+  `).bind(`%${suffix}`).first();
+}
+
+/** A contact's newest lead that is still open (leads carry no phone of their own; they belong to a contact). */
+export async function findOpenLeadForContact(
+  db: D1Database,
+  contactId: string,
+): Promise<{ id: string; title: string; status: string; estimated_value: number | null; assigned_to: string | null } | null> {
+  return db.prepare(`
+    SELECT l.id, l.title, l.status, l.estimated_value, l.assigned_to
+    FROM leads l
+    WHERE l.is_deleted = 0
+      AND l.contact_id = ?
+      AND l.status NOT IN ('lost', 'won', 'completed')
+    ORDER BY l.updated_at DESC, l.created_at DESC
+    LIMIT 1
+  `).bind(contactId).first();
 }
 
 /**
@@ -32,45 +76,14 @@ export async function resolveInboundRouting(
   fromNumber: string,
   settings: Pick<VoipSettingsRow, 'routingStrategy'>,
 ): Promise<RoutingResult> {
-  const phoneSuffix = normalizePhone(fromNumber);
-
-  // 1. Try to match known contact by phone
-  const contact = await db.prepare(`
-    SELECT c.id, c.name, c.assigned_to, c.type
-    FROM contacts c
-    WHERE c.is_deleted = 0
-      AND (c.phone LIKE ? OR c.mobile LIKE ? OR c.work_phone LIKE ?)
-    ORDER BY
-      CASE c.type WHEN 'customer' THEN 1 WHEN 'lead' THEN 2 ELSE 3 END,
-      c.updated_at DESC
-    LIMIT 1
-  `).bind(`%${phoneSuffix}`, `%${phoneSuffix}`, `%${phoneSuffix}`).first<{
-    id: string;
-    name: string;
-    assigned_to: string | null;
-    type: string;
-  }>();
-
-  // 2. Try matching lead if no contact
-  let leadMatch: { id: string; title: string; assigned_to: string | null } | null = null;
-  if (!contact) {
-    leadMatch = await db.prepare(`
-      SELECT l.id, l.title, l.assigned_to
-      FROM leads l
-      WHERE l.is_deleted = 0
-        AND l.phone LIKE ?
-      ORDER BY l.updated_at DESC
-      LIMIT 1
-    `).bind(`%${phoneSuffix}`).first<{
-      id: string;
-      title: string;
-      assigned_to: string | null;
-    }>();
-  }
+  // 1. Match a known contact, then that contact's newest open lead. The lead's owner is the agent the call
+  //    goes to first (contacts have no owner column).
+  const contact = await findContactByPhone(db, fromNumber, await tenantPhoneCountry(db));
+  const leadMatch = contact ? await findOpenLeadForContact(db, contact.id) : null;
 
   const contactId = contact?.id ?? undefined;
   const leadId = leadMatch?.id ?? undefined;
-  const assignedTo = contact?.assigned_to ?? leadMatch?.assigned_to ?? null;
+  const assignedTo = leadMatch?.assigned_to ?? null;
 
   // 3. If we have an assigned agent, try routing to them
   if (assignedTo) {
@@ -83,7 +96,7 @@ export async function resolveInboundRouting(
       return {
         type: 'assigned_agent',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Routed to assigned agent ${agent.name}`,
@@ -94,13 +107,15 @@ export async function resolveInboundRouting(
   // 4. Fallback: apply routing strategy
   const strategy = settings.routingStrategy || 'round_robin';
 
-  if (strategy === 'round_robin') {
+  // 'assigned' (the default) already tried the owner above; with no usable owner it shares the load
+  // between active agents rather than sending the caller to voicemail.
+  if (strategy === 'round_robin' || strategy === 'assigned') {
     const agent = await getNextRoundRobinAgent(db);
     if (agent) {
       return {
         type: 'round_robin',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Round-robin: routed to ${agent.name}`,
@@ -114,7 +129,7 @@ export async function resolveInboundRouting(
       return {
         type: 'least_recent',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Least-recent: routed to ${agent.name}`,

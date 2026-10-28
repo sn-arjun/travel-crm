@@ -22,53 +22,53 @@ describe('voipApi', () => {
   describe('settings', () => {
     describe('get', () => {
       it('should call GET /voip/settings', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', provider: 'twilio', connected: true } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', voipProvider: 'twilio' } });
         const result = await voipApi.settings.get();
         expect(client.get).toHaveBeenCalledWith('/voip/settings');
-        expect(result.data.connected).toBe(true);
+        expect(result.data.voipProvider).toBe('twilio');
       });
 
       it('should return settings data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', provider: 'vonage', features: { inboundCalls: true } } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', voipProvider: 'plivo', recordingPolicy: 'all' } });
         const result = await voipApi.settings.get();
-        expect(result.data).toHaveProperty('provider');
-        expect(result.data).toHaveProperty('features');
+        expect(result.data).toHaveProperty('voipProvider');
+        expect(result.data).toHaveProperty('recordingPolicy');
       });
     });
 
     describe('update', () => {
       it('should call PUT /voip/settings', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: { id: 'vs1' } });
-        await voipApi.settings.update({ provider: 'twilio', accountSid: 'AC123' });
-        expect(client.put).toHaveBeenCalledWith('/voip/settings', { provider: 'twilio', accountSid: 'AC123' });
+        await voipApi.settings.update({ voipProvider: 'twilio', providerAccountId: 'AC123' });
+        expect(client.put).toHaveBeenCalledWith('/voip/settings', { voipProvider: 'twilio', providerAccountId: 'AC123' });
       });
 
-      it('should pass features', async () => {
+      it('should pass recording policy and voicemail', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: {} });
-        await voipApi.settings.update({ features: { recording: true, transcription: true } });
-        expect(client.put).toHaveBeenCalledWith('/voip/settings', { features: { recording: true, transcription: true } });
+        await voipApi.settings.update({ recordingPolicy: 'none', voicemailEnabled: true });
+        expect(client.put).toHaveBeenCalledWith('/voip/settings', { recordingPolicy: 'none', voicemailEnabled: true });
       });
 
       it('should return updated settings', async () => {
-        vi.mocked(client.put).mockResolvedValue({ data: { id: 'vs1', provider: 'twilio', connected: true } });
-        const result = await voipApi.settings.update({ provider: 'twilio' });
-        expect(result.data.provider).toBe('twilio');
+        vi.mocked(client.put).mockResolvedValue({ data: { message: 'VoIP settings updated' } });
+        const result = await voipApi.settings.update({ voipProvider: 'twilio' });
+        expect(result.data.message).toBe('VoIP settings updated');
       });
     });
 
     describe('testConnection', () => {
-      it('should call POST /voip/test-connection', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { connected: true, message: 'Success' } });
+      it('should call GET /voip/test-connection', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: { connected: true, accountName: 'Acme' } });
         const result = await voipApi.settings.testConnection();
-        expect(client.post).toHaveBeenCalledWith('/voip/test-connection');
+        expect(client.get).toHaveBeenCalledWith('/voip/test-connection');
         expect(result.data.connected).toBe(true);
       });
 
       it('should return connection status', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { connected: false, message: 'Invalid credentials' } });
+        vi.mocked(client.get).mockResolvedValue({ data: { connected: false, error: 'Invalid credentials' } });
         const result = await voipApi.settings.testConnection();
         expect(result.data.connected).toBe(false);
-        expect(result.data.message).toBe('Invalid credentials');
+        expect(result.data.error).toBe('Invalid credentials');
       });
     });
   });
@@ -88,6 +88,36 @@ describe('voipApi', () => {
         const result = await voipApi.token.get();
         expect(result.data.expiresIn).toBe(7200);
       });
+    });
+  });
+
+  // ─── calling account, number offer and documents (R304) ────────
+  describe('calling account and number rental', () => {
+    it('reads the account state with GET /voip/account', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { available: true, account: { status: 'active' } } });
+      const result = await voipApi.account.get();
+      expect(client.get).toHaveBeenCalledWith('/voip/account');
+      expect(result.data.account?.status).toBe('active');
+    });
+
+    it('turns calling on with POST /voip/account/enable', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { created: true } });
+      await voipApi.account.enable();
+      expect(client.post).toHaveBeenCalledWith('/voip/account/enable', {});
+    });
+
+    it('reads the price and requirements with GET /voip/number-offer', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { price: { monthly: 1.38, currency: 'USD' } } });
+      const result = await voipApi.numberOffer.get();
+      expect(client.get).toHaveBeenCalledWith('/voip/number-offer');
+      expect(result.data.price?.monthly).toBe(1.38);
+    });
+
+    it('sends business documents with POST /voip/kyc', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { document: { status: 'pending' } } });
+      const body = { details: { businessName: 'Acme Travel', address: '1 High Street' }, files: [] };
+      await voipApi.kyc.submit(body);
+      expect(client.post).toHaveBeenCalledWith('/voip/kyc', body);
     });
   });
 
@@ -130,24 +160,24 @@ describe('voipApi', () => {
       });
 
       it('should pass date range and pagination', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
-        await voipApi.calls.list({ page: 1, limit: 25, fromDate: '2026-01-01', toDate: '2026-03-31', sortBy: 'startTime', sortOrder: 'desc' });
-        expect(client.get).toHaveBeenCalledWith('/calls', { params: { page: 1, limit: 25, fromDate: '2026-01-01', toDate: '2026-03-31', sortBy: 'startTime', sortOrder: 'desc' } });
+        vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
+        await voipApi.calls.list({ page: 1, limit: 25, fromDate: '2026-01-01', toDate: '2026-03-31', sortBy: 'createdAt', sortOrder: 'desc' });
+        expect(client.get).toHaveBeenCalledWith('/calls', { params: { page: 1, limit: 25, fromDate: '2026-01-01', toDate: '2026-03-31', sortBy: 'createdAt', sortOrder: 'desc' } });
       });
 
       it('should return calls list', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 'c1', from: '+111', to: '+222', status: 'completed' }], pagination: { total: 1 } } });
+        vi.mocked(client.get).mockResolvedValue({ data: [{ id: 'c1', fromNumber: '+111', toNumber: '+222', status: 'completed' }], pagination: { total: 1 } });
         const result = await voipApi.calls.list();
-        expect(result.data.data).toHaveLength(1);
+        expect(result.data).toHaveLength(1);
       });
     });
 
     describe('getById', () => {
       it('should call GET /calls/:id', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'c1', from: '+111', to: '+222' } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'c1', fromNumber: '+111', toNumber: '+222' } });
         const result = await voipApi.calls.getById('c1');
         expect(client.get).toHaveBeenCalledWith('/calls/c1');
-        expect(result.data.from).toBe('+111');
+        expect(result.data.fromNumber).toBe('+111');
       });
 
       it('should use correct id', async () => {
@@ -157,38 +187,41 @@ describe('voipApi', () => {
       });
 
       it('should return call data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'c1', duration: 120, direction: 'outbound', recordingUrl: 'https://example.com/rec.mp3' } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'c1', durationSeconds: 120, direction: 'outbound', recordingUrl: 'https://example.com/rec.mp3' } });
         const result = await voipApi.calls.getById('c1');
-        expect(result.data).toHaveProperty('duration');
+        expect(result.data).toHaveProperty('durationSeconds');
         expect(result.data).toHaveProperty('recordingUrl');
       });
     });
 
     describe('createOutbound', () => {
       it('should call POST /calls/outbound', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'c1', status: 'initiated' } });
-        await voipApi.calls.createOutbound({ to: '+1234567890' });
-        expect(client.post).toHaveBeenCalledWith('/calls/outbound', { to: '+1234567890' });
-      });
-
-      it('should pass from and message', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'c2' } });
-        await voipApi.calls.createOutbound({ to: '+1234567890', from: '+0987654321', message: 'Calling about booking' });
-        expect(client.post).toHaveBeenCalledWith('/calls/outbound', { to: '+1234567890', from: '+0987654321', message: 'Calling about booking' });
+        vi.mocked(client.post).mockResolvedValue({ data: { callLogId: 'c1', status: 'initiated' } });
+        await voipApi.calls.createOutbound({ toNumber: '+1234567890' });
+        expect(client.post).toHaveBeenCalledWith('/calls/outbound', { toNumber: '+1234567890' });
       });
 
       it('should pass leadId and contactId', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'c3' } });
-        await voipApi.calls.createOutbound({ to: '+1234567890', leadId: 'l1', contactId: 'ct1' });
-        expect(client.post).toHaveBeenCalledWith('/calls/outbound', { to: '+1234567890', leadId: 'l1', contactId: 'ct1' });
+        vi.mocked(client.post).mockResolvedValue({ data: { callLogId: 'c3' } });
+        await voipApi.calls.createOutbound({ toNumber: '+1234567890', leadId: 'l1', contactId: 'ct1' });
+        expect(client.post).toHaveBeenCalledWith('/calls/outbound', { toNumber: '+1234567890', leadId: 'l1', contactId: 'ct1' });
       });
 
       it('should return created call', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'c4', status: 'ringing', direction: 'outbound' } });
-        const result = await voipApi.calls.createOutbound({ to: '+111' });
-        expect(result.data.status).toBe('ringing');
-        expect(result.data.direction).toBe('outbound');
+        vi.mocked(client.post).mockResolvedValue({ data: { callLogId: 'c4', status: 'initiated', providerCallId: 'PC1' } });
+        const result = await voipApi.calls.createOutbound({ toNumber: '+111' });
+        expect(result.data.status).toBe('initiated');
+        expect(result.data.providerCallId).toBe('PC1');
       });
+    });
+  });
+
+  // ─── callerInfo ────────────────────────────────────────────────
+  describe('callerInfo', () => {
+    it('sends the number as the phone query parameter the API reads', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { isKnown: false, contact: null, lead: null } });
+      await voipApi.callerInfo.get('+919000005001');
+      expect(client.get).toHaveBeenCalledWith('/voip/caller-info', { params: { phone: '+919000005001' } });
     });
   });
 
@@ -214,10 +247,10 @@ describe('voipApi', () => {
       });
 
       it('should return analytics data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { totalCalls: 200, inboundCalls: 100, outboundCalls: 100, avgDuration: 180 } });
+        vi.mocked(client.get).mockResolvedValue({ data: { summary: { totalCalls: 200, inboundCalls: 100, outboundCalls: 100, avgDurationSeconds: 180 } } });
         const result = await voipApi.analytics.get();
-        expect(result.data.totalCalls).toBe(200);
-        expect(result.data.avgDuration).toBe(180);
+        expect(result.data.summary.totalCalls).toBe(200);
+        expect(result.data.summary.avgDurationSeconds).toBe(180);
       });
     });
   });
@@ -253,38 +286,32 @@ describe('voipApi', () => {
 
   // ─── transcripts ───────────────────────────────────────────────
   describe('transcripts', () => {
-    describe('list', () => {
-      it('should call GET /transcripts', async () => {
+    describe('search', () => {
+      it('should call GET /transcripts with q', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
-        await voipApi.transcripts.list();
-        expect(client.get).toHaveBeenCalledWith('/transcripts', { params: undefined });
+        await voipApi.transcripts.search({ q: 'refund' });
+        expect(client.get).toHaveBeenCalledWith('/transcripts', { params: { q: 'refund' } });
       });
 
-      it('should pass filter params', async () => {
+      it('should pass pagination', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
-        await voipApi.transcripts.list({ callId: 'c1', sentiment: 'positive' });
-        expect(client.get).toHaveBeenCalledWith('/transcripts', { params: { callId: 'c1', sentiment: 'positive' } });
+        await voipApi.transcripts.search({ q: 'refund', page: 1, limit: 20 });
+        expect(client.get).toHaveBeenCalledWith('/transcripts', { params: { q: 'refund', page: 1, limit: 20 } });
       });
 
-      it('should pass pagination and sort', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
-        await voipApi.transcripts.list({ page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc' });
-        expect(client.get).toHaveBeenCalledWith('/transcripts', { params: { page: 1, limit: 20, sortBy: 'createdAt', sortOrder: 'desc' } });
-      });
-
-      it('should return transcripts list', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 't1', callId: 'c1', text: 'Hello, how can I help?' }], pagination: { total: 1 } } });
-        const result = await voipApi.transcripts.list();
+      it('should return transcript search results', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 't1', callId: 'c1', snippet: 'Hello, how can I help?' }], pagination: { total: 1 } } });
+        const result = await voipApi.transcripts.search({ q: 'help' });
         expect(result.data.data).toHaveLength(1);
       });
     });
 
     describe('getByCall', () => {
       it('should call GET /transcripts/:callId', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 't1', callId: 'c1', text: 'Transcript text' } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 't1', callLogId: 'c1', fullTranscript: 'Transcript text' } });
         const result = await voipApi.transcripts.getByCall('c1');
         expect(client.get).toHaveBeenCalledWith('/transcripts/c1');
-        expect(result.data.text).toBe('Transcript text');
+        expect(result.data.fullTranscript).toBe('Transcript text');
       });
 
       it('should use correct callId', async () => {
@@ -294,10 +321,10 @@ describe('voipApi', () => {
       });
 
       it('should return transcript data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 't1', callId: 'c1', text: 'Conversation', sentiment: 'positive', keywords: ['booking', 'travel'] } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 't1', callLogId: 'c1', fullTranscript: 'Conversation', language: 'en', isEdited: false } });
         const result = await voipApi.transcripts.getByCall('c1');
-        expect(result.data).toHaveProperty('sentiment');
-        expect(result.data).toHaveProperty('keywords');
+        expect(result.data).toHaveProperty('language');
+        expect(result.data).toHaveProperty('isEdited');
       });
     });
   });

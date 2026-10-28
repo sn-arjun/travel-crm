@@ -6,14 +6,17 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 import { rbac } from '../middleware/rbac';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const marketingSuggestionRoutes = new Hono<AppContext>();
+marketingSuggestionRoutes.onError(aiAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 
@@ -135,7 +138,7 @@ Generate 3-5 diverse, actionable suggestions based on the data provided.`;
 
   const userPrompt = `Business data:\n${JSON.stringify(businessContext, null, 2)}${data.context ? `\n\nAdditional context: ${data.context}` : ''}`;
 
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
   const startTime = Date.now();
   const aiResult = await aiRouter.route('marketing_suggestion' as any, userPrompt, systemPrompt);
   const durationMs = Date.now() - startTime;

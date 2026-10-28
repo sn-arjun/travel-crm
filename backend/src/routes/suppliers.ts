@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { authMiddleware } from '../middleware/auth';
 import {
     createSupplierSchema,
@@ -17,6 +17,8 @@ import {
     reconcilePaymentsSchema
 } from '../validators/supplier-payment';
 import type { AppContext } from '../types';
+import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 
 const supplierRouter = new Hono<AppContext>();
 
@@ -112,9 +114,18 @@ supplierRouter.get('/compare-rates', zValidator('query', compareRatesSchema), as
     if (season) { query += ' AND rc.season = ?'; params.push(season); }
     if (date) { query += ' AND rc.valid_from <= ? AND rc.valid_to >= ?'; params.push(date, date); }
 
-    query += ' ORDER BY rc.rate ASC';
+    query += ' ORDER BY rc.cost_price ASC';
     const results = await db.prepare(query).bind(...params).all();
-    return c.json({ data: results.results });
+    const data = (results.results as any[]).map((r) => ({
+        supplierId: r.supplier_id,
+        supplierName: r.company_name,
+        rate: r.cost_price,
+        currency: r.currency,
+        season: r.season,
+        unit: r.unit,
+        isPreferred: !!r.is_preferred,
+    }));
+    return c.json({ data });
 });
 
 // Get Supplier by ID
@@ -127,7 +138,7 @@ supplierRouter.get('/:id', async (c) => {
 
     // Aggregate stats
     const rateCardsCount = await db.prepare('SELECT COUNT(*) as count FROM rate_cards WHERE supplier_id = ?').bind(id).first();
-    const totalPayments = await db.prepare('SELECT SUM(amount) as total FROM payments WHERE contact_id = ? AND type = "outgoing"').bind(id).first();
+    const totalPayments = await db.prepare('SELECT SUM(amount) as total FROM payments WHERE supplier_id = ? AND type = "outgoing"').bind(id).first();
 
     return c.json({
         data: {
@@ -143,7 +154,7 @@ supplierRouter.get('/:id', async (c) => {
 supplierRouter.post('/', zValidator('json', createSupplierSchema), async (c) => {
     const db = c.get('tenantDb');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const userId = c.get('userId');
     const now = new Date().toISOString();
 
@@ -252,7 +263,7 @@ supplierRouter.post('/:id/rate-cards', zValidator('json', createRateCardSchema),
     const db = c.get('tenantDb');
     const supplierId = c.req.param('id');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const userId = c.get('userId');
 
     await db.prepare(`
@@ -262,7 +273,7 @@ supplierRouter.post('/:id/rate-cards', zValidator('json', createRateCardSchema),
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
         id, supplierId, body.service_type, body.destination || null, body.name, body.description || null,
-        body.season || null, body.cost_price, body.selling_price || null, body.currency || 'INR',
+        body.season || null, body.cost_price, body.selling_price || null, body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(db)).currency,
         body.unit, body.valid_from || null, body.valid_to || null, userId, new Date().toISOString()
     ).run();
 
@@ -277,12 +288,12 @@ supplierRouter.post('/:id/payments', zValidator('json', supplierPaymentSchema), 
     const db = c.get('tenantDb');
     const supplierId = c.req.param('id');
     const body = c.req.valid('json');
-    const paymentId = crypto.randomUUID();
+    const paymentId = generateId();
     const userId = c.get('userId');
 
     await db.prepare(`
     INSERT INTO payments (
-      id, contact_id, amount, method, reference, date, type, notes, created_by, created_at
+      id, supplier_id, amount, method, reference, date, type, notes, created_by, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
         paymentId, supplierId, body.amount, body.method, body.reference_number || null,
@@ -297,7 +308,7 @@ supplierRouter.get('/:id/payments', async (c) => {
     const supplierId = c.req.param('id');
 
     const results = await db.prepare(
-        'SELECT * FROM payments WHERE contact_id = ? AND type = "outgoing" ORDER BY date DESC'
+        'SELECT * FROM payments WHERE supplier_id = ? AND type = "outgoing" ORDER BY date DESC'
     ).bind(supplierId).all();
 
     return c.json({ data: results.results });
@@ -309,7 +320,7 @@ supplierRouter.get('/:id/ledger', async (c) => {
 
     // Fetch payments (credits - outgoing money to supplier reduces balance)
     const payments = await db.prepare(
-        "SELECT id, amount, date, method, reference as description, 'credit' as entry_type, notes FROM payments WHERE contact_id = ? AND type = 'outgoing' ORDER BY date ASC"
+        "SELECT id, amount, date, method, reference as description, 'credit' as entry_type, notes FROM payments WHERE supplier_id = ? AND type = 'outgoing' ORDER BY date ASC"
     ).bind(supplierId).all();
 
     // In a real system, we'd fetch actual vendor bills/itinerary costs (debits)

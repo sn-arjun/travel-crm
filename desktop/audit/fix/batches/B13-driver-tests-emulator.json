@@ -1,0 +1,64 @@
+{
+  "id": "B13",
+  "title": "Driver app: real unit/widget tests, integration smoke test, emulator walk-through proof",
+  "lane": "driver",
+  "backend": false,
+  "wave": "W3",
+  "dependsOn": [
+    "B10",
+    "B08"
+  ],
+  "parallelGroup": "W3",
+  "bugIds": [
+    "BUG-084"
+  ],
+  "fixReqs": [
+    "FR-2"
+  ],
+  "estFiles": 15,
+  "goal": "`flutter test` proves the auth, trips and UI logic; an integration smoke test logs in with the TEST_MODE OTP and sees today's trip on the emulator; screenshots prove the full accept -> en route -> check-in -> complete flow.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. After B03/B08/B10: app sends tenantId + E.164 phone; backend accepts OTP 123456 only under TEST_MODE; \"today\" uses the tenant timezone. Emulator: WHPX available, AVD Resizable_Experimental (android-36); Pixel_8_API_36 may be created by the showcase agent (prefer it if it exists). Run Flutter only via x86 PowerShell. Backend for the device: `cd desktop && node scripts/fix-stack.mjs up --slot 0 --no-build` (API on 8787 with TEST_MODE) + `adb reverse tcp:8787 tcp:8787`. The showcase agent will write integration_test/demo_flow_test.dart later - do not create that file; create a separate smoke test.",
+  "steps": [
+    "Unit tests: driver_auth_provider error extraction (Map/String/connection), phone normaliser, TripListNotifier with a fake TripRepository (page increments, hasMore false at the end, refresh resets, de-dupe by id, cache fallback), TripView getters (nested + flat vehicle, local time conversion).",
+    "Widget tests (ProviderScope overrides + fake repositories, Hive initialised in a temp dir via Hive.init): PhoneInputScreen shows the backend error message after a mocked 400 and stops spinning; TripCard renders the vehicle registration from nested JSON; TripStatusBadge labels/colours for every status in both themes; MyTripsScreen empty state and list with Key('trip-card-<id>'); TripDetailScreen shows the right action key per status (assigned -> action-accept, accepted -> action-en-route, en_route -> action-check-in, started/in_progress -> action-complete - confirm the real transitions in backend/src/routes/driver.ts:403-650).",
+    "Add packages/driver_app/tool/seed_smoke.mjs (node, no deps): with API_URL (default http://localhost:8787/api/v1) log in as admin@demo.com / Admin@123 / tenant 01960000-0000-7000-8000-000000000001, ensure a vehicle (KA 05 MN 4521, sedan, available), a driver \"Ravi Kumar\" phone 9876543210 status active, and a trip assigned to him with pickup = now + 60 min (UTC ISO) and drop = +2h, pickup \"Cochin International Airport\"; print TRIP_ID. Read the desktop fleet API client (desktop/src/lib/api/fleet.ts) for payload shapes.",
+    "Add packages/driver_app/integration_test/smoke_login_test.dart: IntegrationTestWidgetsFlutterBinding.ensureInitialized(); clear Hive; app.main(); enter String.fromEnvironment('DRIVER_PHONE') into Key('phone-field'), tap Key('send-otp'), enter OTP (String.fromEnvironment('OTP', defaultValue: '123456')), tap Key('verify-otp'); expect Key('tab-today') and a Key('trip-card-$TRIP_ID') (or any trip card when TRIP_ID empty).",
+    "Emulator run (x86 PowerShell): launch the AVD (`flutter emulators --launch <id>`), wait for boot (`adb wait-for-device`, poll sys.boot_completed), `adb reverse tcp:8787 tcp:8787`, `adb shell pm grant com.travelcrm.driver_app android.permission.ACCESS_FINE_LOCATION` after install, `adb emu geo fix 76.4019 10.1520`, then `flutter test integration_test/smoke_login_test.dart -d emulator-5554 --dart-define=API_BASE_URL=http://localhost:8787 --dart-define=TENANT_ID=01960000-0000-7000-8000-000000000001 --dart-define=DRIVER_PHONE=9876543210 --dart-define=OTP=123456 --dart-define=TRIP_ID=<id>`.",
+    "Manual proof run (`flutter run -d emulator-5554` with the same defines): accept -> en route -> check in (coords shown) -> complete; capture `adb exec-out screencap -p > desktop/audit/fix/shots/driver-after-<NN>-<step>.png` for: login, otp, today list, trip detail, accept confirm, en route, check-in with coords, completed, history; in light and one dark shot. Verify on the desktop (slot 0 web if built) that /fleet/trips/<id> shows the status changes.",
+    "flutter analyze clean; flutter test all green."
+  ],
+  "filesAllowlist": [
+    "packages/driver_app/test/**",
+    "packages/driver_app/integration_test/smoke_login_test.dart",
+    "packages/driver_app/tool/**",
+    "packages/driver_app/lib/** (testability seams only - provider overrides/injection points, no visual changes)",
+    "desktop/audit/fix/shots/driver-after-*.png"
+  ],
+  "mustNotTouch": [
+    "packages/driver_app/integration_test/demo_flow_test.dart (showcase agent)",
+    "packages/shared/**",
+    "packages/crm_app/**",
+    "backend/**",
+    "desktop/src/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "flutter test: >= 25 meaningful tests, all pass; flutter analyze clean.",
+    "smoke_login_test passes on the emulator against the local backend (FR-2 dry-run proof).",
+    "Screenshots of the full flow saved under desktop/audit/fix/shots/driver-after-*.png."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": true,
+    "specs": []
+  },
+  "notes": "If the emulator cannot boot in the executor session, still land the tests and report the blocker with logs; the orchestrator re-runs the emulator step."
+}

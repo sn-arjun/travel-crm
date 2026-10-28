@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/api_client_provider.dart';
+import '../../../core/utils/api_error.dart';
 import 'profile_repository.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
@@ -12,11 +13,19 @@ class ProfileState {
   final List<Map<String, dynamic>> documents;
   final String? error;
 
+  /// True while a document upload is in flight.
+  final bool isUploading;
+
+  /// Upload progress 0..1, or null when unknown / not uploading.
+  final double? uploadProgress;
+
   const ProfileState({
     this.isLoading = false,
     this.profile,
     this.documents = const [],
     this.error,
+    this.isUploading = false,
+    this.uploadProgress,
   });
 
   ProfileState copyWith({
@@ -24,12 +33,18 @@ class ProfileState {
     Map<String, dynamic>? profile,
     List<Map<String, dynamic>>? documents,
     String? error,
+    bool? isUploading,
+    double? uploadProgress,
+    bool clearUploadProgress = false,
   }) {
     return ProfileState(
       isLoading: isLoading ?? this.isLoading,
       profile: profile ?? this.profile,
       documents: documents ?? this.documents,
       error: error,
+      isUploading: isUploading ?? this.isUploading,
+      uploadProgress:
+          clearUploadProgress ? null : (uploadProgress ?? this.uploadProgress),
     );
   }
 }
@@ -71,6 +86,42 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
+    }
+  }
+
+  /// Uploads a document, then refreshes the list. Returns an error message,
+  /// or null on success.
+  Future<String?> uploadDocument({
+    required String type,
+    required String filePath,
+    required String fileName,
+    String? expiryDate,
+  }) async {
+    state = state.copyWith(isUploading: true, clearUploadProgress: true);
+    try {
+      await _repo.uploadDocument(
+        type: type,
+        filePath: filePath,
+        fileName: fileName,
+        expiryDate: expiryDate,
+        onProgress: (sent, total) {
+          if (!mounted || total <= 0) return;
+          state = state.copyWith(
+            isUploading: true,
+            uploadProgress: sent / total,
+          );
+        },
+      );
+      if (!mounted) return null;
+      state = state.copyWith(isUploading: false, clearUploadProgress: true);
+      await loadDocuments();
+      return null;
+    } catch (e) {
+      final message = extractApiError(e, fallback: 'Upload failed. Try again.');
+      if (mounted) {
+        state = state.copyWith(isUploading: false, clearUploadProgress: true);
+      }
+      return message;
     }
   }
 

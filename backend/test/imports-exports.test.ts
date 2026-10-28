@@ -120,8 +120,8 @@ describe('Import/Export Routes Integration Tests', () => {
 
     it('should get template for contacts import', async () => {
       const res = await authRequest('GET', '/imports/templates/contacts', adminToken);
-      // May return 200 with Excel file or 400/500 depending on template generator
-      expect([200, 400, 500]).toContain(res.status);
+      // Returns the Excel template file
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const contentType = res.headers.get('content-type');
         expect(contentType).toContain('spreadsheetml');
@@ -130,12 +130,12 @@ describe('Import/Export Routes Integration Tests', () => {
 
     it('should get template for leads import', async () => {
       const res = await authRequest('GET', '/imports/templates/leads', adminToken);
-      expect([200, 400, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should handle invalid template type', async () => {
       const res = await authRequest('GET', '/imports/templates/invalid_type', adminToken);
-      expect([400, 500]).toContain(res.status);
+      expect(res.status).toBe(400);
     });
   });
 
@@ -146,7 +146,7 @@ describe('Import/Export Routes Integration Tests', () => {
   describe('Export Contacts', () => {
     it('should export contacts as Excel', async () => {
       const res = await authRequest('GET', '/exports/contacts', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const contentType = res.headers.get('content-type');
         expect(contentType).toContain('spreadsheetml');
@@ -159,7 +159,7 @@ describe('Import/Export Routes Integration Tests', () => {
   describe('Export Leads', () => {
     it('should export leads as Excel', async () => {
       const res = await authRequest('GET', '/exports/leads', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const contentType = res.headers.get('content-type');
         expect(contentType).toContain('spreadsheetml');
@@ -187,7 +187,7 @@ describe('Import/Export Routes Integration Tests', () => {
         invoiceIds: ['id1', 'id2'],
       });
       // Should succeed (queues the job) or fail if queue not available in test env
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -200,7 +200,7 @@ describe('Import/Export Routes Integration Tests', () => {
   describe('Full GDPR Export', () => {
     it('should queue full export', async () => {
       const res = await authRequest('POST', '/exports/full', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);

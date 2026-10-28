@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { authMiddleware } from '../middleware/auth';
 import type { AppContext } from '../types';
 import {
@@ -9,6 +9,8 @@ import {
 } from '../validators/visa';
 import { getChecklistTemplate } from '../db/seed/visa-checklist-templates';
 import { broadcastToTenant } from '../utils/realtime';
+import { generateId } from '../utils/uuid';
+import { tenantToday, addDaysLocal } from '../utils/tz';
 
 const visaRouter = new Hono<AppContext>();
 visaRouter.use('*', authMiddleware);
@@ -18,8 +20,8 @@ visaRouter.get('/dashboard', async (c) => {
     try {
         const db = c.get('tenantDb');
         const tenantId = c.get('tenantId');
-        const today = new Date().toISOString().substring(0, 10);
-        const in30Days = new Date(Date.now() + 30 * 86400000).toISOString().substring(0, 10);
+        const { today } = await tenantToday(c);
+        const in30Days = addDaysLocal(today, 30);
 
         const all = await db.prepare('SELECT status, destination_country, visa_expiry_date FROM visa_applications WHERE tenant_id = ? AND is_deleted = 0')
             .bind(tenantId).all<{ status: string; destination_country: string; visa_expiry_date?: string }>();
@@ -136,7 +138,7 @@ visaRouter.post('/', zValidator('json', createVisaApplicationSchema), async (c) 
     const tenantId = c.get('tenantId');
     const userId = c.get('userId');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const now = new Date().toISOString();
 
     await db.prepare(`
@@ -160,7 +162,7 @@ visaRouter.post('/', zValidator('json', createVisaApplicationSchema), async (c) 
         is_required, is_received, sort_order, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `).bind(
-            crypto.randomUUID(), tenantId, id, tItem.name, tItem.description,
+            generateId(), tenantId, id, tItem.name, tItem.description,
             tItem.required ? 1 : 0, i, now, now
         ).run();
     }
@@ -291,7 +293,7 @@ visaRouter.put('/:id/status', async (c) => {
             INSERT INTO visa_notes (id, tenant_id, visa_application_id, content, created_by, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `).bind(
-            crypto.randomUUID(), tenantId, id,
+            generateId(), tenantId, id,
             `Status changed from ${current.status} to ${body.status}`,
             userId, now, now
         ).run();
@@ -410,7 +412,7 @@ visaRouter.post('/:id/documents', async (c) => {
         return c.json({ error: 'File type not allowed. Accepted: PDF, JPEG, PNG, WebP, DOCX' }, 400);
     }
 
-    const docId = crypto.randomUUID();
+    const docId = generateId();
     const ext = file.name.split('.').pop() || 'bin';
     const r2Key = `tenants/${tenantId}/visa/${visaId}/${docId}.${ext}`;
 
@@ -530,7 +532,7 @@ visaRouter.post('/:id/notes', async (c) => {
 
     if (!content) return c.json({ error: 'Content is required' }, 400);
 
-    const noteId = crypto.randomUUID();
+    const noteId = generateId();
     await db.prepare(`
     INSERT INTO visa_notes (id, tenant_id, visa_application_id, content, created_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)

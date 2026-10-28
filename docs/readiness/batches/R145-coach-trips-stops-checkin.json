@@ -1,0 +1,141 @@
+{
+  "id": "R145",
+  "tier": 4,
+  "step": 5,
+  "title": "Coach trips with ordered stops and passenger check-in: backend, driver API and the desktop trip screens; tour leaders as crew",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "One coach trip holds its ordered stops with times, the passengers boarding at each stop, a boarded / no-show tick per passenger, a head count and a documents-checked mark; a tour leader (crew role) or an office user can run check-in. Trips can be created from a departure with its stops and manifest.",
+  "why": "Gap 4: today each stop is a separate trip with passengers written in the notes, and nobody can tick passengers off. Design: TOUR-OPERATOR-DESIGN.md sections 3.3, 5.3, 6.2, 6.3, 11.",
+  "featuresToWorks": ["fleet.trips", "fleet.coach-stops", "fleet.passenger-checkin", "fleet.crew-roles"],
+  "featureKeys": ["coach_trips", "group_departures (passengers from a departure)"],
+  "dependsOn": ["R143"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R144"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0059_coach_trip_stops.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/routes/fleet.ts",
+      "backend/src/routes/driver.ts",
+      "backend/src/validators/fleet.ts",
+      "backend/src/routes/departures.ts (POST /:id/trips and GET /:id/headcount only)",
+      "backend/src/services/privacy/registry.ts",
+      "backend/src/index.ts (one requireFeature line for the coach routes, if they are not inside fleet.ts)",
+      "desktop/src/app/(app)/fleet/trips/**",
+      "desktop/src/app/(app)/fleet/drivers/**",
+      "desktop/src/lib/api/fleet.ts",
+      "desktop/src/messages/en/coachTrips.json",
+      "desktop/src/messages/nl/coachTrips.json",
+      "desktop/src/messages/en/fleet.json",
+      "desktop/src/messages/nl/fleet.json",
+      "packages/shared-ts/src/types/departures.ts"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0059_coach_trip_stops.sql",
+      "backend/src/services/fleet/coach-trips.ts",
+      "backend/test/coach-trips.test.ts",
+      "backend/test/driver-coach-trips.test.ts",
+      "desktop/src/app/(app)/fleet/trips/_components/stops-editor.tsx",
+      "desktop/src/app/(app)/fleet/trips/_components/passenger-checkin.tsx",
+      "desktop/src/app/(app)/fleet/trips/_components/headcount-bar.tsx",
+      "desktop/src/lib/headcount.ts",
+      "desktop/src/lib/headcount.test.ts",
+      "desktop/scripts/i18n-scope/coach-trips.json",
+      "desktop/e2e/coach-trips.spec.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/app/(app)/departures/**",
+      "desktop/src/app/(app)/tours/**",
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/hooks/use-feature-gate.ts (read only: GatedFeature has coach_trips since R143)",
+      "packages/driver_app/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R145-1",
+      "what": "Migration 0059_coach_trip_stops.sql",
+      "steps": [
+        "trip_stops and trip_passengers as in design 3.3; trip_assignments ADD departure_id, trip_kind (default 'transfer'), tour_leader_id; drivers ADD crew_role (default 'driver'), user_id; indexes; schema; regenerate the bundle.",
+        "Privacy registry: trip_passengers registered (contact_id, trip_id IN TRIPS, seat_passenger_id); trip_stops in PRIVACY_NOT_PERSONAL. TRIPS includes trips where the contact is a trip passenger."
+      ]
+    },
+    {
+      "id": "R145-2",
+      "what": "Staff API (feature coach_trips)",
+      "steps": [
+        "Under /fleet/trips/:id: GET/PUT /stops (ordered replace; scheduled_at in the tenant zone), GET /passengers (grouped by stop), PUT /passengers/:pid {boarding: pending|boarded|no_show, documentsChecked?, opId, at} (opId dedupe on last_op_id; last write wins by 'at'), POST /stops/:sid/arrive and /depart (with optional lat/lng), GET /headcount {expected, boarded, noShow, byStop[]}; POST /passengers to add an ad-hoc passenger to a stop.",
+        "Trip create/edit accepts trip_kind coach, tour_leader_id (crew role tour_leader or both) and departure_id.",
+        "POST /departures/:id/trips (needs group_departures too): one coach trip per departure vehicle (or one when none), stops copied from departure_stops, passengers copied from active seat_passengers by pickup stop (and vehicle assignment when set), driver and tour leader from the departure; idempotent (a second call returns the existing trips unless ?replace=1 for trips with no ticks yet). GET /departures/:id/headcount sums its trips.",
+        "Documents checked on a trip passenger with a seat_passenger_id sets seat_passengers.documents_status = 'checked' with who and when.",
+        "Events: trip.stop_arrived, trip.passenger_boarded, trip.passenger_no_show, trip.documents_checked, trip.headcount_complete (all expected at a stop marked), broadcast to the tenant like other trip changes."
+      ]
+    },
+    {
+      "id": "R145-3",
+      "what": "Driver API",
+      "steps": [
+        "GET /driver/trips lists trips where the driver is driver_id or tour_leader_id; GET /driver/trips/:id adds stops[] and, when crew_role is tour_leader or both, or group_tours.driverSeesPassengers is on, passengers[] (name, seats, phone, boarding, documents flags; never document numbers).",
+        "POST /driver/trips/:id/stops/:sid/arrive|depart, PUT /driver/trips/:id/passengers/:pid (same body and rules as staff), GET /driver/trips/:id/headcount. A driver without passenger rights gets 403 on the passenger routes.",
+        "GET /driver/profile returns crew_role."
+      ]
+    },
+    {
+      "id": "R145-4",
+      "what": "Desktop",
+      "steps": [
+        "Drivers: crew role select (Driver, Tour leader, Both) and optional linked staff user (RelationCombobox); list filter by crew role; labels 'Crew' where the page means both.",
+        "Trip form: trip kind; for coach trips the stops editor (ordered, drag to reorder with a keyboard alternative, AddressAutocomplete with fallback, time, documents check) and the tour leader (RelationCombobox over crew).",
+        "Trip drawer and detail: stop timeline with status, passenger check-in panel per stop (tick boarded / no-show, documents checked), head count bar, live updates from the realtime broadcast; an operations user can tick (tour leader using the desktop).",
+        "Trips list: a 'Coach' filter and a stops / head count column."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/coach-trips.test.ts: stops replace and order; trips from a departure copy stops and passengers by pickup point; idempotent second call; ticks with opId dedupe and last-write-wins by 'at'; head count; documents checked mirrors to seat_passengers; feature coach_trips off -> 403; departure trips without group_departures -> 403.",
+    "backend/test/driver-coach-trips.test.ts: a tour leader sees passengers and ticks; a driver without the setting gets 403 on passengers; trip list includes tour-leader trips.",
+    "desktop vitest: headcount helper.",
+    "e2e/coach-trips.spec.ts: create a coach trip from a departure, see stops and passengers by stop, tick boarded and no-show, mark documents checked, head count updates; create an ad-hoc coach trip with stops and passengers without a departure."
+  ],
+  "acceptance": [
+    "A seven-stop coach trip with passengers per stop can be checked in from the desktop; the driver API serves the same data to the app (R147).",
+    "Trips without coach data behave exactly as before (existing fleet tests green)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/coach-trips.spec.ts e2e/fleet-trips.spec.ts e2e/fleet-drivers.spec.ts e2e/driver-app-api.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/coach-trips.spec.ts", "e2e/fleet-trips.spec.ts", "e2e/fleet-drivers.spec.ts", "e2e/driver-app-api.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: coach_trips on the new staff and driver routes; passenger lists from departures also need group_departures.",
+    "Backend: tenant migration 0059 only; regenerate the bundle; UUIDv7 ids; new personal-data table registered in the privacy registry; driver routes keep their own auth.",
+    "Desktop: CONTRACT.md; RelationCombobox for relations; AddressAutocomplete with fallback; PhoneInput; t() with en and nl keys in coachTrips.json and fleet.json; RTL-safe classes; dates through lib/dates.ts.",
+    "The driver app response stays backward compatible (new fields only), so an old app keeps working.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 3.3, 5.3, 6.2, 6.3, 11, routes/driver.ts and the fleet trip routes, desktop fleet trips pages.",
+    "R144 runs in parallel and owns the departures and tours pages, the sidebar and use-feature-gate.ts. The desktop 'Create coach trips' button on the departure page is added in R146."
+  ],
+  "goLiveVerify": []
+}

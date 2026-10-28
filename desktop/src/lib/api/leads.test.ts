@@ -314,7 +314,7 @@ describe('leadsApi', () => {
 
       const result = await leadsApi.getNotes('l1');
 
-      expect(result.data.data[0].content).toBe('A note');
+      expect(result.data[0]?.content).toBe('A note');
     });
   });
 
@@ -514,5 +514,30 @@ describe('leadsApi', () => {
 
       expect(client.get).toHaveBeenCalledWith('/leads/unassigned', { params: { page: 1, limit: 10 } });
     });
+  });
+});
+
+describe('leadsApi note normalisation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('getNotes camelizes created_by_name / created_at so the page can render author and date', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      success: true,
+      data: [{ id: 'n1', content: 'Called the client', created_by: 'u1', created_by_name: 'Asha Rao', created_at: '2026-03-04T10:00:00Z' }],
+    });
+    const result = await leadsApi.getNotes('l1');
+    expect(result.data[0]).toMatchObject({
+      id: 'n1', createdBy: 'u1', createdByName: 'Asha Rao', createdAt: '2026-03-04T10:00:00Z',
+    });
+    expect(Number.isNaN(new Date(result.data[0]!.createdAt).getTime())).toBe(false);
+    expect(result.pagination.total).toBe(1);
+  });
+
+  it('createNote unwraps and camelizes the created note', async () => {
+    vi.mocked(client.post).mockResolvedValue({ success: true, data: { id: 'n2', content: 'Hi', created_by: 'u1' } });
+    const result = await leadsApi.createNote('l1', { content: 'Hi' });
+    expect(result.data).toMatchObject({ id: 'n2', createdBy: 'u1' });
   });
 });

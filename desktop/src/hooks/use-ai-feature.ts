@@ -1,12 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { aiApi, type AiFeatureFlag, type AiSettingsData, type UsageCap } from '@/lib/api/ai';
+import { aiApi, type AiFeatureFlag, type AiSettingsData } from '@/lib/api/ai';
 
 interface AiFeatureState {
   loading: boolean;
   plan: string | null;
   features: AiFeatureFlag[];
+  voipCalling: AiSettingsData['voipCalling'] | null;
   usageCaps: Record<string, { limit: number; used: number; remaining: number; percentUsed: number }>;
   provider: { anthropic: boolean; cloudflare: boolean; defaultProvider: string } | null;
   error: string | null;
@@ -26,7 +27,7 @@ async function fetchSettings(): Promise<AiSettingsData | null> {
   try {
     const res = await aiApi.settings.get();
     if (res && 'data' in res && res.data) {
-      cachedSettings = res.data as any;
+      cachedSettings = res.data as AiSettingsData;
       cacheTimestamp = now;
       return cachedSettings;
     }
@@ -36,9 +37,13 @@ async function fetchSettings(): Promise<AiSettingsData | null> {
   return null;
 }
 
+/** Fired when the cache is dropped, so mounted hooks (the always-on softphone host) pick up the change. */
+export const AI_SETTINGS_INVALIDATED_EVENT = 'travelcrm:ai-settings-invalidated';
+
 export function invalidateAiSettingsCache() {
   cachedSettings = null;
   cacheTimestamp = 0;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AI_SETTINGS_INVALIDATED_EVENT));
 }
 
 /**
@@ -55,8 +60,8 @@ export function useAiSettings(): AiFeatureState {
     try {
       const data = await fetchSettings();
       setSettings(data);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load AI settings');
+    } catch (e) {
+      setError((e as Error).message || 'Failed to load AI settings');
     } finally {
       setLoading(false);
     }
@@ -64,10 +69,18 @@ export function useAiSettings(): AiFeatureState {
 
   React.useEffect(() => { fetch(); }, [fetch]);
 
+  // Another screen changed something that settings report (for example calling was turned on): load again.
+  React.useEffect(() => {
+    const onInvalidated = () => { void fetch(); };
+    window.addEventListener(AI_SETTINGS_INVALIDATED_EVENT, onInvalidated);
+    return () => window.removeEventListener(AI_SETTINGS_INVALIDATED_EVENT, onInvalidated);
+  }, [fetch]);
+
   return {
     loading,
     plan: settings?.plan ?? null,
     features: settings?.aiFeatures ?? [],
+    voipCalling: settings?.voipCalling ?? null,
     usageCaps: settings?.usageCaps ?? {},
     provider: settings?.provider ?? null,
     error,

@@ -1,11 +1,15 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { hasPermission, type Role } from '../constants/permissions';
+import { tenantTimeZone, localDateString } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
+import { agencyEmailHtml, isEmailUndeliverable, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
+import { isUiLanguage, t, textLanguage } from '../i18n';
 
 const voucherRoutes = new Hono<AppContext>();
 
@@ -86,7 +90,7 @@ const createVoucherSchema = z.object({
   supplierId: z.string().optional().nullable(),
   title: z.string().min(1),
   details: z.record(z.string(), z.any()),
-  language: z.string().default('en'),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').default('en'),
   notes: z.string().optional().nullable(),
 });
 
@@ -94,7 +98,7 @@ const updateVoucherSchema = z.object({
   title: z.string().min(1).optional(),
   supplierId: z.string().optional().nullable(),
   details: z.record(z.string(), z.any()).optional(),
-  language: z.string().optional(),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
   notes: z.string().optional().nullable(),
 });
 
@@ -475,16 +479,17 @@ function mapItemToVoucherDetails(type: string, item: any, details: any): Record<
 // GET /:id/pdf — Generate printable PDF for a voucher
 // ============================================================
 
-voucherRoutes.get('/:id/pdf', async (c) => {
-  const tenantDb = c.get('tenantDb');
-  const role = c.get('role');
-  const voucherId = c.req.param('id');
+interface BuiltVoucherPdf {
+  bytes: Uint8Array;
+  fileName: string;
+  title: string;
+  type: string;
+  contactId: string | null;
+}
 
-  if (!checkPermission(role, 'view')) {
-    return forbidden(c, 'You do not have permission to view vouchers');
-  }
-
-  try {
+/** Render the voucher PDF (shared by GET /:id/pdf and the email send, R128). Null when the voucher does not exist. */
+async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherTz: string): Promise<BuiltVoucherPdf | null> {
+  {
     const voucher = await tenantDb
       .prepare(`
         SELECT v.*,
@@ -498,16 +503,34 @@ voucherRoutes.get('/:id/pdf', async (c) => {
       .bind(voucherId)
       .first<Record<string, any>>();
 
-    if (!voucher) return notFound(c, 'Voucher');
+    if (!voucher) return null;
 
     const details = voucher.details_json ? JSON.parse(voucher.details_json) : {};
     const voucherType = (voucher.type as string) || 'general';
-    const typeLabel = voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
+    // The voucher's own language picks the labels: Dutch for nl, English for everything else (the catalogue falls back).
+    const lang = textLanguage(voucher.language);
+    const L = (key: string, vars?: Record<string, string | number>) => t(lang, key, vars);
+    const f = (key: string) => `${L(`voucher.field.${key}`)}:`;
+    const typeKey = `voucher.type.${voucherType}`;
+    const typeLabel = L(typeKey) !== typeKey ? L(typeKey) : voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
 
     // Build PDF using pdf-lib
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // Dates follow the voucher's language (Dutch) or else the agency locale. The built-in PDF fonts only draw Latin text,
+    // so a locale that writes dates in another script (Arabic, Devanagari) falls back to en-GB.
+    const wantedLocale = lang === 'nl' ? 'nl-NL' : (await loadLocaleContext(tenantDb)).locale;
+    const canDraw = (loc: string) => {
+      try {
+        font.encodeText(new Date(0).toLocaleDateString(loc, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const dateLocale = canDraw(wantedLocale) ? wantedLocale : 'en-GB';
 
     // A4 Portrait
     const pageWidth = 595;
@@ -578,7 +601,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     y -= 24;
 
     // Voucher title
-    page.drawText(`${typeLabel} Voucher`, {
+    page.drawText(L('voucher.title', { type: typeLabel }), {
       x: margin,
       y,
       size: 20,
@@ -598,7 +621,8 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     y -= 10;
 
     // Status badge
-    const statusText = ((voucher.status as string) || 'draft').toUpperCase();
+    const statusKey = `voucher.status.${(voucher.status as string) || 'draft'}`;
+    const statusText = (L(statusKey) !== statusKey ? L(statusKey) : ((voucher.status as string) || 'draft')).toUpperCase();
     const statusColors: Record<string, [number, number, number]> = {
       draft: [0.6, 0.6, 0.6],
       sent: [0.1, 0.5, 0.8],
@@ -618,7 +642,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     y -= 16;
 
     // ====== General Info ======
-    page.drawText('BOOKING INFORMATION', {
+    page.drawText(L('voucher.section.booking').toUpperCase(), {
       x: margin,
       y,
       size: 10,
@@ -627,21 +651,21 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     });
     y -= 18;
 
-    drawField('Voucher ID:', voucherId);
-    drawField('Type:', typeLabel);
-    if (voucher.lead_name) drawField('Lead:', voucher.lead_name as string);
-    if (voucher.supplier_name) drawField('Supplier:', voucher.supplier_name as string);
-    if (voucher.language) drawField('Language:', (voucher.language as string).toUpperCase());
-    if (voucher.created_at) drawField('Created:', new Date(voucher.created_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.sent_at) drawField('Sent:', new Date(voucher.sent_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.confirmed_at) drawField('Confirmed:', new Date(voucher.confirmed_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+    drawField(f('voucherId'), voucherId);
+    drawField(f('type'), typeLabel);
+    if (voucher.lead_name) drawField(f('lead'), voucher.lead_name as string);
+    if (voucher.supplier_name) drawField(f('supplier'), voucher.supplier_name as string);
+    if (voucher.language) drawField(f('language'), (voucher.language as string).toUpperCase());
+    if (voucher.created_at) drawField(f('created'), new Date(voucher.created_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.sent_at) drawField(f('sent'), new Date(voucher.sent_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.confirmed_at) drawField(f('confirmed'), new Date(voucher.confirmed_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
 
     y -= 8;
     drawLine(y);
     y -= 16;
 
     // ====== Type-Specific Details ======
-    const sectionTitle = `${typeLabel.toUpperCase()} DETAILS`;
+    const sectionTitle = L('voucher.section.details', { type: typeLabel }).toUpperCase();
     page.drawText(sectionTitle, {
       x: margin,
       y,
@@ -653,46 +677,46 @@ voucherRoutes.get('/:id/pdf', async (c) => {
 
     // Render details based on voucher type
     if (voucherType === 'hotel') {
-      if (details.hotelName) drawField('Hotel:', details.hotelName);
-      if (details.hotelAddress) drawField('Address:', details.hotelAddress);
-      if (details.checkIn) drawField('Check-In:', details.checkIn);
-      if (details.checkOut) drawField('Check-Out:', details.checkOut);
-      if (details.roomType) drawField('Room Type:', details.roomType);
-      if (details.roomCount) drawField('Rooms:', String(details.roomCount));
-      if (details.mealPlan) drawField('Meal Plan:', details.mealPlan);
-      if (details.confirmationNumber) drawField('Confirmation #:', details.confirmationNumber);
+      if (details.hotelName) drawField(f('hotel'), details.hotelName);
+      if (details.hotelAddress) drawField(f('address'), details.hotelAddress);
+      if (details.checkIn) drawField(f('checkIn'), details.checkIn);
+      if (details.checkOut) drawField(f('checkOut'), details.checkOut);
+      if (details.roomType) drawField(f('roomType'), details.roomType);
+      if (details.roomCount) drawField(f('rooms'), String(details.roomCount));
+      if (details.mealPlan) drawField(f('mealPlan'), details.mealPlan);
+      if (details.confirmationNumber) drawField(f('confirmationNumber'), details.confirmationNumber);
       if (details.guestNames && details.guestNames.length > 0) {
-        drawField('Guests:', details.guestNames.join(', '));
+        drawField(f('guests'), details.guestNames.join(', '));
       }
-      if (details.specialRequests) drawField('Special Requests:', details.specialRequests);
-      if (details.emergencyContact) drawField('Emergency Contact:', details.emergencyContact);
+      if (details.specialRequests) drawField(f('specialRequests'), details.specialRequests);
+      if (details.emergencyContact) drawField(f('emergencyContact'), details.emergencyContact);
     } else if (voucherType === 'transport') {
-      if (details.vehicleType) drawField('Vehicle:', details.vehicleType);
-      if (details.driverName) drawField('Driver:', details.driverName);
-      if (details.driverPhone) drawField('Driver Phone:', details.driverPhone);
-      if (details.pickupLocation) drawField('Pickup:', details.pickupLocation);
-      if (details.pickupTime) drawField('Pickup Time:', details.pickupTime);
-      if (details.dropLocation) drawField('Drop:', details.dropLocation);
-      if (details.route) drawField('Route:', details.route);
+      if (details.vehicleType) drawField(f('vehicle'), details.vehicleType);
+      if (details.driverName) drawField(f('driver'), details.driverName);
+      if (details.driverPhone) drawField(f('driverPhone'), details.driverPhone);
+      if (details.pickupLocation) drawField(f('pickup'), details.pickupLocation);
+      if (details.pickupTime) drawField(f('pickupTime'), details.pickupTime);
+      if (details.dropLocation) drawField(f('drop'), details.dropLocation);
+      if (details.route) drawField(f('route'), details.route);
       if (details.sightseeing && details.sightseeing.length > 0) {
-        drawField('Sightseeing:', details.sightseeing.join(', '));
+        drawField(f('sightseeing'), details.sightseeing.join(', '));
       }
-      if (details.terms) drawField('Terms:', details.terms);
+      if (details.terms) drawField(f('terms'), details.terms);
     } else if (voucherType === 'flight') {
-      if (details.airline) drawField('Airline:', details.airline);
-      if (details.flightNumber) drawField('Flight:', details.flightNumber);
-      if (details.travelClass) drawField('Class:', details.travelClass);
-      if (details.departureAirport) drawField('Departure:', `${details.departureAirport}${details.departureTerminal ? ' (T' + details.departureTerminal + ')' : ''}`);
-      if (details.departureTime) drawField('Departure Time:', details.departureTime);
-      if (details.arrivalAirport) drawField('Arrival:', `${details.arrivalAirport}${details.arrivalTerminal ? ' (T' + details.arrivalTerminal + ')' : ''}`);
-      if (details.arrivalTime) drawField('Arrival Time:', details.arrivalTime);
-      if (details.pnr) drawField('PNR:', details.pnr);
-      if (details.baggageAllowance) drawField('Baggage:', details.baggageAllowance);
-      if (details.seatNumbers) drawField('Seats:', details.seatNumbers);
-      if (details.mealPreference) drawField('Meal Pref:', details.mealPreference);
+      if (details.airline) drawField(f('airline'), details.airline);
+      if (details.flightNumber) drawField(f('flight'), details.flightNumber);
+      if (details.travelClass) drawField(f('class'), details.travelClass);
+      if (details.departureAirport) drawField(f('departure'), `${details.departureAirport}${details.departureTerminal ? ' (T' + details.departureTerminal + ')' : ''}`);
+      if (details.departureTime) drawField(f('departureTime'), details.departureTime);
+      if (details.arrivalAirport) drawField(f('arrival'), `${details.arrivalAirport}${details.arrivalTerminal ? ' (T' + details.arrivalTerminal + ')' : ''}`);
+      if (details.arrivalTime) drawField(f('arrivalTime'), details.arrivalTime);
+      if (details.pnr) drawField(f('pnr'), details.pnr);
+      if (details.baggageAllowance) drawField(f('baggage'), details.baggageAllowance);
+      if (details.seatNumbers) drawField(f('seats'), details.seatNumbers);
+      if (details.mealPreference) drawField(f('mealPref'), details.mealPreference);
       if (details.passengers && details.passengers.length > 0) {
         ensureSpace(18);
-        page.drawText('Passengers:', {
+        page.drawText(f('passengers'), {
           x: margin,
           y,
           size: 9,
@@ -702,7 +726,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
         y -= 16;
         for (const pax of details.passengers) {
           ensureSpace(16);
-          const paxText = pax.pnr ? `${pax.name} (PNR: ${pax.pnr})` : pax.name;
+          const paxText = pax.pnr ? L('voucher.passengerPnr', { name: pax.name, pnr: pax.pnr }) : pax.name;
           page.drawText(`  - ${paxText}`, {
             x: margin + 10,
             y,
@@ -714,17 +738,17 @@ voucherRoutes.get('/:id/pdf', async (c) => {
         }
       }
     } else if (voucherType === 'activity') {
-      if (details.activityName) drawField('Activity:', details.activityName);
-      if (details.dateTime) drawField('Date/Time:', details.dateTime);
-      if (details.meetingPoint) drawField('Meeting Point:', details.meetingPoint);
-      if (details.duration) drawField('Duration:', details.duration);
-      if (details.operatorContact) drawField('Operator:', details.operatorContact);
-      if (details.emergencyContact) drawField('Emergency:', details.emergencyContact);
+      if (details.activityName) drawField(f('activity'), details.activityName);
+      if (details.dateTime) drawField(f('dateTime'), details.dateTime);
+      if (details.meetingPoint) drawField(f('meetingPoint'), details.meetingPoint);
+      if (details.duration) drawField(f('duration'), details.duration);
+      if (details.operatorContact) drawField(f('operator'), details.operatorContact);
+      if (details.emergencyContact) drawField(f('emergency'), details.emergencyContact);
       if (details.inclusions && details.inclusions.length > 0) {
-        drawField('Inclusions:', details.inclusions.join(', '));
+        drawField(f('inclusions'), details.inclusions.join(', '));
       }
       if (details.whatToBring && details.whatToBring.length > 0) {
-        drawField('What to Bring:', details.whatToBring.join(', '));
+        drawField(f('whatToBring'), details.whatToBring.join(', '));
       }
     } else {
       // Generic: render all key-value pairs
@@ -744,7 +768,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
       y -= 16;
       ensureSpace(40);
 
-      page.drawText('NOTES', {
+      page.drawText(L('voucher.section.notes').toUpperCase(), {
         x: margin,
         y,
         size: 10,
@@ -806,14 +830,14 @@ voucherRoutes.get('/:id/pdf', async (c) => {
         font: boldFont,
         color: rgb(0.5, 0.5, 0.5),
       });
-      pg.drawText(`Generated ${new Date().toISOString().split('T')[0]}`, {
+      pg.drawText(L('voucher.footer.generated', { date: localDateString(voucherTz) }), {
         x: margin + 70,
         y: 22,
         size: 7,
         font,
         color: rgb(0.5, 0.5, 0.5),
       });
-      pg.drawText(`Page ${i + 1} of ${pageCount}`, {
+      pg.drawText(L('voucher.footer.page', { page: i + 1, total: pageCount }), {
         x: pageWidth - margin - 60,
         y: 22,
         size: 7,
@@ -825,7 +849,54 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     const pdfBytes = await pdfDoc.save();
     const fileName = `voucher-${voucherType}-${voucherId.slice(0, 8)}.pdf`;
 
-    return new Response(pdfBytes, {
+    return { bytes: pdfBytes, fileName, title: String(voucher.title ?? typeLabel), type: voucherType, contactId: (voucher.contact_id as string | null) ?? null };
+  }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * R128: email a voucher to the traveller with its PDF attached, through the email queue. 'blocked' when the address
+ * hard-bounced earlier; nothing is queued then.
+ */
+async function emailVoucher(c: any, voucherId: string, to: string): Promise<'queued' | 'blocked' | 'missing'> {
+  const tenantDb = c.get('tenantDb') as D1Database;
+  const built = await buildVoucherPdf(tenantDb, voucherId, await tenantTimeZone(c));
+  if (!built) return 'missing';
+  const typeLabel = built.type.charAt(0).toUpperCase() + built.type.slice(1);
+  const result = await queueAgencyEmail(c.env, tenantDb, { tenantId: c.get('tenantId'), userId: c.get('userId') }, {
+    to,
+    subject: `${typeLabel} voucher: ${built.title}`,
+    contactId: built.contactId,
+    html: agencyEmailHtml({
+      heading: `${typeLabel} voucher`,
+      bodyHtml: textToHtml(`Your ${built.type} voucher for ${built.title} is attached to this email as a PDF. Please keep it with you while you travel.`),
+    }),
+    attachments: [{ filename: built.fileName, content: toBase64(built.bytes), type: 'application/pdf' }],
+  });
+  return result.queued ? 'queued' : 'blocked';
+}
+
+voucherRoutes.get('/:id/pdf', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const role = c.get('role');
+  const voucherId = c.req.param('id');
+  const voucherTz = await tenantTimeZone(c);
+
+  if (!checkPermission(role, 'view')) {
+    return forbidden(c, 'You do not have permission to view vouchers');
+  }
+
+  try {
+    const built = await buildVoucherPdf(tenantDb, voucherId, voucherTz);
+    if (!built) return notFound(c, 'Voucher');
+    const fileName = built.fileName;
+
+    return new Response(built.bytes, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${fileName}"`,
@@ -1101,6 +1172,11 @@ voucherRoutes.post('/:id/send', async (c) => {
 
     if (!voucher) return notFound(c, 'Voucher');
 
+    if (channel === 'email' || channel === 'both') {
+      const emailed = await emailVoucher(c, voucherId, String(to));
+      if (emailed === 'blocked') return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+    }
+
     const now = new Date().toISOString();
 
     // Determine sent_via (merge if previously sent via different channel)
@@ -1118,8 +1194,7 @@ voucherRoutes.post('/:id/send', async (c) => {
       .bind(now, sentVia, now, voucherId)
       .run();
 
-    // In production, queue email/whatsapp sending here
-    // For now, just update status and log
+    // Email is queued above (R128); WhatsApp and SMS sharing goes through the Communication Hub from the app.
 
     return success(c, {
       id: voucherId,
@@ -1188,7 +1263,13 @@ voucherRoutes.post('/bulk-send', async (c) => {
     const now = new Date().toISOString();
     let sentCount = 0;
 
+    // R128: refuse before any status changes when the address is known to bounce
+    if ((channel === 'email' || channel === 'both') && (await isEmailUndeliverable(tenantDb, String(to)))) {
+      return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+    }
+
     for (const v of results) {
+      if (channel === 'email' || channel === 'both') await emailVoucher(c, v.id, String(to));
       let sentVia = channel;
       if (v.sent_via && v.sent_via !== channel && channel !== 'both') {
         sentVia = 'both';

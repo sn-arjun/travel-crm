@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, real, integer, index, uniqueIndex, primaryKey, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 const timestamp = sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`;
@@ -17,9 +17,16 @@ export const users = sqliteTable('users', {
   avatarUrl: text('avatar_url'),
   department: text('department'),
   language: text('language').default('en'),
+  locale: text('locale'), // R202: BCP 47 override of the agency locale; null = agency setting
+  timezone: text('timezone'), // R202: IANA zone override of the agency zone; null = agency setting
   inviteStatus: text('invite_status').default('active'), // pending, active
   invitedAt: text('invited_at'),
   emailSignature: text('email_signature'), // HTML or plain text email signature
+  mustChangePassword: integer('must_change_password').notNull().default(0),
+  totpSecretEnc: text('totp_secret_enc'), // R209: crypto-box sealed base32 secret (a pending secret while totp_enabled = 0)
+  totpEnabled: integer('totp_enabled').notNull().default(0),
+  recoveryCodesHash: text('recovery_codes_hash'), // R209: JSON array of SHA-256 hex hashes of the unused recovery codes
+  totpLastStep: integer('totp_last_step'), // R209: last accepted 30 s step; a code works once
   isActive: integer('is_active').default(1),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').default(timestamp),
@@ -46,6 +53,8 @@ export const contacts = sqliteTable('contacts', {
   state: text('state'),
   country: text('country'),
   postalCode: text('postal_code'),
+  taxId: text('tax_id'), // GSTIN / VAT number of a business customer (R201)
+  isBusiness: integer('is_business').default(0),
   tags: text('tags'), // JSON array as text
   notes: text('notes'),
   source: text('source'), // manual, website, referral, ad, facebook, google
@@ -57,6 +66,10 @@ export const contacts = sqliteTable('contacts', {
   optedOutAt: text('opted_out_at'),
   optOutChannel: text('opt_out_channel'), // email, sms, whatsapp, manual
   optOutReason: text('opt_out_reason'), // user-provided reason for opting out
+  erasedAt: text('erased_at'), // R208: set when the personal data was erased (the row stays, anonymised, for invoices)
+  emailUndeliverable: integer('email_undeliverable').notNull().default(0), // R128: 1 = the address hard-bounced; sends to it are suppressed
+  emailUndeliverableReason: text('email_undeliverable_reason'), // the provider's bounce reason
+  emailUndeliverableAt: text('email_undeliverable_at'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -150,6 +163,7 @@ export const leads = sqliteTable('leads', {
   estimatedValue: real('estimated_value'),
   probability: integer('probability'),
   expectedCloseDate: text('expected_close_date'),
+  departureId: text('departure_id').references((): AnySQLiteColumn => departures.id), // R139: the group departure the enquiry is about
   notes: text('notes'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
@@ -166,6 +180,7 @@ export const leads = sqliteTable('leads', {
   index('leads_created_at_idx').on(table.createdAt),
   index('leads_created_by_idx').on(table.createdBy),
   index('leads_is_deleted_idx').on(table.isDeleted),
+  index('leads_departure_idx').on(table.departureId),
 ]);
 
 // ============================================================
@@ -236,6 +251,15 @@ export const itineraries = sqliteTable('itineraries', {
   shareLinkActive: integer('share_link_active').default(0),
   viewCount: integer('view_count').default(0),
   lastViewedAt: text('last_viewed_at'),
+  departureId: text('departure_id').references((): AnySQLiteColumn => departures.id), // R139: the group departure the quote is for
+  seatsRequested: integer('seats_requested'),
+  ageBands: text('age_bands'), // R149: JSON snapshot of the band list the quantities were filled with; NULL = the agency's bands
+  paxAges: text('pax_ages'), // R149: JSON {adults, ages, source} used for the last fill
+  acceptedAt: text('accepted_at'), // R155: set once, by the first acceptance
+  acceptedVia: text('accepted_via'), // share_link, staff, message
+  acceptedName: text('accepted_name'),
+  acceptedIpHash: text('accepted_ip_hash'), // SHA-256 of IP + tenant id, never the raw IP
+  acceptedInvoiceId: text('accepted_invoice_id'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -247,6 +271,7 @@ export const itineraries = sqliteTable('itineraries', {
   index('itineraries_parent_id_idx').on(table.parentId),
   index('itineraries_share_token_idx').on(table.shareToken),
   index('itineraries_is_deleted_idx').on(table.isDeleted),
+  index('itineraries_departure_idx').on(table.departureId),
 ]);
 
 export const itineraryDays = sqliteTable('itinerary_days', {
@@ -279,7 +304,7 @@ export const itineraryItems = sqliteTable('itinerary_items', {
   taxRate: real('tax_rate').default(0),
   taxAmount: real('tax_amount').default(0),
   quantity: integer('quantity').default(1),
-  paxType: text('pax_type'), // adult, child, infant
+  paxType: text('pax_type'), // a band key (adult, child, infant or the agency's own, R149) or per_person
   timeStart: text('time_start'),
   timeEnd: text('time_end'),
   sortOrder: integer('sort_order').default(0),
@@ -303,6 +328,7 @@ export const itineraryTemplates = sqliteTable('itinerary_templates', {
   durationDays: integer('duration_days'),
   category: text('category'), // beach, mountain, heritage, adventure, honeymoon, family, corporate, pilgrimage, custom
   templateData: text('template_data'), // full JSON snapshot of days+items
+  ageBands: text('age_bands'), // R149: the template's own band list (JSON); NULL = the agency's bands
   isSystem: integer('is_system').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -360,7 +386,17 @@ export const invoices = sqliteTable('invoices', {
   discountValue: real('discount_value'),
   discountAmount: real('discount_amount').default(0),
   taxableAmount: real('taxable_amount').default(0),
-  taxType: text('tax_type'), // gst, vat, none
+  taxType: text('tax_type'), // treatment: cgst_sgst, igst, export_zero, vat, reverse_charge, sales_tax, none
+  taxRegime: text('tax_regime').notNull().default('gst'), // gst, vat, sales_tax, none (R201), margin (R152)
+  taxBreakdown: text('tax_breakdown'), // JSON [{code, rate, base, amount, label}]
+  sellerTaxId: text('seller_tax_id'),
+  buyerTaxId: text('buyer_tax_id'),
+  placeOfSupply: text('place_of_supply'),
+  taxNotes: text('tax_notes'),
+  marginCost: real('margin_cost'), // margin scheme: what the services cost the agency, NULL = not recorded (R152)
+  marginCostSource: text('margin_cost_source'), // departure, itinerary, manual
+  marginVatRate: real('margin_vat_rate'), // the agency's own rate when it entered one, never defaulted
+  marginWording: text('margin_wording'), // the legal mention at the time of issue
   cgst: real('cgst').default(0),
   sgst: real('sgst').default(0),
   igst: real('igst').default(0),
@@ -370,11 +406,19 @@ export const invoices = sqliteTable('invoices', {
   currency: text('currency').default('INR'),
   status: text('status').default('draft'), // draft, sent, paid, partially_paid, overdue, cancelled
   dueDate: text('due_date'),
+  issueDate: text('issue_date'), // ISO date (YYYY-MM-DD)
+  terms: text('terms'),
   paidAmount: real('paid_amount').default(0),
   balanceDue: real('balance_due').default(0),
   notes: text('notes'),
   bankDetails: text('bank_details'), // JSON text
   paymentLink: text('payment_link'),
+  paymentLinkId: text('payment_link_id'), // the agency's own gateway link (R207)
+  paymentLinkUrl: text('payment_link_url'),
+  paymentLinkGateway: text('payment_link_gateway'), // razorpay, stripe
+  paymentLinkStatus: text('payment_link_status'), // created, paid, expired, cancelled
+  paymentLinkAmount: real('payment_link_amount'), // what the current link collects: a deposit, the balance or a custom amount (R142)
+  paymentLinkPurpose: text('payment_link_purpose'), // deposit, balance, custom
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
@@ -476,6 +520,8 @@ export const travellers = sqliteTable('travellers', {
   firstName: text('first_name').notNull(),
   lastName: text('last_name').notNull(),
   fullNamePassport: text('full_name_passport').notNull(),
+  email: text('email'),
+  phone: text('phone'),
   dateOfBirth: text('date_of_birth'),
   gender: text('gender'), // male, female, other
   nationality: text('nationality'),
@@ -649,6 +695,8 @@ export const messageLog = sqliteTable('message_log', {
   metadata: text('metadata'), // JSON: extra info (batch_id, twilio_sid, etc.)
   status: text('status').default('queued'), // queued, sent, delivered, read, failed
   externalId: text('external_id'), // Twilio SID or SendGrid message ID
+  fromAddress: text('from_address'), // incoming: sender phone (E.164) or email, also when no contact matches
+  toAddress: text('to_address'), // incoming: the tenant number or mailbox that received it
   errorMessage: text('error_message'),
   sentBy: text('sent_by').references(() => users.id),
   sentAt: text('sent_at'),
@@ -656,6 +704,7 @@ export const messageLog = sqliteTable('message_log', {
   readAt: text('read_at'),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
+  index('msg_log_external_id_idx').on(table.externalId),
   index('msg_log_contact_id_idx').on(table.contactId),
   index('msg_log_lead_id_idx').on(table.leadId),
   index('msg_log_channel_idx').on(table.channel),
@@ -782,6 +831,7 @@ export const events = sqliteTable('events', {
   recurrenceParentId: text('recurrence_parent_id'),
   relatedLeadId: text('related_lead_id'),
   relatedTaskId: text('related_task_id'),
+  relatedDepartureId: text('related_departure_id'), // R139: the group departure this calendar entry mirrors
   assignedTo: text('assigned_to').notNull(),
   createdBy: text('created_by').notNull(),
   timezone: text('timezone').default('Asia/Kolkata'),
@@ -795,6 +845,7 @@ export const events = sqliteTable('events', {
   index('events_related_task_id_idx').on(table.relatedTaskId),
   index('events_event_type_idx').on(table.eventType),
   index('events_is_deleted_idx').on(table.isDeleted),
+  index('events_related_departure_idx').on(table.relatedDepartureId),
 ]);
 
 // ============================================================
@@ -1039,6 +1090,21 @@ export const emailMessageLog = sqliteTable('email_message_log', {
 // EMAIL UNSUBSCRIBES (TICKET-155)
 // ============================================================
 
+// R208: append-only record of what a contact agreed to, where and when
+export const contactConsents = sqliteTable('contact_consents', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').notNull().references(() => contacts.id),
+  channel: text('channel').notNull().default('any'), // email, whatsapp, sms, call, any
+  purpose: text('purpose').notNull().default('marketing'), // marketing, service, recording
+  status: text('status').notNull(), // granted, withdrawn
+  source: text('source').notNull().default('manual'), // form, import, manual, unsubscribe_link, chatbot
+  capturedAt: text('captured_at').notNull().default(timestamp),
+  evidence: text('evidence'), // JSON: how it was captured; cleared on erasure
+  capturedBy: text('captured_by'), // user id who recorded it; null when the contact acted themselves
+}, (table) => [
+  index('contact_consents_contact_idx').on(table.contactId, table.purpose, table.capturedAt),
+]);
+
 export const unsubscribes = sqliteTable('unsubscribes', {
   id: text('id').primaryKey(),
   contactId: text('contact_id').references(() => contacts.id),
@@ -1137,10 +1203,11 @@ export const flyerTemplates = sqliteTable('flyer_templates', {
   category: text('category').notNull(),  // festival, destination, offer, general
   description: text('description'),
   thumbnailUrl: text('thumbnail_url'),
+  previewUrl: text('preview_url'),
   layoutJson: text('layout_json'),  // Full canvas JSON definition
-  width: integer('width').notNull(),
-  height: integer('height').notNull(),
-  sizePreset: text('size_preset').notNull(),  // instagram_post, instagram_story, facebook_cover, whatsapp_status, custom
+  width: integer('width'),
+  height: integer('height'),
+  sizePreset: text('size_preset'),  // instagram_post, instagram_story, facebook_cover, whatsapp_status, custom
   placeholders: text('placeholders'),  // JSON array of editable field defs
   isSystem: integer('is_system').default(0),
   isQuickCreate: integer('is_quick_create').default(0),
@@ -1283,8 +1350,12 @@ export const campaignRecipients = sqliteTable('campaign_recipients', {
   errorMessage: text('error_message'),
   sentAt: text('sent_at'),
   deliveredAt: text('delivered_at'),
+  messageId: text('message_id'), // R128: the provider's message id (email), so delivery events find this row
+  openedAt: text('opened_at'),
+  clickedAt: text('clicked_at'),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
+  index('campaign_recipients_message_id_idx').on(table.messageId),
   index('campaign_recipients_campaign_id_idx').on(table.campaignId),
   index('campaign_recipients_status_idx').on(table.status),
 ]);
@@ -1297,13 +1368,16 @@ export const generatedFlyers = sqliteTable('generated_flyers', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id'),
   templateId: text('template_id').references(() => flyerTemplates.id),
-  name: text('name').notNull(),
+  name: text('name'),  // legacy; nullable since 0033 (title is the primary label)
+  title: text('title'),
+  contentJson: text('content_json'),  // structured form fields: headline/subheadline/offerText/etc
+  imageUrl: text('image_url'),
+  status: text('status').default('draft'),  // draft, published
   layoutJson: text('layout_json'),  // Final canvas state JSON
   r2Key: text('r2_key'),
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
-  exportFormat: text('export_format').default('png'),  // png, jpeg, pdf
-  sizePreset: text('size_preset'),  // instagram_square, instagram_story, facebook, whatsapp, a4, etc.
+  format: text('format').default('png'),  // png, jpeg, pdf
   width: integer('width'),
   height: integer('height'),
   fileSize: integer('file_size'),
@@ -1321,13 +1395,14 @@ export const flyerShares = sqliteTable('flyer_shares', {
   flyerId: text('flyer_id').notNull().references(() => generatedFlyers.id, { onDelete: 'cascade' }),
   channel: text('channel').notNull(),  // whatsapp, email, download, link
   recipientInfo: text('recipient_info'),  // phone/email/etc
-  contactId: text('contact_id').references(() => contacts.id),  // for per-contact share tracking
-  createdBy: text('created_by').references(() => users.id),
-  createdAt: text('created_at').default(timestamp),
+  segmentId: text('segment_id').references(() => contactSegments.id),  // for segment-based sharing
+  // Real columns are shared_by / shared_at (0010_marketing_tables.sql)
+  sharedBy: text('shared_by').references(() => users.id),
+  sharedAt: text('shared_at').default(timestamp),
 }, (table) => [
   index('flyer_shares_flyer_id_idx').on(table.flyerId),
   index('flyer_shares_channel_idx').on(table.channel),
-  index('flyer_shares_contact_id_idx').on(table.contactId),
+  index('flyer_shares_segment_id_idx').on(table.segmentId),
 ]);
 
 // ============================================================
@@ -1474,12 +1549,17 @@ export const drivers = sqliteTable('drivers', {
   totalTrips: integer('total_trips').default(0),
   dateOfJoining: text('date_of_joining'),
   notes: text('notes'),
+  // R145: crew role (driver, tour_leader, both) and the staff user this crew member is, if any (via 0059_coach_trip_stops.sql)
+  crewRole: text('crew_role').notNull().default('driver'),
+  userId: text('user_id').references(() => users.id),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('drivers_tenant_id_idx').on(table.tenantId),
+  index('drivers_crew_role_idx').on(table.crewRole),
+  index('drivers_user_id_idx').on(table.userId),
   index('drivers_phone_idx').on(table.phone),
   index('drivers_status_idx').on(table.status),
   index('drivers_is_deleted_idx').on(table.isDeleted),
@@ -1572,11 +1652,18 @@ export const tripAssignments = sqliteTable('trip_assignments', {
   contactId: text('contact_id').references(() => contacts.id),
   invoiceId: text('invoice_id').references(() => invoices.id),
   voucherId: text('voucher_id').references(() => vouchers.id),
+  // R145: coach trips (via 0059_coach_trip_stops.sql)
+  departureId: text('departure_id').references(() => departures.id),
+  tripKind: text('trip_kind').notNull().default('transfer'), // transfer, coach
+  tourLeaderId: text('tour_leader_id').references(() => drivers.id),
   isDeleted: integer('is_deleted').default(0),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('trip_assignments_tenant_id_idx').on(table.tenantId),
+  index('trip_assignments_departure_idx').on(table.departureId),
+  index('trip_assignments_tour_leader_idx').on(table.tourLeaderId),
+  index('trip_assignments_kind_idx').on(table.tripKind),
   index('trip_assignments_lead_id_idx').on(table.leadId),
   index('trip_assignments_vehicle_id_idx').on(table.vehicleId),
   index('trip_assignments_driver_id_idx').on(table.driverId),
@@ -1616,6 +1703,57 @@ export const tripTimeline = sqliteTable('trip_timeline', {
 }, (table) => [
   index('trip_timeline_trip_id_idx').on(table.tripId),
   index('trip_timeline_status_idx').on(table.status),
+]);
+
+// R145: the ordered stops of a coach trip and the passengers boarding at them (docs/readiness/TOUR-OPERATOR-DESIGN.md 3.3)
+export const tripStops = sqliteTable('trip_stops', {
+  id: text('id').primaryKey(),
+  tripId: text('trip_id').notNull().references(() => tripAssignments.id, { onDelete: 'cascade' }),
+  departureStopId: text('departure_stop_id'), // null for a trip with no departure
+  sortOrder: integer('sort_order').notNull().default(0),
+  name: text('name').notNull(),
+  address: text('address'),
+  lat: real('lat'),
+  lng: real('lng'),
+  scheduledAt: text('scheduled_at'), // UTC ISO
+  documentsCheck: integer('documents_check').notNull().default(0),
+  status: text('status').notNull().default('pending'), // pending, arrived, departed, skipped
+  arrivedAt: text('arrived_at'),
+  departedAt: text('departed_at'),
+  arrivedLat: real('arrived_lat'),
+  arrivedLng: real('arrived_lng'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('trip_stops_trip_idx').on(table.tripId, table.sortOrder),
+]);
+
+export const tripPassengers = sqliteTable('trip_passengers', {
+  id: text('id').primaryKey(),
+  tripId: text('trip_id').notNull().references(() => tripAssignments.id, { onDelete: 'cascade' }),
+  tripStopId: text('trip_stop_id').references(() => tripStops.id, { onDelete: 'set null' }),
+  seatPassengerId: text('seat_passenger_id').references(() => seatPassengers.id, { onDelete: 'set null' }), // null for an ad-hoc passenger
+  contactId: text('contact_id').references(() => contacts.id),
+  name: text('name').notNull(),
+  phone: text('phone'),
+  seats: integer('seats').notNull().default(1),
+  boardingStatus: text('boarding_status').notNull().default('pending'), // pending, boarded, no_show
+  boardedAt: text('boarded_at'),
+  markedByDriverId: text('marked_by_driver_id'),
+  markedByUserId: text('marked_by_user_id'),
+  documentsChecked: integer('documents_checked').notNull().default(0),
+  documentsCheckedAt: text('documents_checked_at'),
+  lastOpId: text('last_op_id'), // idempotency for offline ticks from the app
+  boardingOpAt: text('boarding_op_at'), // clock time of the tick last applied; an older tick arriving later is ignored
+  documentsOpAt: text('documents_op_at'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('trip_passengers_trip_idx').on(table.tripId, table.tripStopId),
+  index('trip_passengers_stop_idx').on(table.tripStopId),
+  index('trip_passengers_seat_passenger_idx').on(table.seatPassengerId),
+  index('trip_passengers_contact_idx').on(table.contactId),
 ]);
 
 // ============================================================
@@ -1704,6 +1842,16 @@ export const vehicleRateCards = sqliteTable('vehicle_rate_cards', {
 // FLEET MANAGEMENT: REMINDER LOG (avoid duplicate notifications)
 // ============================================================
 
+export const cronJobRuns = sqliteTable('cron_job_runs', {
+  tenantId: text('tenant_id').notNull(),
+  job: text('job').notNull(),
+  periodKey: text('period_key').notNull(),
+  claimedAt: text('claimed_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.tenantId, table.job, table.periodKey] }),
+  index('cron_job_runs_claimed_idx').on(table.claimedAt),
+]);
+
 export const reminderLog = sqliteTable('reminder_log', {
   id: text('id').primaryKey(),
   entityType: text('entity_type').notNull(),
@@ -1750,9 +1898,27 @@ export const voipSettings = sqliteTable('voip_settings', {
   autoCreateLeadMissedCall: integer('auto_create_lead_missed_call').default(1),
   recordingRetentionDays: integer('recording_retention_days').default(90),
   recordingStorageBytes: integer('recording_storage_bytes').default(0),
+  recordingConsentMode: text('recording_consent_mode').default('announce'), // announce, off, on_request
+  recordingAnnouncement: text('recording_announcement'),
+  callAiEnabled: integer('call_ai_enabled').default(0),
+  callAiEngine: text('call_ai_engine').default('standard'), // standard, premium
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 });
+
+// ============================================================
+// PROVIDER EVENTS (R302): callbacks processed once
+// ============================================================
+
+export const providerEvents = sqliteTable('provider_events', {
+  provider: text('provider').notNull(),
+  providerCallId: text('provider_call_id').notNull(),
+  event: text('event').notNull(),
+  sequence: text('sequence').notNull().default(''),
+  receivedAt: text('received_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.provider, table.providerCallId, table.event, table.sequence] }),
+]);
 
 // ============================================================
 // CALL LOGS (TICKET-370)
@@ -1773,11 +1939,19 @@ export const callLogs = sqliteTable('call_logs', {
   recordingUrl: text('recording_url'),
   recordingR2Key: text('recording_r2_key'),
   recordingDuration: integer('recording_duration'),
+  recordingProviderId: text('recording_provider_id'),
+  recordingBytes: integer('recording_bytes'),
+  recordingExpiresAt: text('recording_expires_at'),
+  recordingState: text('recording_state'), // provider, stored, failed, expired
+  recordingProviderDeletedAt: text('recording_provider_deleted_at'), // when the provider's copy was deleted after the copy into our storage
+  recordingConsent: text('recording_consent'), // announced, given, none
+  aiStatus: text('ai_status'), // queued, transcribed, summarised, skipped, failed
+  aiStatusReason: text('ai_status_reason'),
   notes: text('notes'),
   ivrPath: text('ivr_path'), // JSON array of IVR digits pressed
   routedTo: text('routed_to').references(() => users.id, { onDelete: 'set null' }),
   answeredBy: text('answered_by').references(() => users.id, { onDelete: 'set null' }),
-  createdBy: text('created_by').references(() => users.id).notNull(),
+  createdBy: text('created_by').references(() => users.id), // NULL for inbound calls (no user made them)
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -1788,6 +1962,9 @@ export const callLogs = sqliteTable('call_logs', {
   index('call_logs_status_idx').on(table.status),
   uniqueIndex('call_logs_twilio_sid_idx').on(table.twilioCallSid),
   index('call_logs_provider_call_id_idx').on(table.providerCallId),
+  uniqueIndex('call_logs_provider_call_id_uniq').on(table.providerCallId).where(sql`provider_call_id IS NOT NULL`),
+  index('call_logs_routed_to_idx').on(table.routedTo),
+  index('call_logs_recording_expires_idx').on(table.recordingExpiresAt),
 ]);
 
 // ============================================================
@@ -2183,6 +2360,8 @@ export const chatbotConfig = sqliteTable('chatbot_config', {
   maxAutoReplies: integer('max_auto_replies').default(10),
   handoffThreshold: integer('handoff_threshold').default(5), // after N messages, offer handoff
   systemPrompt: text('system_prompt'), // custom instructions for AI
+  allowedOrigins: text('allowed_origins'), // JSON array of website origins allowed to embed the widget
+  contactCapture: text('contact_capture'), // JSON: when and which contact details the widget asks for (R151); NULL = never
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -2211,6 +2390,9 @@ export const chatbotConversations = sqliteTable('chatbot_conversations', {
   totalCost: real('total_cost').default(0),
   lastMessageAt: text('last_message_at'),
   closedAt: text('closed_at'),
+  contactConsentAt: text('contact_consent_at'), // when the visitor agreed to be contacted (R151)
+  contactConsentText: text('contact_consent_text'), // the exact wording they agreed to
+  contactMarketingOptIn: integer('contact_marketing_opt_in').default(0), // boolean: the optional marketing box
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -2393,3 +2575,444 @@ export const aiMarketingSuggestions = sqliteTable('ai_marketing_suggestions', {
   index('ai_mkt_suggestions_priority_idx').on(table.priority),
 ]);
 
+// ============================================================
+// AUTOMATION ENGINE + EMBEDDED ASSISTANT
+// ============================================================
+
+export const domainEvents = sqliteTable('domain_events', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(), // lead.created, message.received, payment.recorded, ...
+  entityType: text('entity_type').notNull(),
+  entityId: text('entity_id').notNull(),
+  payload: text('payload'), // JSON
+  actorId: text('actor_id'), // null for public channels and schedules
+  depth: integer('depth').notNull().default(0), // > 0 when caused by an automation
+  processedAt: text('processed_at'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('domain_events_type_idx').on(table.type),
+  index('domain_events_entity_idx').on(table.entityType, table.entityId),
+  index('domain_events_created_at_idx').on(table.createdAt),
+]);
+
+export const automationRules = sqliteTable('automation_rules', {
+  id: text('id').primaryKey(),
+  recipeKey: text('recipe_key').notNull(),
+  mode: text('mode').notNull().default('suggest'), // off, suggest, auto
+  settings: text('settings'), // JSON
+  trigger: text('trigger'), // custom rules only
+  conditions: text('conditions'), // custom rules only (JSON)
+  actions: text('actions'), // custom rules only (JSON)
+  updatedBy: text('updated_by'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('automation_rules_recipe_key_idx').on(table.recipeKey),
+]);
+
+export const automationRuns = sqliteTable('automation_runs', {
+  id: text('id').primaryKey(),
+  ruleKey: text('rule_key').notNull(),
+  eventId: text('event_id'),
+  eventType: text('event_type'),
+  entityType: text('entity_type'),
+  entityId: text('entity_id'),
+  outcome: text('outcome').notNull(), // suggested, applied, skipped, failed
+  detail: text('detail'),
+  suggestionId: text('suggestion_id'),
+  durationMs: integer('duration_ms').default(0),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('automation_runs_rule_key_idx').on(table.ruleKey),
+  index('automation_runs_created_at_idx').on(table.createdAt),
+]);
+
+export const assistantSuggestions = sqliteTable('assistant_suggestions', {
+  id: text('id').primaryKey(),
+  ruleKey: text('rule_key').notNull(),
+  origin: text('origin').notNull().default('rule'), // rule, ai
+  sourceType: text('source_type'),
+  sourceId: text('source_id'),
+  entityType: text('entity_type').notNull(), // where the suggestion is shown
+  entityId: text('entity_id').notNull(),
+  contactId: text('contact_id'),
+  leadId: text('lead_id'),
+  actionType: text('action_type').notNull(),
+  params: text('params').notNull(), // JSON
+  title: text('title').notNull(),
+  reason: text('reason'),
+  confidence: real('confidence'),
+  risk: text('risk').notNull().default('medium'), // low, medium, high
+  status: text('status').notNull().default('pending'), // pending, applying, applied, auto_applied, dismissed, undone, failed
+  dedupeKey: text('dedupe_key').notNull(),
+  result: text('result'), // JSON: created entities
+  undo: text('undo'), // JSON: what undo needs
+  error: text('error'),
+  assignedTo: text('assigned_to'),
+  appliedBy: text('applied_by'),
+  appliedAt: text('applied_at'),
+  modelUsed: text('model_used'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('assistant_suggestions_dedupe_idx').on(table.dedupeKey),
+  index('assistant_suggestions_entity_idx').on(table.entityType, table.entityId),
+  index('assistant_suggestions_status_idx').on(table.status),
+  index('assistant_suggestions_lead_idx').on(table.leadId),
+  index('assistant_suggestions_contact_idx').on(table.contactId),
+  index('assistant_suggestions_created_at_idx').on(table.createdAt),
+]);
+
+export const assistantMessageAnalysis = sqliteTable('assistant_message_analysis', {
+  messageId: text('message_id').primaryKey(),
+  intent: text('intent').notNull(), // enquiry, change_request, confirmation, payment, question, complaint, other
+  urgency: text('urgency'),
+  language: text('language'),
+  needsWork: integer('needs_work').default(0),
+  entities: text('entities'), // JSON
+  draftReply: text('draft_reply'),
+  summary: text('summary'),
+  source: text('source').notNull().default('rules'), // rules, ai
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+});
+
+// R207: the agency's own Razorpay or Stripe account. Secrets are sealed (crypto-box) and never returned.
+export const paymentGatewayAccounts = sqliteTable('payment_gateway_accounts', {
+  id: text('id').primaryKey(),
+  gateway: text('gateway').notNull(), // razorpay, stripe, mock (test gateway, local only)
+  mode: text('mode').notNull().default('test'), // test, live
+  keyId: text('key_id'),
+  secretEnc: text('secret_enc'),
+  secretLast4: text('secret_last4'),
+  webhookSecretEnc: text('webhook_secret_enc'),
+  isActive: integer('is_active').notNull().default(1),
+  lastTestedAt: text('last_tested_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('payment_gateway_accounts_gateway_idx').on(table.gateway),
+]);
+
+// R207: verified gateway events, processed once (primary key = gateway + the provider's event id).
+export const paymentEvents = sqliteTable('payment_events', {
+  gateway: text('gateway').notNull(),
+  eventId: text('event_id').notNull(),
+  eventType: text('event_type'),
+  paymentId: text('payment_id'),
+  receivedAt: text('received_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.gateway, table.eventId] }),
+]);
+
+// R213: the agency's WhatsApp number on Meta's Cloud API. Token and app secret are sealed (crypto-box) and never returned.
+export const whatsappMetaAccounts = sqliteTable('whatsapp_meta_accounts', {
+  id: text('id').primaryKey(),
+  phoneNumberId: text('phone_number_id').notNull(),
+  wabaId: text('waba_id'),
+  displayPhone: text('display_phone'),
+  accessTokenEnc: text('access_token_enc'),
+  accessTokenLast4: text('access_token_last4'),
+  appSecretEnc: text('app_secret_enc'),
+  isActive: integer('is_active').notNull().default(1),
+  lastTestedAt: text('last_tested_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('whatsapp_meta_accounts_phone_idx').on(table.phoneNumberId),
+]);
+
+// ============================================================
+// GROUP DEPARTURES (R139, docs/readiness/TOUR-OPERATOR-DESIGN.md section 3.1)
+// A tour is the product, a departure one dated run of it, a seat booking one party's claim on seats of one departure
+// (always tied to a lead) and a seat passenger one manifest row. "Extras" are the optional paid items of a tour.
+// ============================================================
+
+export const tours = sqliteTable('tours', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  destination: text('destination'),
+  itineraryTemplateId: text('itinerary_template_id').references(() => itineraryTemplates.id),
+  durationDays: integer('duration_days'),
+  currency: text('currency'), // null = agency currency
+  defaultCapacity: integer('default_capacity'),
+  bookingCutoffDays: integer('booking_cutoff_days'), // null = agency setting (the next five columns too)
+  extrasCutoffDays: integer('extras_cutoff_days'),
+  holdExpiryHours: integer('hold_expiry_hours'),
+  confirmMode: text('confirm_mode'), // manual, auto_when_available, on_deposit
+  depositType: text('deposit_type'), // none, percent, per_seat, fixed
+  depositValue: real('deposit_value'),
+  passengerFields: text('passenger_fields'), // JSON override of the agency list
+  roomTypes: text('room_types'), // JSON override of the agency list
+  ageBands: text('age_bands'), // R164: the tour's own age bands (JSON); NULL = the agency's bands
+  terms: text('terms'),
+  status: text('status').notNull().default('active'), // active, archived
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+  isDeleted: integer('is_deleted').notNull().default(0),
+}, (table) => [
+  uniqueIndex('tours_code_idx').on(table.code),
+  index('tours_status_idx').on(table.status, table.isDeleted),
+  index('tours_template_idx').on(table.itineraryTemplateId),
+]);
+
+export const tourStops = sqliteTable('tour_stops', {
+  id: text('id').primaryKey(),
+  tourId: text('tour_id').notNull().references(() => tours.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  name: text('name').notNull(),
+  address: text('address'),
+  lat: real('lat'),
+  lng: real('lng'),
+  localTime: text('local_time'), // HH:MM on the departure day plus day_offset
+  dayOffset: integer('day_offset').notNull().default(0),
+  kind: text('kind').notNull().default('pickup'), // pickup, dropoff, both, waypoint
+  documentsCheck: integer('documents_check').notNull().default(0),
+  notes: text('notes'),
+}, (table) => [
+  index('tour_stops_tour_idx').on(table.tourId, table.sortOrder),
+]);
+
+export const departures = sqliteTable('departures', {
+  id: text('id').primaryKey(),
+  tourId: text('tour_id').notNull().references(() => tours.id),
+  code: text('code').notNull(),
+  startDate: text('start_date').notNull(), // tenant-local date
+  endDate: text('end_date').notNull(),
+  startTime: text('start_time'), // HH:MM
+  status: text('status').notNull().default('draft'), // draft, open, closed, departed, completed, cancelled
+  capacityMode: text('capacity_mode').notNull().default('manual'), // vehicles (sum of departure_vehicles.capacity), manual
+  capacity: integer('capacity').notNull().default(0),
+  bookingCutoffDate: text('booking_cutoff_date'),
+  extrasCutoffDate: text('extras_cutoff_date'),
+  holdExpiryHours: integer('hold_expiry_hours'),
+  confirmMode: text('confirm_mode'),
+  showSeatsLeft: text('show_seats_left'), // always, below_threshold, never
+  publicBookingEnabled: integer('public_booking_enabled').notNull().default(0),
+  tourLeaderDriverId: text('tour_leader_driver_id').references(() => drivers.id),
+  tourLeaderUserId: text('tour_leader_user_id').references(() => users.id),
+  calendarEventId: text('calendar_event_id'),
+  notes: text('notes'),
+  cancelledReason: text('cancelled_reason'),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+  isDeleted: integer('is_deleted').notNull().default(0),
+}, (table) => [
+  uniqueIndex('departures_code_idx').on(table.code),
+  index('departures_tour_start_idx').on(table.tourId, table.startDate),
+  index('departures_status_start_idx').on(table.status, table.startDate),
+]);
+
+export const departureVehicles = sqliteTable('departure_vehicles', {
+  id: text('id').primaryKey(),
+  departureId: text('departure_id').notNull().references(() => departures.id, { onDelete: 'cascade' }),
+  vehicleId: text('vehicle_id').references(() => vehicles.id), // null for a hired coach
+  label: text('label'),
+  capacity: integer('capacity').notNull().default(0),
+  driverId: text('driver_id').references(() => drivers.id),
+  seatLayout: text('seat_layout'), // JSON: rows, columns, aisle, seat labels, premium seats
+  sortOrder: integer('sort_order').notNull().default(0),
+}, (table) => [
+  index('departure_vehicles_departure_idx').on(table.departureId, table.sortOrder),
+]);
+
+export const departureStops = sqliteTable('departure_stops', {
+  id: text('id').primaryKey(),
+  departureId: text('departure_id').notNull().references(() => departures.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  name: text('name').notNull(),
+  address: text('address'),
+  lat: real('lat'),
+  lng: real('lng'),
+  localTime: text('local_time'),
+  dayOffset: integer('day_offset').notNull().default(0),
+  kind: text('kind').notNull().default('pickup'),
+  documentsCheck: integer('documents_check').notNull().default(0),
+  notes: text('notes'),
+  scheduledAt: text('scheduled_at'), // UTC ISO, from the departure date, day_offset and local_time in the tenant zone
+}, (table) => [
+  index('departure_stops_departure_idx').on(table.departureId, table.sortOrder),
+]);
+
+export const tourPrices = sqliteTable('tour_prices', {
+  id: text('id').primaryKey(),
+  tourId: text('tour_id').notNull().references(() => tours.id, { onDelete: 'cascade' }),
+  departureId: text('departure_id').references(() => departures.id, { onDelete: 'cascade' }), // null = tour default
+  kind: text('kind').notNull(), // age_band, room_supplement, seat_surcharge, other
+  key: text('key').notNull(),
+  label: text('label'),
+  amount: real('amount').notNull().default(0),
+  currency: text('currency'),
+  sortOrder: integer('sort_order').notNull().default(0),
+}, (table) => [
+  index('tour_prices_tour_idx').on(table.tourId, table.departureId),
+  index('tour_prices_departure_idx').on(table.departureId),
+]);
+
+export const seatBookings = sqliteTable('seat_bookings', {
+  id: text('id').primaryKey(),
+  departureId: text('departure_id').notNull().references(() => departures.id),
+  leadId: text('lead_id').notNull().references(() => leads.id),
+  contactId: text('contact_id').notNull().references(() => contacts.id),
+  itineraryId: text('itinerary_id'),
+  invoiceId: text('invoice_id'),
+  status: text('status').notNull().default('held'), // held, confirmed, waitlisted, cancelled, expired
+  seats: integer('seats').notNull().default(1),
+  holdExpiresAt: text('hold_expires_at'),
+  waitlistPosition: integer('waitlist_position'),
+  offeredAt: text('offered_at'),
+  confirmedAt: text('confirmed_at'),
+  confirmedBy: text('confirmed_by'), // a user id, or auto, deposit, quote_accept
+  cancelledAt: text('cancelled_at'),
+  cancelReason: text('cancel_reason'),
+  source: text('source').notNull().default('staff'), // staff, public_page, quote_accept, assistant, import
+  roomNotes: text('room_notes'),
+  notes: text('notes'),
+  createdBy: text('created_by'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('seat_bookings_departure_status_idx').on(table.departureId, table.status),
+  index('seat_bookings_lead_idx').on(table.leadId),
+  index('seat_bookings_contact_idx').on(table.contactId),
+  // One active claim per lead and departure (the migration makes it a partial index over held, confirmed and waitlisted).
+  uniqueIndex('seat_bookings_active_lead_idx').on(table.departureId, table.leadId).where(sql`status IN ('held', 'confirmed', 'waitlisted')`),
+]);
+
+export const seatPassengers = sqliteTable('seat_passengers', {
+  id: text('id').primaryKey(),
+  seatBookingId: text('seat_booking_id').notNull().references(() => seatBookings.id, { onDelete: 'cascade' }),
+  departureId: text('departure_id').notNull().references(() => departures.id), // denormalised for manifest queries
+  travellerId: text('traveller_id').references(() => travellers.id),
+  firstName: text('first_name').notNull().default(''),
+  lastName: text('last_name').notNull().default(''),
+  gender: text('gender'),
+  dateOfBirth: text('date_of_birth'),
+  ageYears: integer('age_years'),
+  bandKey: text('band_key'),
+  pickupStopId: text('pickup_stop_id').references(() => departureStops.id),
+  roomType: text('room_type'),
+  shareOk: integer('share_ok').notNull().default(0),
+  shareGender: integer('share_gender').notNull().default(0),
+  roomGroup: text('room_group'),
+  seatNumber: text('seat_number'),
+  seatSurcharge: real('seat_surcharge'),
+  mealPreference: text('meal_preference'),
+  documentsStatus: text('documents_status').notNull().default('unknown'), // unknown, provided, checked, problem
+  documentsCheckedAt: text('documents_checked_at'),
+  documentsCheckedByDriverId: text('documents_checked_by_driver_id'),
+  documentsCheckedByUserId: text('documents_checked_by_user_id'),
+  extraFields: text('extra_fields'), // JSON: values of the agency-defined passenger fields
+  status: text('status').notNull().default('active'), // active, cancelled
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('seat_passengers_booking_idx').on(table.seatBookingId),
+  index('seat_passengers_departure_idx').on(table.departureId, table.status),
+  index('seat_passengers_traveller_idx').on(table.travellerId),
+  index('seat_passengers_pickup_idx').on(table.pickupStopId),
+]);
+
+export const tourExtras = sqliteTable('tour_extras', {
+  id: text('id').primaryKey(),
+  tourId: text('tour_id').references(() => tours.id, { onDelete: 'cascade' }), // null = every tour
+  departureId: text('departure_id').references(() => departures.id, { onDelete: 'cascade' }), // null = every departure of the tour
+  dayNumber: integer('day_number'), // null = whole trip
+  title: text('title').notNull(),
+  description: text('description'),
+  price: real('price').notNull().default(0),
+  currency: text('currency'),
+  bandPrices: text('band_prices'), // JSON {bandKey: amount}
+  rateCardId: text('rate_card_id').references(() => rateCards.id),
+  supplierId: text('supplier_id').references(() => suppliers.id),
+  capacity: integer('capacity'), // null = unlimited
+  cutoffHoursBefore: integer('cutoff_hours_before'),
+  refundableUntilHours: integer('refundable_until_hours'),
+  isActive: integer('is_active').notNull().default(1),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('tour_extras_tour_idx').on(table.tourId, table.departureId),
+  index('tour_extras_departure_idx').on(table.departureId),
+]);
+
+export const passengerExtras = sqliteTable('passenger_extras', {
+  id: text('id').primaryKey(),
+  seatPassengerId: text('seat_passenger_id').notNull().references(() => seatPassengers.id, { onDelete: 'cascade' }),
+  tourExtraId: text('tour_extra_id').notNull().references(() => tourExtras.id),
+  departureId: text('departure_id').notNull().references(() => departures.id),
+  quantity: integer('quantity').notNull().default(1),
+  unitPrice: real('unit_price').notNull().default(0),
+  currency: text('currency'),
+  status: text('status').notNull().default('selected'), // selected, invoiced, paid, cancelled
+  invoiceId: text('invoice_id'),
+  invoiceItemId: text('invoice_item_id'),
+  selectedVia: text('selected_via').notNull().default('staff'), // staff, self_service
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('passenger_extras_passenger_idx').on(table.seatPassengerId),
+  index('passenger_extras_extra_idx').on(table.tourExtraId, table.status),
+  index('passenger_extras_departure_idx').on(table.departureId),
+]);
+
+export const departureCosts = sqliteTable('departure_costs', {
+  id: text('id').primaryKey(),
+  departureId: text('departure_id').notNull().references(() => departures.id, { onDelete: 'cascade' }),
+  supplierId: text('supplier_id').references(() => suppliers.id),
+  description: text('description').notNull(),
+  kind: text('kind').notNull().default('per_departure'), // per_departure, per_seat
+  amount: real('amount').notNull().default(0),
+  currency: text('currency'),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('departure_costs_departure_idx').on(table.departureId),
+]);
+
+export const departureMessageRules = sqliteTable('departure_message_rules', {
+  id: text('id').primaryKey(),
+  tourId: text('tour_id').references(() => tours.id, { onDelete: 'cascade' }), // null = all tours
+  name: text('name').notNull(),
+  templateId: text('template_id').references(() => messageTemplates.id),
+  channel: text('channel').notNull().default('preferred'), // preferred, whatsapp, email, sms
+  fallbackChannel: text('fallback_channel'),
+  anchor: text('anchor').notNull().default('start'), // start, end, extras_cutoff
+  offsetDays: integer('offset_days').notNull().default(0), // signed
+  localTime: text('local_time'),
+  audience: text('audience').notNull().default('confirmed'), // confirmed, confirmed_and_held, waitlisted
+  recipient: text('recipient').notNull().default('booking_contact'), // booking_contact, each_passenger_with_contact
+  purpose: text('purpose').notNull().default('service'), // service, marketing
+  mode: text('mode').notNull().default('suggest'), // auto, suggest
+  isActive: integer('is_active').notNull().default(1),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('departure_message_rules_tour_idx').on(table.tourId, table.isActive),
+]);
+
+export const departureMessageSends = sqliteTable('departure_message_sends', {
+  id: text('id').primaryKey(),
+  ruleId: text('rule_id').notNull().references(() => departureMessageRules.id, { onDelete: 'cascade' }),
+  departureId: text('departure_id').notNull().references(() => departures.id, { onDelete: 'cascade' }),
+  seatBookingId: text('seat_booking_id').notNull().references(() => seatBookings.id),
+  seatPassengerId: text('seat_passenger_id').references(() => seatPassengers.id),
+  contactId: text('contact_id').references(() => contacts.id),
+  messageLogId: text('message_log_id'),
+  suggestionId: text('suggestion_id'),
+  status: text('status').notNull(), // sent, suggested, skipped_opt_out, skipped_cap, skipped_no_address, failed
+  detail: text('detail'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  // A message goes out once per rule, departure, booking and passenger.
+  uniqueIndex('departure_message_sends_key_idx').on(table.ruleId, table.departureId, table.seatBookingId, sql`IFNULL(${table.seatPassengerId}, '')`),
+  index('departure_message_sends_departure_idx').on(table.departureId),
+  index('departure_message_sends_contact_idx').on(table.contactId),
+]);

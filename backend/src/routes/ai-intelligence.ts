@@ -9,10 +9,13 @@ import { z } from 'zod';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { AIRouter } from '../services/ai-router';
+import { AIRouter, AiUnavailableError } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
+
 const app = new Hono<AppContext>();
+app.onError(aiAwareErrorHandler);
 
 // ============================================================
 // NL QUERY — "Ask Your CRM" (TICKET-439)
@@ -35,7 +38,7 @@ app.post('/nl-query', async (c) => {
   const start = Date.now();
 
   try {
-    const router = new AIRouter(env);
+    const router = new AIRouter(env, undefined, c.get('tenantId'));
     const systemPrompt = `You are a CRM analytics assistant. Convert natural language questions to safe, read-only SQL queries for a SQLite database.
 
 Available tables: leads (id, title, status, source, destination, estimated_value, pax_count, assignee_id, created_at),
@@ -57,7 +60,7 @@ If the question can't be answered with a query, return { "sql": null, "explanati
 
     try {
       const sqlParsed = JSON.parse(result.result);
-      generatedSql = sqlParsed.sql;
+      generatedSql = typeof sqlParsed.sql === 'string' ? sqlParsed.sql : null; // a model that answers without "sql" must not reach the database bind as undefined
 
       if (generatedSql) {
         // Safety check
@@ -95,6 +98,8 @@ If the question can't be answered with a query, return { "sql": null, "explanati
       data: { id, query, sql: generatedSql, result: queryResult, narrative, entityTypes, model: result.model, cost: result.cost, durationMs, provider: result.provider },
     });
   } catch (e: any) {
+    // No provider: not an error worth logging as a failed query, and no usage is consumed.
+    if (e instanceof AiUnavailableError) return aiUnavailableResponse(c, e.message);
     await db.prepare(`
       INSERT INTO ai_nl_queries (id, user_id, query, status, error_message, duration_ms)
       VALUES (?, ?, ?, 'error', ?, ?)
@@ -175,7 +180,7 @@ app.post('/insights/customer/:contactId', async (c) => {
   const leads = await db.prepare(`SELECT * FROM leads WHERE contact_id = ? ORDER BY created_at DESC LIMIT 20`).bind(contactId).all();
   const invoices = await db.prepare(`SELECT * FROM invoices WHERE contact_id = ? ORDER BY created_at DESC LIMIT 20`).bind(contactId).all();
 
-  const router = new AIRouter(c.env);
+  const router = new AIRouter(c.env, undefined, c.get('tenantId'));
   const result = await router.route(
     'customer_insight',
     JSON.stringify({ contact, leads: leads.results || [], invoices: invoices.results || [] }),
@@ -213,7 +218,7 @@ app.post('/insights/predictions', async (c) => {
     ORDER BY created_at DESC LIMIT 50
   `).all();
 
-  const router = new AIRouter(c.env);
+  const router = new AIRouter(c.env, undefined, c.get('tenantId'));
   const result = await router.route(
     'predictive_suggestion',
     JSON.stringify(leads.results || []),
@@ -295,7 +300,7 @@ app.post('/lead-score/:leadId', async (c) => {
   const completedFu = fuResults.filter((f: any) => f.status === 'completed').length;
   const daysSince = Math.floor((Date.now() - new Date((lead as any).created_at || '').getTime()) / 86400000);
 
-  const router = new AIRouter(c.env);
+  const router = new AIRouter(c.env, undefined, c.get('tenantId'));
   const result = await router.route(
     'lead_scoring',
     JSON.stringify({ lead, followUps: fuResults.length, completedFollowUps: completedFu, noteCount: 0, daysSinceCreation: daysSince }),
@@ -394,7 +399,7 @@ app.post('/ocr/passport', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const textPrompt = `Extract passport data from this image. Return JSON: { "fullName": "...", "surname": "...", "givenNames": "...", "passportNumber": "...", "nationality": "...", "dateOfBirth": "YYYY-MM-DD", "sex": "M|F", "placeOfBirth": "...", "dateOfIssue": "YYYY-MM-DD", "dateOfExpiry": "YYYY-MM-DD", "issuingAuthority": "...", "mrz": "..." }`;
 
   const result = await router.routeVision('passport_ocr', parsed.data.imageBase64, 'image/jpeg', textPrompt);
@@ -431,7 +436,7 @@ app.post('/ocr/visa-classify', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const classifications: any[] = [];
 
   for (const img of parsed.data.images) {
@@ -471,8 +476,8 @@ app.post('/ocr/supplier-invoice', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
-  const router = new AIRouter(env);
-  const textPrompt = `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "INR", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }`;
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
+  const textPrompt = `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "ISO 4217 code as printed on the invoice", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }`;
 
   const result = await router.routeVision('supplier_invoice_ocr', parsed.data.imageBase64, 'image/jpeg', textPrompt);
 
@@ -551,7 +556,7 @@ app.post('/smart-followup/:leadId', async (c) => {
   const fuResults = followUps.results || [];
   const daysSinceLastContact = fuResults.length > 0 ? Math.floor((Date.now() - new Date((fuResults[0] as any).created_at || '').getTime()) / 86400000) : null;
 
-  const router = new AIRouter(c.env);
+  const router = new AIRouter(c.env, undefined, c.get('tenantId'));
   const result = await router.route(
     'followup_timing',
     JSON.stringify({
@@ -646,7 +651,7 @@ app.post('/insights/trends', async (c) => {
   const recentWon = await db.prepare(`SELECT COUNT(*) as count FROM leads WHERE status = 'won' AND updated_at >= ?`).bind(thirtyDaysAgo).first<{ count: number }>();
   const recentRevenue = await db.prepare(`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE status = 'paid' AND created_at >= ?`).bind(thirtyDaysAgo).first<{ total: number }>();
 
-  const router = new AIRouter(c.env);
+  const router = new AIRouter(c.env, undefined, c.get('tenantId'));
   const result = await router.route(
     'trend_detection',
     JSON.stringify({

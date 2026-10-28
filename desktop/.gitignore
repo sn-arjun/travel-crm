@@ -18,6 +18,7 @@ storybook-static/
 # Testing
 coverage/
 playwright-report/
+test-results/
 
 # Environment
 .env
@@ -35,5 +36,15 @@ Thumbs.db
 # Misc
 *.log
 *.tsbuildinfo
+tsconfig.tsbuildinfo
 next-env.d.ts
 e2e/.auth/
+
+# Fix-plan tooling output
+audit/fix/stack/
+audit/fix/probe/
+audit/fix/gates/*-vitest.json
+audit/fix/probe-ids.json
+
+# OpenNext web build (scripts/build-web.mjs)
+.open-next/

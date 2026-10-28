@@ -1,0 +1,55 @@
+{
+  "slice": "itinerary-templates",
+  "title": "Itinerary Templates",
+  "status": "existing",
+  "showcaseOrder": 7,
+  "endpoints": [
+    "DELETE /api/v1/itinerary-templates/:id",
+    "GET /api/v1/itinerary-templates",
+    "GET /api/v1/itinerary-templates/:id",
+    "POST /api/v1/itinerary-templates",
+    "POST /api/v1/itinerary-templates/create-from",
+    "POST /api/v1/itinerary-templates/from-itinerary"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/itineraries.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/itineraries/templates/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/itinerary-templates.spec.ts",
+  "seedHelpers": [
+    "seedItineraryTemplate"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/itineraries/templates/**",
+    "desktop/e2e/itinerary-templates.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Migrated to ListPage archetype (search+filterbar+infinite scroll+skeleton+hover row actions+bulk delete+CSV export of full filtered dataset via a direct high-limit fetch, not just loaded rows). Preview and create-from-template stayed as dialogs, not a Sheet detail drawer, since the preview is a quick read-only card, not a full entity detail view — detailDrawer left false. No relation/phone/address/currency/date fields exist on this entity, so those contract items are not applicable (left false). DELETE /api/v1/itinerary-templates/:id wired for row and bulk delete (previously orphaned/no UI). POST /from-itinerary remains orphaned — no 'save itinerary as template' entry point exists on the itinerary detail page, which is out of this slice's fileAllowlist (desktop/src/app/(app)/itineraries/templates/**). Added to sidebar under Operations as 'Itinerary Templates'.",
+  "showcaseScript": [
+    "Open Itinerary Templates",
+    "Save an existing itinerary as a reusable template",
+    "Create a new itinerary from that template"
+  ]
+}

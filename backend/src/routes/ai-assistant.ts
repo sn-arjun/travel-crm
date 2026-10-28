@@ -7,14 +7,18 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 import { AIRouter } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const aiRoutes = new Hono<AppContext>();
+aiRoutes.onError(aiAwareErrorHandler);
 
 // ═══════════════════════════════════════════════════════════
 // CONVERSATIONS (TICKET-412)
@@ -137,7 +141,8 @@ aiRoutes.post('/extract-lead', zValidator('json', extractLeadSchema), async (c) 
   const { text, source } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
+  const agencyCurrency = (await loadLocaleContext(db)).currency;
 
   const systemPrompt = `You are a travel CRM assistant that extracts lead data from text.
 Extract the following fields from the input text and return as JSON:
@@ -150,7 +155,7 @@ Extract the following fields from the input text and return as JSON:
   "paxCount": number_of_travelers,
   "paxDetails": [{"type": "adult/child/infant", "count": N}],
   "budget": number_or_null,
-  "budgetCurrency": "INR/USD/etc",
+  "budgetCurrency": "ISO 4217 code of the budget, ${agencyCurrency} if the text names no currency",
   "tripType": "honeymoon/family/adventure/business/pilgrimage/group/solo",
   "preferences": ["preference1", "preference2"],
   "hotelPreference": "budget/mid-range/luxury",
@@ -205,7 +210,7 @@ aiRoutes.post('/parse-whatsapp', zValidator('json', z.object({ message: z.string
   const { message } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel CRM assistant. Parse this forwarded WhatsApp message and extract travel inquiry data.
 The message may contain customer name, phone, destination, dates, budget, and preferences.
@@ -247,7 +252,7 @@ aiRoutes.post('/parse-email', zValidator('json', z.object({ email: z.string().mi
   const { email, subject } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const input = subject ? `Subject: ${subject}\n\n${email}` : email;
 
@@ -294,7 +299,7 @@ aiRoutes.post('/scan-business-card', zValidator('json', z.object({
   const { image, mimeType } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const textPrompt = `Extract contact information from this business card. Return as JSON:
 {
@@ -343,7 +348,7 @@ aiRoutes.post('/parse-bulk-leads', zValidator('json', z.object({ text: z.string(
   const { text } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel CRM assistant. Parse this text block which may contain multiple travel inquiries.
 Extract each inquiry as a separate lead. Return as JSON array:
@@ -404,13 +409,13 @@ aiRoutes.post('/generate-itinerary', zValidator('json', generateItinerarySchema)
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   // Build context
   let context = '';
   if (body.destination) context += `Destination: ${body.destination}\n`;
   if (body.duration) context += `Duration: ${body.duration} days\n`;
-  if (body.budget) context += `Budget: ${body.budgetCurrency || 'INR'} ${body.budget}\n`;
+  if (body.budget) context += `Budget: ${body.budgetCurrency || (await loadLocaleContext(db)).currency} ${body.budget}\n`;
   if (body.paxCount) context += `Travelers: ${body.paxCount}\n`;
   if (body.tripType) context += `Trip type: ${body.tripType}\n`;
   if (body.preferences?.length) context += `Preferences: ${body.preferences.join(', ')}\n`;
@@ -531,7 +536,7 @@ aiRoutes.post('/enrich-itinerary', zValidator('json', z.object({
   const { itinerary, enrichments } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const enrichTypes = enrichments || ['descriptions', 'restaurants', 'tips'];
   const systemPrompt = `You are a travel enrichment assistant. Enhance this itinerary with: ${enrichTypes.join(', ')}.
@@ -570,7 +575,8 @@ Return the same JSON structure but with enriched descriptions, added restaurant 
 
 aiRoutes.post('/generate-invoice', zValidator('json', z.object({
   itinerary: z.any(),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency.
+  currency: z.string().optional(),
   gstRate: z.number().default(5),
   tcsRate: z.number().default(5),
   markupPercent: z.number().default(15),
@@ -581,7 +587,8 @@ aiRoutes.post('/generate-invoice', zValidator('json', z.object({
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
+  const currency = body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(db)).currency;
 
   const systemPrompt = `You are a travel invoice generator. Convert this itinerary into structured invoice line items.
 Apply markup of ${body.markupPercent}%, GST at ${body.gstRate}%, and TCS at ${body.tcsRate}%.
@@ -595,7 +602,7 @@ Return as JSON:
   "gstAmount": 0,
   "tcsAmount": 0,
   "totalAmount": 0,
-  "currency": "${body.currency}",
+  "currency": "${currency}",
   "notes": "..."
 }`;
 
@@ -651,7 +658,7 @@ aiRoutes.post('/compose-message', zValidator('json', composeMessageSchema), asyn
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   let contextStr = '';
   if (body.context) {
@@ -716,7 +723,7 @@ aiRoutes.post('/suggest-replies', zValidator('json', z.object({
   const { incomingMessage, channel, customerName } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel agency assistant. Generate 3 quick reply suggestions for this incoming ${channel} message${customerName ? ` from ${customerName}` : ''}.
 Return as JSON array: ["reply1", "reply2", "reply3"]

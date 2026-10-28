@@ -1,0 +1,80 @@
+{
+  "id": "B12",
+  "title": "Backend route bugs: route shadowing, report SQL, campaign recipients, readable validation errors, lead assignment, whoami, contactId filters",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W3",
+  "dependsOn": [
+    "B08"
+  ],
+  "parallelGroup": "W3",
+  "bugIds": [
+    "BUG-027",
+    "BUG-028",
+    "BUG-029",
+    "BUG-061",
+    "BUG-070"
+  ],
+  "fixReqs": [],
+  "estFiles": 50,
+  "goal": "Static routes reachable, all reports return 200, campaign recipients load, validation errors are human-readable, \"unassigned\" leads are possible, desktop can detect super admins and filter related records server-side.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: Hono matches in registration order - calls.ts registers GET /:id (~171) before GET /analytics (~437); fleet.ts GET /vehicles/:id (~71) before /vehicles/availability (~520); /vehicle-rate-cards/:id (~1926) before /vehicle-rate-cards/lookup (~1935) -> 404s (fleet availability grid ignores trips; trip auto-pricing never works). services/reports/fleet-reports.ts:17 uses v.registration_no (column is registration_number); services/reports/lead-reports.ts lead_response_time / followup_compliance have ambiguous created_at -> 400. campaigns.ts:554-559 selects m.sent_at (no such column). 39 route files import zValidator from '@hono/zod-validator' and use its default hook, so 400s carry {error:{name:\"ZodError\", message:\"[\\n {\\n \\\"code\\\"...\"}} (raw JSON string). leads.ts:574-577 always calls resolveAssignee (explicit -> routing rule -> KV round-robin, services/lead-assignment.ts) so a lead can never be unassigned (leads.spec.ts:413 fails; demo tenant auto-assigns \"E2E Salesperson\"). Owner default: explicit `assignedTo: null` in the create body means \"leave unassigned\"; omitted keeps auto-assignment. Super-admin registry check lives in middleware/require-super-admin.ts (MASTER_DB super_admins by email); admin.ts applies it to the whole mount (`app.use('*', requireSuperAdmin)`). Contact detail needs server-side related lists: invoices and payments already accept contactId; leads (createLeadSchema has contactId but list filter?), itineraries, documents, follow-ups, tasks need checking. The fleet dashboard \"Top Drivers\" widget is empty with 3 active drivers (find the endpoint desktop/src/app/(app)/fleet/page.tsx calls).",
+  "steps": [
+    "Route order: in calls.ts and fleet.ts move every static GET path above its sibling `/:id` route (analytics; vehicles/availability; vehicle-rate-cards/lookup; also scan for drivers/schedule, documents/drivers/expiring and any other static segment registered after a param route in ALL route files - grep `\\.get\\('/:` and compare). Add tests hitting each static path.",
+    "Reports: fix fleet-reports.ts registration_no -> registration_number and qualify created_at (table aliases) in lead-reports.ts; add a test that iterates every report id in the reports registry with date_preset=this_month and expects 200.",
+    "campaigns.ts recipients: use the real timestamp column of the joined messages/communications table (check tenant-schema) aliased as sent_at/sentAt; test.",
+    "Create backend/src/utils/validator.ts exporting zValidator(target, schema) that wraps @hono/zod-validator's zValidator with a hook returning 400 {success:false, error:{code:'VALIDATION_ERROR', message:<first issue as \"<field>: <message>\" in plain English>, fields:{\"a.b\":[messages]}}, errors:{same map}}. Replace the import in all route files (`grep -rl \"@hono/zod-validator\" backend/src`), adjusting relative paths. Before doing so, grep packages/shared/lib for how the Dart client reads errors (it must still find a String at error.message). Update any test asserting the old shape.",
+    "BUG-070 leads POST: if `'assignedTo' in body && body.assignedTo === null` skip resolveAssignee and insert NULL; otherwise unchanged. Allow null in the zod schema (already nullable). Update desktop/e2e/leads.spec.ts:413 seed (only that seed payload) to pass assignedTo: null. Test both paths.",
+    "tasks.ts create/update: accept camelCase keys (dueDate, assignedTo, relatedLeadId, relatedContactId, priority...) in addition to snake_case (additive, snake wins if both).",
+    "GET /api/v1/admin/whoami: authenticated (tenant auth middleware) but NOT behind requireSuperAdmin; returns {success:true, data:{isSuperAdmin:boolean}} using a helper exported from middleware/require-super-admin.ts (same registry query). Register it so the admin mount's `use('*')` does not intercept (e.g. mount a tiny router before the admin route in index.ts routeMounts, or route it from auth). Tests: demo admin -> false; a registry email -> true.",
+    "contactId filters (additive): GET /leads, /itineraries (via itineraries.contact_id if present, else JOIN leads), /follow-ups, /tasks (related contact), /documents (if documents reference contacts or leads; support entityType+entityId if that is the model) accept `contactId`. Tests.",
+    "Fleet dashboard top drivers: if the endpoint returns [] while active drivers exist, fix the SQL to list active drivers ordered by completed trips (zero allowed); document the endpoint + response in your report for B23.",
+    "Run backend vitest (>= previous passed count, 0 failed files) and typecheck.",
+    "Backend typecheck to zero (from B02 hand-off): `cd backend && npx tsc --noEmit` reports pre-existing errors in src/cron/campaign-scheduler.ts (3), src/queues/export-queue.ts (13), src/queues/import-queue.ts (3). Fix them with correct types (no `any`, no behaviour change unless it is a real bug - if so add a test). After this batch `npx tsc --noEmit` in backend must be 0 errors.",
+    "From B07 merge: desktop calls GET /api/v1/admin/whoami for every authenticated user and expects 200 {\"success\":true,\"data\":{\"isSuperAdmin\":boolean}} (never 403/404 for tenant users). super-admin.spec.ts:77 currently fails only because whoami 404s. Implement it (additive, in the admin router but without the require-super-admin guard for this one route) with tests; then super-admin.spec.ts:77 must pass."
+  ],
+  "filesAllowlist": [
+    "backend/src/routes/** (validator import swap everywhere; logic changes only in calls, fleet, campaigns, leads, tasks, itineraries, follow-ups, documents, admin)",
+    "backend/src/utils/validator.ts",
+    "backend/src/services/reports/**",
+    "backend/src/middleware/require-super-admin.ts",
+    "backend/src/index.ts (route mount for whoami only)",
+    "backend/test/**",
+    "desktop/e2e/leads.spec.ts (the :413 seed payload only)",
+    "backend/src/cron/campaign-scheduler.ts",
+    "backend/src/queues/export-queue.ts",
+    "backend/src/queues/import-queue.ts"
+  ],
+  "mustNotTouch": [
+    "packages/**",
+    "desktop/src/**",
+    "backend/drizzle/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "GET /calls/analytics, /fleet/vehicles/availability, /fleet/vehicle-rate-cards/lookup?vehicleType=sedan&tripType=airport_pickup (after creating that card) return 200.",
+    "Every report id returns 200.",
+    "GET /campaigns/:id/recipients returns 200.",
+    "POST /leads with source \"walk_in\" returns 400 whose error.message is a readable sentence, not JSON.",
+    "POST /leads with assignedTo:null stays unassigned; GET /leads/unassigned lists it.",
+    "GET /admin/whoami returns isSuperAdmin false for admin@demo.com.",
+    "GET /leads?contactId=<id> filters.",
+    "backend vitest green.",
+    "`cd backend && npx tsc --noEmit` exits 0.",
+    "GET /api/v1/admin/whoami returns 200 {isSuperAdmin:false} for a tenant admin and true for a super admin; super-admin.spec.ts:77 passes."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Many files change only by one import line (the validator swap) - keep those diffs mechanical. B23/B24/B25/B26/B19/B20 depend on this batch."
+}

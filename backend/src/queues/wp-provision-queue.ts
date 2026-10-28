@@ -1,41 +1,17 @@
 import type { Env } from '../types';
+import { processSite, type JobOutcome, type WpProvisionJob } from '../services/wordpress/sites';
 
-export interface WpProvisionJob {
-  tenantId: string;
-  subdomain: string;
-  companyName: string;
-  adminEmail: string;
-  logoUrl?: string;
-  primaryColor?: string;
-}
+export type { WpProvisionJob } from '../services/wordpress/sites';
 
 /**
- * Process WordPress site provisioning jobs.
- * Stub implementation — will be completed in Milestone 20.
- *
- * Flow:
- * 1. Create DNS record via Cloudflare API
- * 2. SSH into Oracle ARM instance
- * 3. Docker Compose up (WordPress + MariaDB containers)
- * 4. Wait for containers to be ready
- * 5. WP-CLI: install core, theme, plugins, demo content
- * 6. Update wordpress_sites table in master D1
- * 7. Send credentials to tenant admin via email
+ * Consumer of WP_PROVISION_QUEUE (R309). The message only names the site; the row in wordpress_sites is the
+ * source of truth. The work (a signed POST to the provisioner, retries with backoff, status and history) lives in
+ * services/wordpress/sites.ts. The returned outcome says whether the message should be redelivered after a delay.
  */
-export async function handleWpProvisionJob(
-  job: WpProvisionJob,
-  env: Env
-): Promise<void> {
-  console.log(
-    `[WP PROVISION QUEUE] Provisioning WordPress for tenant ${job.tenantId}: ${job.subdomain}`
-  );
-
-  // TODO (Milestone 20): Implement full provisioning flow
-  // Step 1: Create DNS record
-  // Step 2: SSH + Docker Compose
-  // Step 3: WP-CLI setup
-  // Step 4: Update master DB
-  // Step 5: Send email notification
-
-  console.log(`[WP PROVISION QUEUE] WordPress provisioning job processed (stub)`);
+export async function handleWpProvisionJob(job: WpProvisionJob, env: Env): Promise<JobOutcome> {
+  if (!job?.siteId) {
+    console.error('[WP PROVISION QUEUE] message without siteId ignored');
+    return {};
+  }
+  return processSite(env, job.siteId);
 }

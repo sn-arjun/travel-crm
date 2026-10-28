@@ -1,0 +1,75 @@
+---
+import '@fontsource/big-shoulders/latin-800.css';
+import '@fontsource/big-shoulders/latin-900.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
+import '@fontsource/ibm-plex-mono/latin-ext-600.css';
+import '@fontsource/instrument-sans/latin-400.css';
+import '@fontsource/instrument-sans/latin-600.css';
+import '@fontsource/instrument-sans/latin-700.css';
+import '../styles/site.css';
+import Seo from '../components/Seo.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import { MARKETS, type MarketKey } from '../data/markets';
+import { ORG_LD } from '../data/seo';
+
+interface Props {
+  title: string;
+  description: string;
+  alternates?: Record<string, string>;
+  jsonLd?: Record<string, unknown>[];
+  /** Market whose prices the HTML carries. */
+  market?: MarketKey;
+  /** Home page only: pick the market from the visitor's time zone on the first visit. */
+  detect?: boolean;
+  type?: 'website' | 'article';
+  noindex?: boolean;
+}
+const { market = 'IN', detect = false, jsonLd = [], ...seo } = Astro.props;
+const views = Object.fromEntries(MARKETS.map((m) => [m.key, { key: m.key, catalogue: m.catalogue, name: m.name, sym: m.sym, locale: m.locale, tax: m.tax, note: m.note, plans: m.plans, aiPacks: m.aiPacks }]));
+---
+<!doctype html>
+<html lang="en" data-market={market} data-detect={detect ? '' : undefined}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121518">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="alternate" type="application/rss+xml" title="TravelCRM Pro blog" href="/rss.xml">
+  <Seo {...seo} jsonLd={[ORG_LD(Astro.site!), ...jsonLd]} />
+  <script is:inline src="/config.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <Nav />
+  <main id="main">
+    <slot />
+  </main>
+  <Footer />
+  <div id="cookie-notice" class="cookie" role="region" aria-label="Cookie notice" hidden>
+    <p>This site sets no tracking cookies. It only remembers your market and this notice in your browser.</p>
+    <button type="button" id="cookie-notice-dismiss">OK</button>
+  </div>
+  <script type="application/json" id="market-data" set:html={JSON.stringify(views)} />
+  <script>
+    import { initConfig } from '../scripts/config';
+    import { initRegion } from '../scripts/region';
+    import { initLivePlans } from '../scripts/plans-live';
+    import { initTabs } from '../scripts/tabs';
+    import { initDesk } from '../scripts/desk';
+    import { initPass } from '../scripts/pass';
+    initConfig();
+    initRegion();
+    initLivePlans();
+    initTabs();
+    initDesk();
+    initPass();
+  </script>
+  <style>
+    .cookie { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 40; max-width: 520px; margin: 0 auto; display: flex; gap: 14px; align-items: center; background: var(--board); color: var(--boardtext); border: 1px solid var(--flapline); border-radius: 12px; padding: 12px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.35); font-size: 14px; }
+    .cookie p { margin: 0; flex: 1 1 auto; }
+    .cookie button { font: inherit; font-weight: 700; background: var(--amber); color: #121518; border: 0; border-radius: 8px; padding: 10px 16px; min-height: 44px; cursor: pointer; }
+  </style>
+</body>
+</html>

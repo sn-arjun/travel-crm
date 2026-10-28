@@ -1,0 +1,72 @@
+{
+  "slice": "suppliers",
+  "title": "Suppliers",
+  "status": "existing",
+  "showcaseOrder": 9,
+  "endpoints": [
+    "DELETE /api/v1/suppliers/:id",
+    "GET /api/v1/suppliers",
+    "GET /api/v1/suppliers/:id",
+    "GET /api/v1/suppliers/:id/ledger",
+    "GET /api/v1/suppliers/:id/payments",
+    "GET /api/v1/suppliers/:id/rate-cards",
+    "GET /api/v1/suppliers/compare-rates",
+    "POST /api/v1/suppliers",
+    "POST /api/v1/suppliers/:id/payments",
+    "POST /api/v1/suppliers/:id/rate",
+    "POST /api/v1/suppliers/:id/rate-cards",
+    "POST /api/v1/suppliers/:id/toggle-preferred",
+    "PUT /api/v1/suppliers/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/suppliers.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/suppliers/page.tsx",
+    "desktop/src/app/(app)/suppliers/[id]/page.tsx",
+    "desktop/src/app/(app)/suppliers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/suppliers/new/page.tsx",
+    "desktop/src/app/(app)/suppliers/compare/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-suppliers.spec.ts",
+    "desktop/e2e/12-m12-suppliers.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/suppliers.spec.ts",
+  "seedHelpers": [
+    "seedSupplier"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/suppliers/**",
+    "desktop/src/lib/api/suppliers.ts",
+    "desktop/src/components/domain/suppliers/**",
+    "desktop/e2e/suppliers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": true,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "No relation fields exist on the supplier entity itself (category/status are enums), so relationCombobox/urlPrefill are satisfied trivially — nothing to wire. The payment-recording dialog on the detail page uses CurrencyInput/DatePicker. Ledger, payments, and rate cards are wired to the real suppliers API in the detail page's Related tabs. Documents tab still uses localStorage (no dedicated supplier-documents endpoint exists) but no longer calls a nonexistent upload endpoint.",
+  "showcaseScript": [
+    "Open Suppliers and filter by category",
+    "Add a supplier with phone country code and address lookup",
+    "Compare rates across suppliers for one service",
+    "Record a supplier payment and view the ledger"
+  ]
+}

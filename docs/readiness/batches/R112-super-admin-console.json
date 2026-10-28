@@ -1,0 +1,124 @@
+{
+  "id": "R112",
+  "tier": 1,
+  "title": "Super admin console uses the backend, OpenNext build, no tracked credentials; desktop super-admin pages removed",
+  "lane": "super-admin",
+  "backend": false,
+  "goal": "Make the operator console a thin, secure client of the backend that can be built and deployed one way, and remove the duplicate console from the agency desktop app.",
+  "why": "super-admin/wrangler.toml tracks a placeholder JWT secret and default super admin email/password; code falls back to the same defaults (src/middleware.ts:4, src/lib/session.ts, src/app/api/auth/route.ts, src/app/api/auth/seed/route.ts); /api/auth/seed is public; the middleware lets any path containing a dot skip auth; code uses @opennextjs/cloudflare while CI, terraform and root scripts use next-on-pages; the Razorpay webhook skips signature checks; announcements, support and SEO pages are mock or unread; the desktop app has its own read-only /super-admin pages.",
+  "featuresToWorks": [
+    "sa.login",
+    "sa.dashboard",
+    "sa.tenants-list",
+    "sa.tenant-provision",
+    "sa.subscriptions",
+    "sa.system-health",
+    "sa.reports",
+    "sa.desktop-pages"
+  ],
+  "dependsOn": [
+    "R111"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "super-admin/wrangler.toml",
+      "super-admin/package.json",
+      "super-admin/next.config.ts",
+      "super-admin/src/middleware.ts",
+      "super-admin/src/lib/auth.ts",
+      "super-admin/src/lib/session.ts",
+      "super-admin/src/lib/db.ts",
+      "super-admin/src/lib/constants.ts",
+      "super-admin/src/app/api/auth/route.ts",
+      "super-admin/src/app/(authenticated)/tenants/new/page.tsx",
+      "super-admin/src/app/(authenticated)/tenants/new/steps/plan-selection.tsx",
+      "super-admin/src/app/(authenticated)/layout.tsx",
+      "super-admin/README.md",
+      "desktop/src/components/layout/nav-config.ts",
+      "desktop/src/components/layout/nav-config.test.ts",
+      "desktop/e2e/super-admin.spec.ts"
+    ],
+    "create": [
+      "super-admin/open-next.config.ts",
+      "super-admin/src/lib/backend.ts",
+      "super-admin/.dev.vars.example",
+      "super-admin/src/components/impersonation-dialog.tsx",
+      "super-admin/src/app/(authenticated)/catalogue/page.tsx",
+      "super-admin/src/components/grant-addon-dialog.tsx"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "landing/**",
+      "packages/**",
+      "desktop/src/app/(app)/!(super-admin)/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Delete super-admin/src/app/api/auth/seed/ and super-admin/src/app/api/webhooks/razorpay/ (billing webhooks move to the backend in R205). Remove [vars] secrets from super-admin/wrangler.toml (keep non-secret ENVIRONMENT and BACKEND_API_URL); add super-admin/.dev.vars.example listing SUPER_ADMIN_JWT_SECRET and BACKEND_API_URL names only. Remove every literal fallback secret/credential in src (grep for SuperAdmin@123, change-this, super-admin-dev-secret); missing secret -> the app returns 500 with a clear log line, never a default.",
+    "src/lib/backend.ts: backendFetch(path, init) server-side helper that forwards the sa_token cookie value as Authorization: Bearer to `${BACKEND_API_URL}/admin/...` and maps the backend envelope { success, data, error }.",
+    "Login: src/app/api/auth/route.ts posts to backend /admin/auth/login and stores the returned JWT in the httpOnly, Secure (except localhost), SameSite=Strict sa_token cookie; middleware.ts verifies it with SUPER_ADMIN_JWT_SECRET and aud super-admin; static asset bypass only for /_next/ and an explicit list of files in public/ (no `pathname.includes(\".\")`).",
+    "Replace every remaining src/app/api/** route that touches MASTER_DB with a call to the backend admin endpoint R111 ported (tenants list/detail/status/plan/features/caps, dashboard, reports, subscriptions, audit-log, system-health). Tenant creation wizard posts to backend POST /admin/tenants (R104) and shows the temporary password once with a copy button and the provisioning status (polling GET /admin/tenants/:id/provisioning; \"Deploy needed\" banner for pending_deploy; Retry on failed). The wizard steps read plans from GET /admin/plans (R109); delete PLANS from src/lib/constants.ts. Remove the MASTER_DB and R2_BUCKET bindings from wrangler.toml once nothing uses them.",
+    "Hide announcements, support and SEO pages from the sidebar and redirect their routes to the dashboard (owner question Q8; leave the files in place with a comment).",
+    "Catalogue page (new, super-admin/src/app/(authenticated)/catalogue/page.tsx): edit plans and features, yearly price per market and currency, included users, extra-user price, monthly AI credits and communication caps, provider unit costs and margin (default 20%) with the computed top-up prices shown live, and add-on products, through R109's /admin/catalogue endpoints. Tenant detail page: usage per channel (GET /admin/tenants/:id/usage), Grant add-on (extra users, AI credit pack, SMS/WhatsApp/OTP/call-minute pack; note required) through POST /admin/tenants/:id/addons, the pending upgrade/top-up requests from R110, and impersonation (reason required).",
+    "OpenNext: add open-next.config.ts (defineCloudflareConfig defaults), package.json scripts \"preview\": \"opennextjs-cloudflare build && opennextjs-cloudflare preview\", \"deploy\": \"opennextjs-cloudflare build && opennextjs-cloudflare deploy\", \"cf-typegen\"; wrangler.toml becomes the OpenNext Workers shape (main = \".open-next/worker.js\", [assets] directory = \".open-next/assets\", compatibility_flags nodejs_compat) instead of pages_build_output_dir. Remove next-on-pages references from super-admin. (CI and terraform are R118.)",
+    "Desktop: delete desktop/src/app/(app)/super-admin/** and the superAdminNav entry plus its titles in nav-config.ts (and its test); delete or rewrite desktop/e2e/super-admin.spec.ts to assert /super-admin redirects to /dashboard (skip count in FINAL-E2E included one super-admin skip). Remove desktop API helpers used only by those pages (grep \"/admin/\" in desktop/src/lib/api).",
+    "README.md for super-admin: how to run locally against fix-stack (BACKEND_API_URL=http://localhost:8797/api/v1, create the first super admin with backend/scripts/create-super-admin.mjs --local).",
+    "From R111 (2026-10-16): when a desktop session carries the impersonation claim (imp, impName, sid in the access token), show a persistent banner \"Support session by <impName> - ends <time>\" with an End session action, and hide write actions the server will refuse (/auth/* changes)."
+  ],
+  "migrations": [],
+  "tests": [
+    "super-admin has no test runner today; add none. Verification is the SA gate (tsc, lint, next build) plus `npm run preview` smoke: start fix-stack slot 1 (multi), run create-super-admin --local, start `npm run preview` in super-admin with BACKEND_API_URL pointing at slot 1, log in, create an agency, see the temporary password, suspend and reactivate it. Record the steps and results in the report.",
+    "desktop: nav-config.test.ts updated; super-admin.spec.ts asserts the redirect."
+  ],
+  "acceptance": [
+    "`grep -rn \"SuperAdmin@123\\|change-this-to-a-real-secret\\|super-admin-dev-secret\" super-admin` finds nothing.",
+    "`grep -rn \"getCloudflareContext\" super-admin/src` finds nothing (all data via backend).",
+    "Creating an agency in the console produces a login that works in the desktop app (manual smoke recorded).",
+    "The desktop app has no /super-admin pages."
+  ],
+  "gate": [
+    "cd super-admin && npx tsc --noEmit && npm run lint && npm run build",
+    "cd super-admin && npx opennextjs-cloudflare build",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/super-admin.spec.ts e2e/auth-shell.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "e2e/super-admin.spec.ts",
+      "e2e/auth-shell.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "OpenNext deploy to Workers with the admin custom domain; SUPER_ADMIN_JWT_SECRET identical in backend and console."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md: ds-* indigo tokens only (no raw palette classes or hex), archetypes (ListPage/EntityForm/DetailPage or PageContainer + PageHeader), FilterBar + useInfiniteScroll for lists, RelationCombobox for relations, PhoneInput for phones, useConfirm instead of window.confirm, graceful degradation when an env key is missing. lint-gate must not rise for any file you touch.",
+    "super-admin has its own design (not CONTRACT.md); keep its existing look.",
+    "super-admin/package-lock.json is deleted by R118, not here; do not run npm install inside super-admin/ (that operates on the root workspace and can wipe the root node_modules, coordinator note 2026-10-14). If @opennextjs/cloudflare needs a version bump, stop and ask."
+  ]
+}

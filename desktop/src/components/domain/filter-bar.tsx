@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 
 interface FilterOption {
   id: string;
@@ -28,7 +29,7 @@ interface FilterBarProps {
 export function FilterBar({
   searchValue,
   onSearchChange,
-  searchPlaceholder = 'Search...',
+  searchPlaceholder,
   activeFilters = [],
   onRemoveFilter,
   onClearFilters,
@@ -36,17 +37,18 @@ export function FilterBar({
   actions,
   className,
 }: FilterBarProps) {
+  const t = useT();
   return (
     <div className={cn('space-y-3 animate-fade-in', className)}>
       <div className="flex items-center gap-3">
         {/* Search */}
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={searchValue}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-9 pl-9"
+            placeholder={searchPlaceholder ?? t('ui.filterBar.searchPlaceholder')}
+            className="h-9 ps-9"
           />
         </div>
 
@@ -54,9 +56,9 @@ export function FilterBar({
         {onOpenFilters && (
           <Button variant="outline" size="sm" onClick={onOpenFilters} className="gap-2">
             <SlidersHorizontal className="h-4 w-4" />
-            Filters
+            {t('ui.filterBar.filters')}
             {activeFilters.length > 0 && (
-              <Badge variant="default" className="ml-1">
+              <Badge variant="default" className="ms-1">
                 {activeFilters.length}
               </Badge>
             )}
@@ -64,21 +66,21 @@ export function FilterBar({
         )}
 
         {/* Actions */}
-        {actions && <div className="flex items-center gap-2 ml-auto">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 ms-auto">{actions}</div>}
       </div>
 
       {/* Active Filters */}
       {activeFilters.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap animate-slide-in-from-top">
-          <span className="text-xs text-[var(--color-text-muted)]">Filters:</span>
-          {activeFilters.map((filter: any) => (
-            <Badge key={filter.id} variant="outline" className="gap-1 pr-1">
-              <span className="text-[var(--color-text-muted)]">{filter.label}:</span>
+          <span className="text-xs text-ds-foreground-muted">{t('ui.filterBar.activeLabel')}</span>
+          {activeFilters.map((filter) => (
+            <Badge key={filter.id} variant="outline" className="gap-1 pe-1">
+              <span className="text-ds-foreground-muted">{filter.label}:</span>
               {filter.value}
               {onRemoveFilter && (
                 <button
                   onClick={() => onRemoveFilter(filter.id)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--color-bg-muted)] transition-colors"
+                  className="ms-0.5 rounded-full p-0.5 hover:bg-ds-surface-sunken transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -86,8 +88,8 @@ export function FilterBar({
             </Badge>
           ))}
           {onClearFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-6 text-xs text-[var(--color-text-muted)]">
-              Clear all
+            <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-6 text-xs text-ds-foreground-muted">
+              {t('ui.filterBar.clearAll')}
             </Button>
           )}
         </div>

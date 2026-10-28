@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, or, like, count, inArray } from 'drizzle-orm';
@@ -32,8 +32,8 @@ const listTemplateSchema = z.object({
   language: z.string().optional(),
   is_active: z.coerce.boolean().optional(),
   search: z.string().optional(),
-  page: z.number().int().min(1).optional().default(1),
-  limit: z.number().int().min(1).max(100).optional().default(20),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
 // ============================================================
@@ -195,7 +195,7 @@ templateRoutes.get('/:id', requirePermission('communications', 'view'), async (c
       .limit(1)
       .then(rows => rows[0]);
 
-    if (!template) {
+    if (!template || template.isActive === 0) {
       return notFound(c, 'Template');
     }
 

@@ -1,0 +1,62 @@
+{
+  "slice": "ai-extractions",
+  "title": "AI Extractions Queue",
+  "status": "new",
+  "showcaseOrder": 38,
+  "endpoints": [
+    "GET /api/v1/ai/extractions",
+    "GET /api/v1/ai/extractions/:id",
+    "GET /api/v1/ai/extractions/pending-count",
+    "GET /api/v1/ai/extractions/usage/summary",
+    "POST /api/v1/ai/extractions/:id/confirm",
+    "POST /api/v1/ai/extractions/:id/create-invoice",
+    "POST /api/v1/ai/extractions/:id/create-itinerary",
+    "POST /api/v1/ai/extractions/:id/reject",
+    "POST /api/v1/ai/extractions/:id/schedule-followup"
+  ],
+  "gates": [
+    "ai_extraction"
+  ],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/ai/extractions/page.tsx",
+    "desktop/src/app/(app)/ai/extractions/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/ai-extractions.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/ai/extractions/**",
+    "desktop/src/lib/api/ai-extractions.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/components/layout/sidebar.tsx",
+    "desktop/e2e/ai-extractions.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Built list page (/ai/extractions) and detail page (/ai/extractions/[id]) on ListPage/DetailPage archetypes, wired to all 9 endpoints via new desktop/src/lib/api/ai-extractions.ts. detailDrawer is false by design — row click navigates to the full detail page instead (matches the archetype's onRowClick alternative), since this queue needs a dedicated review surface for confirm/reject/create-itinerary/create-invoice/schedule-followup actions. relationCombobox/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog not applicable: no relation, phone, address, currency, or messaging fields in this entity. GET /pending-count is still unused (no sidebar badge wiring) — out of scope since sidebar.tsx badge plumbing lives in a shared hook outside this slice's allowlist.",
+  "showcaseScript": [
+    "Open AI → Extractions and see the pending review queue",
+    "Open an extracted enquiry and check the parsed fields",
+    "Confirm it and create an itinerary in one click",
+    "Reject a low-confidence extraction",
+    "Show the pending badge count drop"
+  ]
+}

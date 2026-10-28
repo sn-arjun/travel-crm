@@ -40,7 +40,7 @@ describe('notificationsApi', () => {
     it('should return paginated notifications', async () => {
       vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 'n1', title: 'New task' }], pagination: { total: 1 } } });
       const result = await notificationsApi.list();
-      expect(result.data.data).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
   });
 
@@ -174,5 +174,47 @@ describe('notificationsApi', () => {
       const result = await notificationsApi.announce({ title: 'Test', body: 'Test body' });
       expect(result.data.sent).toBe(25);
     });
+  });
+});
+
+describe('notificationsApi envelope normalisation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('list flattens { data: { items, total, page, limit, data, pagination } }', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ id: 'n1' }],
+        total: 12,
+        page: 2,
+        limit: 5,
+        data: [{ id: 'n1' }],
+        pagination: { page: 2, limit: 5, total: 12, totalPages: 3 },
+      },
+    });
+    const result = await notificationsApi.list({ page: 2, limit: 5 });
+    expect(result.data).toHaveLength(1);
+    expect(result.pagination).toEqual({ page: 2, limit: 5, total: 12, totalPages: 3 });
+  });
+
+  it('maps reference_type, reference_id and is_read onto the Notification contract', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      data: {
+        data: [
+          { id: 'n1', title: 'Lead', message: 'New lead', reference_type: 'lead', reference_id: 'l1', is_read: 1, created_at: '2026-01-01T00:00:00Z' },
+          { id: 'n2', title: 'Task', message: 'Due', referenceType: 'task', referenceId: 't1', read: false, createdAt: '2026-01-02T00:00:00Z' },
+          { id: 'n3', title: 'Old', body: 'Legacy body', is_read: 0 },
+        ],
+        pagination: { page: 1, limit: 20, total: 3, totalPages: 1 },
+      },
+    });
+    const result = await notificationsApi.list();
+    expect(result.data[0]).toMatchObject({ referenceType: 'lead', referenceId: 'l1', read: true, createdAt: '2026-01-01T00:00:00Z' });
+    expect(result.data[0]).not.toHaveProperty('is_read');
+    expect(result.data[0]).not.toHaveProperty('isRead');
+    expect(result.data[1]).toMatchObject({ referenceType: 'task', referenceId: 't1', read: false });
+    expect(result.data[2]).toMatchObject({ message: 'Legacy body', read: false });
   });
 });

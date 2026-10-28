@@ -1,0 +1,76 @@
+{
+  "slice": "reports",
+  "title": "Reports & Analytics",
+  "status": "existing",
+  "showcaseOrder": 42,
+  "endpoints": [
+    "DELETE /api/v1/reports/:id/cache",
+    "DELETE /api/v1/reports/cache",
+    "GET /api/v1/reports",
+    "GET /api/v1/reports/:id",
+    "GET /api/v1/reports/:id/export",
+    "GET /api/v1/reports/ageing",
+    "GET /api/v1/reports/outstanding"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/reports.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/reports/page.tsx",
+    "desktop/src/app/(app)/reports/sales/page.tsx",
+    "desktop/src/app/(app)/reports/financial/page.tsx",
+    "desktop/src/app/(app)/reports/leads/page.tsx",
+    "desktop/src/app/(app)/reports/customer/page.tsx",
+    "desktop/src/app/(app)/reports/team/page.tsx",
+    "desktop/src/app/(app)/reports/fleet/page.tsx",
+    "desktop/src/app/(app)/reports/supplier/page.tsx",
+    "desktop/src/app/(app)/reports/visa/page.tsx",
+    "desktop/src/app/(app)/reports/marketing/page.tsx",
+    "desktop/src/app/(app)/reports/pipeline/page.tsx",
+    "desktop/src/app/(app)/reports/revenue/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/10-financial-reports.spec.ts",
+    "desktop/e2e/14-reports.spec.ts",
+    "desktop/e2e/15-m15-reports-analytics.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/reports.spec.ts",
+  "seedHelpers": [
+    "seedInvoice",
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/reports/**",
+    "desktop/src/lib/api/reports.ts",
+    "desktop/src/components/domain/reports/**",
+    "desktop/e2e/reports.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Dashboard/analytics slice, not entity CRUD, so filterBar/infiniteScroll/hoverActions/detailDrawer/relationCombobox/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog are structurally not applicable and left false (Hub already has a search input; category pages use date-range + compare filters via the existing ReportPageTemplate). Fixed: hub's getDashboard() call already avoided the client-side 500-lead/500-invoice fetch described in the old audit notes — verified, not re-broken. Deduplicated per-page CHART_COLORS hex arrays, presetMap, SummaryCard/ErrorState/ChartSkeleton into desktop/src/components/domain/reports/shared.tsx (useReportChartColors/useReportSemanticColors/useReportStatusColor from useThemeTokens, ReportExportButton, ReportTabEmptyState/ErrorState). Removed all raw hex literals (98 occurrences) from the 12 page files. Fixed real export bugs on leads/customer/team/fleet/supplier/visa/marketing pages where handleExport called reportsApi.export() but never downloaded the blob (some silently failed, some just showed a toast with no file); pipeline/revenue previously had no export button at all. All 12 pages now use ReportExportButton: consistent loading/disabled state, success/failure toast, correct INR-based filename, and a PDF option via SplitButton alongside Excel (since reportsApi.export already supports format 'pdf'|'excel'). Currency formatting consolidated into formatReportCurrency (₹ only) — desktop-side never shows $; the backend xlsx bytes using $ is out of scope (backend change, not touched). urlPrefill (syncing date-range/tab to URL search params) was not implemented — left false; a reasonable follow-up but touches all 12 pages' state management and was deprioritized versus the correctness fixes above. report-page-template.tsx (outside this slice's fileAllowlist) was only imported from, never edited.",
+  "showcaseScript": [
+    "Open the Reports hub",
+    "Run the Sales report for the last quarter",
+    "Change the date range and watch the chart update",
+    "Drill into the outstanding and ageing views",
+    "Export the report as a branded Excel file"
+  ]
+}

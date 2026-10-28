@@ -1,22 +1,18 @@
 'use client';
 
-import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Building2, MapPin, FileText, ShieldCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { z } from 'zod';
+import { toast } from 'sonner';
+import { EntityForm, FormRow } from '@/components/domain';
+import {
+  Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch,
+} from '@/components/ui';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { AddressAutocomplete, type AddressParts } from '@/components/ui/address-autocomplete';
-import { useApiMutation } from '@/hooks/use-api';
 import { suppliersApi } from '@/lib/api/suppliers';
-import { toast } from 'sonner';
+import { defaultCountryCode } from '@/lib/phone';
 
-const SUPPLIER_CATEGORY_OPTIONS = [
+const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
   { value: 'airline', label: 'Airline' },
   { value: 'transport', label: 'Transport' },
@@ -26,287 +22,189 @@ const SUPPLIER_CATEGORY_OPTIONS = [
   { value: 'insurance', label: 'Insurance' },
 ];
 
-const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const schema = z.object({
+  companyName: z.string().min(1, 'Supplier name is required'),
+  category: z.enum(['hotel', 'transport', 'airline', 'activity_provider', 'guide', 'visa_agent', 'insurance']),
+  contactPerson: z.string().optional(),
+  phone: z.string().optional(),
+  phoneCountryCode: z.string(),
+  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
+  website: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  postalCode: z.string().optional(),
+  gstNumber: z.string().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Enter a valid 15-character GST number').optional().or(z.literal('')),
+  taxId: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.enum(['active', 'inactive']),
+  isPreferred: z.boolean(),
+});
+type SupplierFormValues = z.infer<typeof schema>;
 
 export default function NewSupplierPage() {
   const router = useRouter();
 
-  const { mutate: createSupplier, loading: isSubmitting } = useApiMutation(
-    (data: any) => suppliersApi.create(data),
-  );
-
-  const [form, setForm] = React.useState({
-    companyName: '',
-    category: 'hotel',
-    contactPerson: '',
-    phone: '',
-    phoneCountryCode: '+91',
-    email: '',
-    website: '',
-    street: '',
-    city: '',
-    state: '',
-    country: 'India',
-    postalCode: '',
-    gstNumber: '',
-    taxId: '',
-    notes: '',
-    status: 'active' as 'active' | 'inactive',
-    isPreferred: false,
-  });
-
-  function updateField(field: string, value: any) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.companyName.trim()) {
-      toast.error('Company name is required');
-      return;
-    }
-    const result = await createSupplier({
-      companyName: form.companyName,
-      category: form.category as any,
-      contactPerson: form.contactPerson || undefined,
-      phone: form.phone ? `${form.phoneCountryCode} ${form.phone}` : undefined,
-      email: form.email || undefined,
-      website: form.website || undefined,
-      address: form.street || undefined,
-      city: form.city || undefined,
-      state: form.state || undefined,
-      country: form.country || undefined,
-      postalCode: form.postalCode || undefined,
-      gstNumber: form.gstNumber || undefined,
-      taxId: form.taxId || undefined,
-      notes: form.notes || undefined,
-      status: form.status,
-      isPreferred: form.isPreferred,
-    });
-    if (result) {
-      toast.success('Supplier created successfully');
-      router.push('/suppliers');
-    } else {
-      toast.error('Failed to create supplier');
-    }
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>New Supplier</h1>
-            <p className="text-sm text-muted-foreground">Add a new supplier to your network</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Supplier
-          </Button>
-        </div>
-      </div>
+    <EntityForm<SupplierFormValues>
+      title="New Supplier"
+      description="Add a new supplier to your network"
+      schema={schema}
+      defaultValues={{
+        companyName: '',
+        category: 'hotel',
+        contactPerson: '',
+        phone: '',
+        phoneCountryCode: defaultCountryCode(),
+        email: '',
+        website: '',
+        address: '',
+        city: '',
+        state: '',
+        country: 'India',
+        postalCode: '',
+        gstNumber: '',
+        taxId: '',
+        notes: '',
+        status: 'active',
+        isPreferred: false,
+      }}
+      onCancel={() => router.back()}
+      submitLabel="Save Supplier"
+      onSubmit={async (v) => {
+        try {
+          await suppliersApi.create({
+            companyName: v.companyName,
+            category: v.category,
+            contactPerson: v.contactPerson || undefined,
+            phone: v.phone ? `${v.phoneCountryCode} ${v.phone}` : undefined,
+            email: v.email || undefined,
+            website: v.website || undefined,
+            address: v.address || undefined,
+            city: v.city || undefined,
+            state: v.state || undefined,
+            country: v.country || undefined,
+            postalCode: v.postalCode || undefined,
+            gstNumber: v.gstNumber || undefined,
+            taxId: v.taxId || undefined,
+            notes: v.notes || undefined,
+            isPreferred: v.isPreferred,
+          });
+          toast.success('Supplier created successfully');
+          router.push('/suppliers');
+        } catch {
+          toast.error('Failed to create supplier');
+        }
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Basic Information" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="companyName" label="Supplier Name" required>
+                <Input id="companyName" placeholder="e.g., Taj Hotels" {...form.register('companyName')} />
+              </FormRow>
+              <FormRow name="category" label="Category" required>
+                <Select value={form.watch('category')} onValueChange={(v) => form.setValue('category', v as SupplierFormValues['category'], { shouldDirty: true })}>
+                  <SelectTrigger id="category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CATEGORY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="contactPerson" label="Contact Person">
+                <Input id="contactPerson" placeholder="e.g., Rajesh Kumar" {...form.register('contactPerson')} />
+              </FormRow>
+              <FormRow name="phone" label="Phone">
+                <PhoneInput
+                  value={form.watch('phone') ?? ''}
+                  onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
+                  countryCode={form.watch('phoneCountryCode')}
+                  onCountryCodeChange={(c) => form.setValue('phoneCountryCode', c, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="email" label="Email">
+                <Input id="email" type="email" placeholder="email@example.com" {...form.register('email')} />
+              </FormRow>
+              <FormRow name="website" label="Website">
+                <Input id="website" type="url" placeholder="https://example.com" {...form.register('website')} />
+              </FormRow>
+              <FormRow name="status" label="Status">
+                <Select value={form.watch('status')} onValueChange={(v) => form.setValue('status', v as SupplierFormValues['status'], { shouldDirty: true })}>
+                  <SelectTrigger id="status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="isPreferred" label="Preferred Supplier">
+                <div className="flex items-center gap-ds-2 h-9">
+                  <Switch
+                    checked={form.watch('isPreferred')}
+                    onCheckedChange={(v) => form.setValue('isPreferred', v, { shouldDirty: true })}
+                  />
+                  <span className="text-sm text-ds-foreground-muted">
+                    {form.watch('isPreferred') ? 'Marked as preferred' : 'Not preferred'}
+                  </span>
+                </div>
+              </FormRow>
+            </div>
+          </SectionCard>
 
-      <div className="flex-1 overflow-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          {/* Basic Info */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" />Basic Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Supplier Name <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="companyName"
-                    placeholder="e.g., Taj Hotels"
-                    value={form.companyName}
-                    onChange={(e) => updateField('companyName', e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Category <span className="text-destructive">*</span></Label>
-                  <Select value={form.category} onValueChange={(v) => updateField('category', v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {SUPPLIER_CATEGORY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person</Label>
-                  <Input
-                    id="contactPerson"
-                    placeholder="e.g., Rajesh Kumar"
-                    value={form.contactPerson}
-                    onChange={(e) => updateField('contactPerson', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <PhoneInput
-                    value={form.phone}
-                    onChange={(v) => updateField('phone', v)}
-                    countryCode={form.phoneCountryCode}
-                    onCountryCodeChange={(c) => updateField('phoneCountryCode', c)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="email@example.com"
-                    value={form.email}
-                    onChange={(e) => updateField('email', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    type="url"
-                    placeholder="https://example.com"
-                    value={form.website}
-                    onChange={(e) => updateField('website', e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={form.status} onValueChange={(v) => updateField('status', v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="block mb-3">Preferred Supplier</Label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Switch
-                      checked={form.isPreferred}
-                      onCheckedChange={(v) => updateField('isPreferred', v)}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {form.isPreferred ? 'Marked as preferred' : 'Not preferred'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Address">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="address" label="Street Address" wide>
+                <AddressAutocomplete
+                  value={form.watch('address') ?? ''}
+                  onChange={(v: string) => form.setValue('address', v, { shouldDirty: true })}
+                  onAddressSelect={(parts: AddressParts) => {
+                    form.setValue('address', parts.address, { shouldDirty: true });
+                    form.setValue('city', parts.city, { shouldDirty: true });
+                    form.setValue('state', parts.state, { shouldDirty: true });
+                    form.setValue('country', parts.country, { shouldDirty: true });
+                    form.setValue('postalCode', parts.postalCode, { shouldDirty: true });
+                  }}
+                  placeholder="Start typing an address..."
+                />
+              </FormRow>
+              <FormRow name="city" label="City">
+                <Input id="city" placeholder="City" {...form.register('city')} />
+              </FormRow>
+              <FormRow name="state" label="State">
+                <Input id="state" placeholder="State" {...form.register('state')} />
+              </FormRow>
+              <FormRow name="country" label="Country">
+                <Input id="country" {...form.register('country')} />
+              </FormRow>
+              <FormRow name="postalCode" label="Postal Code">
+                <Input id="postalCode" placeholder="400001" {...form.register('postalCode')} />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* Address */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" />Address</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="street">Street Address</Label>
-                {MAPS_API_KEY ? (
-                  <AddressAutocomplete
-                    value={form.street}
-                    onChange={(value: string) => updateField('street', value)}
-                    onAddressSelect={(parts: AddressParts) => {
-                      updateField('street', parts.address);
-                      updateField('city', parts.city);
-                      updateField('state', parts.state);
-                      updateField('country', parts.country);
-                      updateField('postalCode', parts.postalCode);
-                    }}
-                    placeholder="Start typing an address..."
-                  />
-                ) : (
-                  <Input
-                    id="street"
-                    placeholder="Street address"
-                    value={form.street}
-                    onChange={(e) => updateField('street', e.target.value)}
-                  />
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" placeholder="City" value={form.city} onChange={(e) => updateField('city', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input id="state" placeholder="State" value={form.state} onChange={(e) => updateField('state', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Input id="country" value={form.country} onChange={(e) => updateField('country', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal Code</Label>
-                  <Input
-                    id="postalCode"
-                    placeholder="400001"
-                    value={form.postalCode}
-                    onChange={(e) => updateField('postalCode', e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Tax & Compliance">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="gstNumber" label="GST Number">
+                <Input id="gstNumber" placeholder="22AAAAA0000A1Z5" {...form.register('gstNumber')} />
+              </FormRow>
+              <FormRow name="taxId" label="Tax ID / PAN">
+                <Input id="taxId" placeholder="AAAAA0000A" {...form.register('taxId')} />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* Tax & Compliance */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Tax & Compliance</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gstNumber">GST Number</Label>
-                  <Input
-                    id="gstNumber"
-                    placeholder="22AAAAA0000A1Z5"
-                    value={form.gstNumber}
-                    onChange={(e) => updateField('gstNumber', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="taxId">Tax ID / PAN</Label>
-                  <Input
-                    id="taxId"
-                    placeholder="AAAAA0000A"
-                    value={form.taxId}
-                    onChange={(e) => updateField('taxId', e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />Notes</CardTitle></CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="Any additional notes about this supplier..."
-                value={form.notes}
-                onChange={(e) => updateField('notes', e.target.value)}
-                rows={3}
-              />
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    </div>
+          <SectionCard title="Notes">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="notes" label="Notes" wide>
+                <Textarea id="notes" placeholder="Any additional notes about this supplier..." rows={3} {...form.register('notes')} />
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }

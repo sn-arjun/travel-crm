@@ -1,5 +1,6 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import { camelizeKeys, unwrapList } from './envelope';
 
 // Notification type not in shared package, define locally
 export interface Notification {
@@ -41,16 +42,35 @@ export interface BadgeCounts {
   messages: number;
 }
 
+/**
+ * Notification rows come back with a mix of snake_case (reference_type, is_read)
+ * and camelCase; this maps them onto the Notification contract.
+ */
+export function normalizeNotification(raw: unknown): Notification {
+  const n = camelizeKeys<Record<string, unknown>>(raw) ?? {};
+  const { isRead, body, ...rest } = n as Record<string, unknown>;
+  const read = typeof rest.read === 'boolean' ? rest.read : isRead === true || isRead === 1 || isRead === '1';
+  return {
+    ...rest,
+    message: (rest.message ?? body ?? '') as string,
+    read,
+  } as unknown as Notification;
+}
+
 export const notificationsApi = {
-  list: (params?: {
+  list: async (params?: {
     page?: number;
     limit?: number;
     unreadOnly?: boolean;
     type?: string;
+    search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<Notification>>>(API_ENDPOINTS.notifications.list, { params }),
+  }): Promise<PaginatedResponse<Notification>> => {
+    const res = await client.get<unknown>(API_ENDPOINTS.notifications.list, { params });
+    const list = unwrapList<unknown>(res, { page: params?.page, limit: params?.limit });
+    return { ...list, data: list.data.map(normalizeNotification) };
+  },
 
   getUnreadCount: () =>
     client.get<ApiResponse<UnreadCount>>(API_ENDPOINTS.notifications.unreadCount),

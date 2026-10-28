@@ -1,0 +1,75 @@
+{
+  "id": "R122",
+  "tier": 1,
+  "title": "README and CONTRIBUTING rewritten for the desktop-first, multi-tenant product",
+  "lane": "docs",
+  "backend": false,
+  "goal": "Give a new developer accurate instructions to run, test and extend the product as it now is.",
+  "why": "README.md documents deploy:web, build:web, build:windows and .dev.vars handling that no longer exist; CONTRIBUTING.md is Flutter-first and predates the desktop app (memory note).",
+  "featuresToWorks": [],
+  "dependsOn": [
+    "R118",
+    "R121"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "README.md",
+      "CONTRIBUTING.md",
+      "desktop/.env.example",
+      ".env.example"
+    ],
+    "create": [
+      "backend/.dev.vars.example"
+    ],
+    "mustNotTouch": [
+      "backend/src/**",
+      "desktop/src/**",
+      "docs/features.json",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "README: what the product is (one paragraph), architecture diagram in text (desktop Electron+Next, backend Workers+Hono+D1 per agency, master DB, super admin console, driver app, landing, WordPress provisioner), repository layout, prerequisites (Node 22, npm workspaces at root only, Flutter 3.41.1 via x86 PowerShell for the driver app), quick start (root npm ci, build shared, fix-stack up single and --multi, logins), tests and gates (BE/DT/E2E commands from READINESS-PLAN section 0), environment variables table (names only, link to .env.example files), deployment pointer to docs/GO-LIVE.md (written in W7) and the generated wrangler config, links to docs/FEATURES.md, ADR-001, COST-MODEL, READINESS-PLAN.",
+    "CONTRIBUTING: how to add a feature now: schema in backend/src/db/tenant-schema.ts + migration in drizzle/tenant with the next number + `npm run db:bundle-tenant`, route in backend/src/routes with zod and requirePermission, test pattern (cloudflare:test), desktop API client in desktop/src/lib/api, page per CONTRACT.md archetypes, e2e spec, gates; rules: UUIDv7, D1 types, Communication Hub only, PhoneInput/AddressAutocomplete/RelationCombobox, graceful degradation, no paid AI in tests, never npm install inside backend/ or super-admin/. Use features/leads as the reference feature.",
+    "backend/.dev.vars.example (new file) listing every secret name from types.ts Env with a one-line description and no values.",
+    "Every command in both files is copy-pasted from a run on this machine (state which ones were run in the report)."
+  ],
+  "migrations": [],
+  "tests": [
+    "Run each quick-start command once and record the result."
+  ],
+  "acceptance": [
+    "No mention of crm_app, Flutter CRM, deploy:web, build:web, build:windows or next-on-pages (grep).",
+    "A reader can start the stack from README alone (orchestrator spot-check)."
+  ],
+  "gate": [
+    "node scripts/fresh-clone-check.mjs"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Docs only; no code changes.",
+    "The root .env.example is out of date (covers six backend secrets); align it with backend/.dev.vars.example or replace its content with a pointer to the per-app example files."
+  ]
+}

@@ -6,9 +6,10 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
+import { canAccessCallData } from '../services/voip/recordings';
 
 const transcriptRoutes = new Hono<AppContext>();
 
@@ -17,6 +18,10 @@ const transcriptRoutes = new Hono<AppContext>();
 transcriptRoutes.get('/:callLogId', async (c) => {
   const db = c.get('tenantDb');
   const callLogId = c.req.param('callLogId');
+  // R306 (CALL-AUTOMATION 3.7): admin and sales manager read every transcript, a salesperson their own calls, nobody else.
+  if (!(await canAccessCallData(db, c.get('role'), c.get('userId'), callLogId, 'transcript'))) {
+    return error(c, 'You do not have access to this transcript', 403);
+  }
 
   const row = await db.prepare(`
     SELECT ct.*, u.name as edited_by_name
@@ -25,7 +30,8 @@ transcriptRoutes.get('/:callLogId', async (c) => {
     WHERE ct.call_log_id = ?
   `).bind(callLogId).first<Record<string, any>>();
 
-  if (!row) return notFound(c, 'Transcript');
+  // R135-6: a call without a transcript yet is a normal state, not an error: answer 200 with null.
+  if (!row) return success(c, null);
 
   return success(c, {
     id: row.id,
@@ -56,6 +62,9 @@ transcriptRoutes.put('/:callLogId', zValidator('json', updateTranscriptSchema), 
   const userId = c.get('userId');
   const callLogId = c.req.param('callLogId');
   const { fullTranscript } = c.req.valid('json');
+  if (!(await canAccessCallData(db, c.get('role'), userId, callLogId, 'transcript'))) {
+    return error(c, 'You do not have access to this transcript', 403);
+  }
 
   const existing = await db.prepare(
     'SELECT id FROM call_transcripts WHERE call_log_id = ?'
@@ -94,13 +103,26 @@ transcriptRoutes.get('/', async (c) => {
     return error(c, 'Search query required', 400);
   }
 
+  // R306: searching reads snippets of every transcript, so it is limited to the roles that may read them all.
+  if (c.get('role') !== 'admin' && c.get('role') !== 'sales_manager') {
+    return error(c, 'Only an administrator or sales manager can search all transcripts', 403);
+  }
+
+  // FTS5 treats characters such as - " : * ( ) as query syntax, so a raw user
+  // term like "non-refundable" is a syntax error. Quote each term as a phrase.
+  const ftsQuery = query
+    .trim()
+    .split(/\s+/)
+    .map((term) => `"${term.replace(/"/g, '""')}"`)
+    .join(' ');
+
   // Count matches
   const countResult = await db.prepare(`
     SELECT COUNT(*) as total
     FROM call_transcripts ct
     INNER JOIN call_transcripts_fts fts ON ct.rowid = fts.rowid
     WHERE call_transcripts_fts MATCH ?
-  `).bind(query).first<{ total: number }>();
+  `).bind(ftsQuery).first<{ total: number }>();
 
   const total = countResult?.total ?? 0;
 
@@ -118,7 +140,7 @@ transcriptRoutes.get('/', async (c) => {
     WHERE call_transcripts_fts MATCH ?
     ORDER BY rank
     LIMIT ? OFFSET ?
-  `).bind(query, limit, offset).all();
+  `).bind(ftsQuery, limit, offset).all();
 
   return c.json({
     success: true,

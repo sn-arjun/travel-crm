@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "skipped via --skip"
+  },
+  "unit": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "skipped via --skip"
+  },
+  "lint": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "skipped via --skip"
+  },
+  "build": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "skipped via --skip"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "pass",
+    "durationMs": 247838,
+    "tail": "playwright: 142 passed, 0 failed, 0 flaky, 0 skipped; 0 failure(s) tolerated\n[114/142] [chromium] › e2e\\visa.spec.ts:253:7 › B. Form › submitting an empty form is blocked and each required field reports why\n[115/142] [chromium] › e2e\\visa.spec.ts:264:7 › B. Form › traveller and destination are searchable comboboxes — typing filters options, no raw ID input\n[116/142] [chromium] › e2e\\visa.spec.ts:309:7 › B. Form › ?travellerId= pre-selects the traveller by name, and the prefilled form saves\n[117/142] [chromium] › e2e\\visa.spec.ts:329:7 › B. Form › a new application defaults to Not Started with today as the application date\n[118/142] [chromium] › e2e\\visa.spec.ts:344:7 › C. List › header, count, columns, filter bar and sidebar entry render\n[119/142] [chromium] › e2e\\visa.spec.ts:363:7 › C. List › search narrows rows by destination\n[120/142] [chromium] › e2e\\visa.spec.ts:380:7 › C. List › status filter lists every status, narrows rows, shows the empty state and clears\n[121/142] [chromium] › e2e\\visa.spec.ts:413:7 › C. List › empty state renders when the search matches nothing\n[122/142] [chromium] › e2e\\visa.spec.ts:422:7 › C. List › hover reveals View / Edit / Delete and each one navigates or acts\n[123/142] [chromium] › e2e\\visa.spec.ts:448:7 › C. List › clicking a row opens the detail page\n[124/142] [chromium] › e2e\\visa.spec.ts:462:7 › C. List › row Delete asks for confirmation: Cancel keeps the row, Delete removes it and the list refreshes\n[125/142] [chromium] › e2e\\visa.spec.ts:490:7 › C. List › bulk select + delete removes the selected rows\n[126/142] [chromium] › e2e\\visa.spec.ts:509:7 › C. List › export downloads a non-empty, correctly-shaped CSV\n[127/142] [chromium] › e2e\\visa.spec.ts:542:7 › C. List › infinite scroll loads the next page when the sentinel is reached\n[128/142] [chromium] › e2e\\visa.spec.ts:567:7 › D. Detail › header shows traveller, destination · type and status; missing optionals render a dash, not undefined\n[129/142] [chromium] › e2e\\visa.spec.ts:588:7 › D. Detail › every status renders its own label on the detail page\n[130/142] [chromium] › e2e\\visa.spec.ts:607:7 › D. Detail › checklist is auto-generated; ticking items updates progress, persists, and advances the status\n[131/142] [chromium] › e2e\\visa.spec.ts:638:7 › D. Detail › notes can be edited, cancelled and saved, and persist\n[132/142] [chromium] › e2e\\visa.spec.ts:667:7 › D. Detail › documents: upload, list, download and delete\n[133/142] [chromium] › e2e\\visa.spec.ts:705:7 › D. Detail › documents: a disallowed file type is rejected client-side\n[134/142] [chromium] › e2e\\visa.spec.ts:716:7 › D. Detail › activity tab shows created and current status\n[135/142] [chromium] › e2e\\visa.spec.ts:727:7 › D. Detail › delete asks for confirmation: Cancel keeps the record, Delete removes it and returns to the list\n[136/142] [chromium] › e2e\\visa.spec.ts:745:7 › D. Detail › an unknown id shows the error state with a way back, not a crash\n[137/142] [chromium] › e2e\\visa.spec.ts:758:7 › E. Dashboard › stats match the API, upcoming deadlines and by-country render real data and link to detail\n[138/142] [chromium] › e2e\\visa.spec.ts:788:7 › E. Dashboard › View All Applications goes to the list\n[139/142] [chromium] › e2e\\visa.spec.ts:801:7 › F. Cross-entity and API › traveller detail → New visa application opens the form with that traveller selected; the new visa appears on the traveller\n[140/142] [chromium] › e2e\\visa.spec.ts:826:7 › F. Cross-entity and API › sidebar entry navigates to the visa list\n[141/142] [chromium] › e2e\\visa.spec.ts:834:7 › F. Cross-entity and API › API: create returns an id and the destination; no invoice linkage; enforces the visa type enum\n[142/142] [chromium] › e2e\\visa.spec.ts:851:7 › F. Cross-entity and API › API: status transitions are validated and approval needs visa details\n  142 passed (4.1m)"
+  },
+  "layoutProbe": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "skipped via --skip"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "id": "B23",
+  "title": "Fleet: readable trip labels, working availability/top drivers, trip type + lead prefill, human timeline",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17",
+    "B08",
+    "B12"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [
+    "BUG-052"
+  ],
+  "fixReqs": [
+    "FR-7",
+    "FR-8"
+  ],
+  "estFiles": 22,
+  "goal": "The fleet dashboard tells trips apart and reflects real availability; trips have a type and can be booked from a lead; the trip timeline uses human labels.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: fleet/page.tsx:260,395,417 label trips with trip.id.slice(0,8) - UUIDv7 prefixes are time-based so all read \"Trip #01a100b2\"; \"No drivers available\" with 3 active drivers (B12 fixed/ documented the top-drivers endpoint); availability grid used the shadowed /fleet/vehicles/availability (fixed in B12); dates raw ISO. Backend trips have trip_type (default one_way; enum in backend/src/routes/fleet.ts trip schema ~1190-1280 and the rate-card lookup uses tripType e.g. airport_pickup) - the desktop trip form has no \"Trip type\" select (FR-7). Contract from B20: /fleet/trips/new?leadId=<id>&tripType=airport_pickup must prefill lead and trip type. Trip detail timeline shows raw keys like \"check_in\" (FR-8). fleet/vehicles/[id] has raw date inputs (BUG-058 part). components/domain/fleet/{driver-schedule-calendar.tsx, trip-format.ts}. W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Fleet dashboard: trip labels = passenger name + local pickup time (or a human trip number if the API has one); dates via formatDisplayDate/time; Top Drivers from the endpoint B12 documented; availability grid from /fleet/vehicles/availability.",
+    "Trip form (trips/new + [id]/edit): \"Trip type\" Select with labelled backend enum values (\"Airport pickup\", \"Airport drop\", \"One way\", \"Round trip\", ...); prefillFromParams {leadId -> lead, tripType -> tripType}; when vehicle type + trip type are set call the rate-card lookup to suggest the fare.",
+    "Trip detail timeline (FR-8): map status/event keys to labels (assigned \"Assigned\", accepted \"Accepted\", rejected \"Rejected\", en_route \"En route\", check_in \"Checked in\", started \"Trip started\", check_out \"Checked out\", completed \"Completed\", cancelled \"Cancelled\"), en-IN times, and coordinates when present. Put the map in components/domain/fleet/trip-format.ts.",
+    "Drivers/vehicles/rate-cards/alerts pages and driver-schedule-calendar swept; vehicles/[id] dates -> DatePicker.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /fleet,/fleet/trips,/fleet/trips/new,/fleet/trips/<tripId>,/fleet/drivers,/fleet/drivers/new,/fleet/drivers/<driverId>,/fleet/vehicles,/fleet/vehicles/<vehicleId>,/fleet/rate-cards,/fleet/alerts --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/fleet/**",
+    "desktop/src/components/domain/fleet/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/e2e/{fleet-dashboard,fleet-trips,fleet-vehicles,fleet-rate-cards,driver-app-api}.spec.ts (behaviour changed here only)",
+    "desktop/audit/fix/requests/B23.md"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Fleet dashboard trip labels are distinct and human.",
+    "Top Drivers lists active drivers.",
+    "/fleet/trips/new?leadId=<id>&tripType=airport_pickup pre-selects both (FR-7).",
+    "Trip timeline shows \"Checked in\" (FR-8).",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/fleet/**",
+      "src/components/domain/fleet/**",
+      "src/lib/api/fleet.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/fleet-dashboard.spec.ts",
+      "desktop/e2e/fleet-drivers.spec.ts",
+      "desktop/e2e/fleet-trips.spec.ts",
+      "desktop/e2e/fleet-vehicles.spec.ts",
+      "desktop/e2e/fleet-rate-cards.spec.ts",
+      "desktop/e2e/driver-app-api.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/fleet",
+      "/fleet/trips",
+      "/fleet/trips/new",
+      "/fleet/trips/<tripId>",
+      "/fleet/drivers",
+      "/fleet/drivers/new",
+      "/fleet/drivers/<driverId>",
+      "/fleet/vehicles",
+      "/fleet/vehicles/<vehicleId>",
+      "/fleet/rate-cards",
+      "/fleet/alerts"
+    ]
+  },
+  "notes": "fleet-drivers.spec.ts was updated by B16 - edit only if your change requires."
+}

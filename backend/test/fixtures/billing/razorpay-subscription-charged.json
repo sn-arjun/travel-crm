@@ -1,0 +1,31 @@
+{
+  "entity": "event",
+  "account_id": "acc_fixture",
+  "event": "subscription.charged",
+  "contains": ["subscription", "payment"],
+  "payload": {
+    "subscription": {
+      "entity": {
+        "id": "sub_rzp_fixture_1",
+        "entity": "subscription",
+        "plan_id": "plan_rzp_fixture_1",
+        "customer_id": "cust_rzp_fixture_1",
+        "status": "active",
+        "current_start": "__PERIOD_START__",
+        "current_end": "__PERIOD_END__",
+        "notes": { "tenant_id": "__TENANT_ID__", "plan_key": "pro", "extra_users": "0" }
+      }
+    },
+    "payment": {
+      "entity": {
+        "id": "pay_rzp_fixture_1",
+        "entity": "payment",
+        "amount": 2124000,
+        "currency": "INR",
+        "status": "captured",
+        "method": "card"
+      }
+    }
+  },
+  "created_at": "__CREATED__"
+}

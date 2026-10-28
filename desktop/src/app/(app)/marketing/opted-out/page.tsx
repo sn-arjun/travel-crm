@@ -1,382 +1,247 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
-import Link from 'next/link';
-import {
-  ArrowLeft, Ban, Mail, Phone, Loader2, AlertCircle, UserCheck,
-  RefreshCw, MessageSquare, Smartphone,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { FilterBar } from '@/components/domain/filter-bar';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { useApiMutation } from '@/hooks/use-api';
-import { marketingApi, type OptedOutContact } from '@/lib/api/marketing';
+import { Ban, Mail, MessageSquare, Smartphone, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { ListPage } from '@/components/domain';
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tag } from '@/components/ui';
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { marketingApi, type OptedOutContact } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 function channelIcon(channel?: string) {
   switch (channel) {
     case 'email':
-      return <Mail className="h-3.5 w-3.5" />;
+      return <Mail className="size-3.5" aria-hidden="true" />;
     case 'sms':
-      return <MessageSquare className="h-3.5 w-3.5" />;
+      return <MessageSquare className="size-3.5" aria-hidden="true" />;
     case 'whatsapp':
-      return <Smartphone className="h-3.5 w-3.5" />;
+      return <Smartphone className="size-3.5" aria-hidden="true" />;
     default:
-      return <Ban className="h-3.5 w-3.5" />;
+      return <Ban className="size-3.5" aria-hidden="true" />;
   }
 }
 
-function channelColor(channel?: string) {
+function channelTone(channel?: string): 'info' | 'success' | 'danger' | 'neutral' {
   switch (channel) {
     case 'email':
-      return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800';
+      return 'info';
     case 'sms':
-      return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800';
     case 'whatsapp':
-      return 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800';
+      return 'success';
     default:
-      return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800';
+      return 'danger';
   }
+}
+
+function toCsv(rows: OptedOutContact[]) {
+  const header = ['Name', 'Email', 'Phone', 'Opted Out At', 'Channel', 'Reason'];
+  const lines = rows.map((c) =>
+    [c.name, c.email ?? '', c.phone ?? '', c.optedOutAt ?? '', c.optOutChannel ?? 'manual', c.optOutReason ?? '']
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .join(','),
+  );
+  return [header.join(','), ...lines].join('\n');
+}
+
+async function exportAllOptedOut(search: string, channel?: string) {
+  const pageSize = 200;
+  let page = 1;
+  let all: OptedOutContact[] = [];
+  for (;;) {
+    const res = await marketingApi.optedOut.list({ page, limit: pageSize, search: search || undefined, channel });
+    const items = res.data;
+    all = all.concat(items);
+    if (all.length >= res.pagination.total || items.length === 0) break;
+    page += 1;
+  }
+  const csv = toCsv(all);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `opted-out-contacts-${toLocalDateString(new Date())}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function OptedOutPage() {
+  const [channel, setChannel] = React.useState<string | undefined>(undefined);
   const [search, setSearch] = React.useState('');
-  const [channelFilter, setChannelFilter] = React.useState('all');
+  const [reloadKey, setReloadKey] = React.useState(0);
   const [resubscribeContact, setResubscribeContact] = React.useState<OptedOutContact | null>(null);
+  const [resubscribing, setResubscribing] = React.useState(false);
 
-  const fetcher = React.useCallback(
-    (page: number, limit: number) =>
-      marketingApi.optedOut.list({
-        page,
-        limit,
-        search: search || undefined,
-        channel: channelFilter !== 'all' ? channelFilter : undefined,
-      }),
-    [search, channelFilter],
-  );
-
-  const { items: contacts, loading, loadingMore, total, error, sentinelRef, refetch } =
-    useInfiniteScroll<OptedOutContact>({
-      fetcher,
-      limit: 25,
-    });
-
-  const { mutate: resubscribe, loading: resubscribing } = useApiMutation(
-    (contactId: string) => marketingApi.optedOut.resubscribe(contactId),
-  );
+  const activeFilters = channel ? [{ id: 'channel', label: 'Channel', value: channel }] : [];
 
   async function handleResubscribe() {
     if (!resubscribeContact) return;
-    const result = await resubscribe(resubscribeContact.id);
-    if (result !== null) {
+    setResubscribing(true);
+    try {
+      await marketingApi.optedOut.resubscribe(resubscribeContact.id);
       toast.success(`${resubscribeContact.name || 'Contact'} has been re-subscribed`);
-      refetch();
-    } else {
+      setReloadKey((k) => k + 1);
+      setResubscribeContact(null);
+    } catch {
       toast.error('Failed to re-subscribe contact');
+    } finally {
+      setResubscribing(false);
     }
-    setResubscribeContact(null);
   }
 
-  // Derive channel breakdown from loaded items
-  const channelCounts = React.useMemo(() => {
-    const counts: Record<string, number> = { email: 0, sms: 0, whatsapp: 0, manual: 0 };
-    contacts.forEach((c) => {
-      const ch = c.optOutChannel || 'manual';
-      if (ch in counts) counts[ch] = (counts[ch] ?? 0) + 1;
-      else counts['manual'] = (counts['manual'] ?? 0) + 1;
-    });
-    return counts;
-  }, [contacts]);
-
-  const activeFilters = [
-    ...(channelFilter !== 'all' ? [{ id: 'channel', label: 'Channel', value: channelFilter }] : []),
-  ];
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/marketing">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+    <>
+      <ListPage<OptedOutContact>
+        refreshKey={reloadKey}
+        title="Opted-Out Contacts"
+        description="Contacts who unsubscribed from marketing communications."
+        getRowId={(c) => c.id}
+        fetcher={({ page, limit, search: s }) => {
+          setSearch(s);
+          return marketingApi.optedOut.list({ page, limit, search: s, channel });
+        }}
+        columns={[
+          {
+            key: 'name',
+            header: 'Name',
+            sortable: true,
+            cell: (c) => (
+              <div className="flex items-center gap-ds-3">
+                <div className="flex size-8 items-center justify-center rounded-ds-full bg-ds-danger-subtle text-ds-danger-on-subtle">
+                  <Ban className="size-3.5" aria-hidden="true" />
+                </div>
+                <span className="font-medium text-ds-foreground">{c.name || 'Unknown'}</span>
+              </div>
+            ),
+          },
+          {
+            key: 'email',
+            header: 'Email',
+            cell: (c) =>
+              c.email ? (
+                <span className="text-ds-foreground-muted">{c.email}</span>
+              ) : (
+                <span className="text-ds-foreground-subtle">—</span>
+              ),
+          },
+          {
+            key: 'phone',
+            header: 'Phone',
+            cell: (c) =>
+              c.phone ? (
+                <span className="text-ds-foreground-muted">{c.phone}</span>
+              ) : (
+                <span className="text-ds-foreground-subtle">—</span>
+              ),
+          },
+          {
+            key: 'optedOutAt',
+            header: 'Opted Out',
+            sortable: true,
+            cell: (c) =>
+              c.optedOutAt
+                ? formatLocaleDate(c.optedOutAt, { day: 'numeric', month: 'short', year: 'numeric' })
+                : '—',
+          },
+          {
+            key: 'optOutChannel',
+            header: 'Channel',
+            cell: (c) => (
+              <Tag tone={channelTone(c.optOutChannel)} className="gap-1 capitalize">
+                {channelIcon(c.optOutChannel)}
+                {c.optOutChannel || 'manual'}
+              </Tag>
+            ),
+          },
+          {
+            key: 'optOutReason',
+            header: 'Reason',
+            cell: (c) => (
+              <span className="block max-w-52 truncate text-ds-foreground-subtle" title={c.optOutReason}>
+                {c.optOutReason || '—'}
+              </span>
+            ),
+          },
+        ]}
+        headerActions={
+          <Select value={channel ?? 'all'} onValueChange={(v) => setChannel(v === 'all' ? undefined : v)}>
+            <SelectTrigger className="h-9 w-36">
+              <SelectValue placeholder="Channel" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All channels</SelectItem>
+              <SelectItem value="email">Email</SelectItem>
+              <SelectItem value="sms">SMS</SelectItem>
+              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              <SelectItem value="manual">Manual</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+        searchPlaceholder="Search by name, email, or phone..."
+        filters={activeFilters}
+        onRemoveFilter={() => setChannel(undefined)}
+        onClearFilters={() => setChannel(undefined)}
+        rowActions={(c) => (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Re-subscribe"
+            onClick={() => setResubscribeContact(c)}
+          >
+            <UserCheck aria-hidden="true" />
           </Button>
-          <div>
-            <h1
-              className="text-xl font-bold tracking-tight"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Opted-Out Contacts
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {loading
-                ? '...'
-                : `${total} contact${total !== 1 ? 's' : ''} opted out of marketing communications`}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
-          <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
-        </Button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-4 border-b">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)
-        ) : (
-          <>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                  <Ban className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold">{total}</p>
-                  <p className="text-xs text-muted-foreground">Total Opted-Out</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold">{channelCounts.email}</p>
-                  <p className="text-xs text-muted-foreground">Via Email</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <Smartphone className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold">{(channelCounts['whatsapp'] ?? 0) + (channelCounts['sms'] ?? 0)}</p>
-                  <p className="text-xs text-muted-foreground">Via SMS/WhatsApp</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold">CAN-SPAM</p>
-                  <p className="text-xs text-muted-foreground">Compliance Required</p>
-                </div>
-              </CardContent>
-            </Card>
-          </>
         )}
-      </div>
+        bulkActions={[
+          {
+            label: 'Re-subscribe',
+            icon: <UserCheck aria-hidden="true" />,
+            onSelect: (rows) =>
+              Promise.all(rows.map((r) => marketingApi.optedOut.resubscribe(r.id))).then(() => {
+                toast.success(`${rows.length} contact${rows.length !== 1 ? 's' : ''} re-subscribed`);
+                setReloadKey((k) => k + 1);
+              }),
+          },
+        ]}
+        onExport={async () => {
+          await exportAllOptedOut(search, channel);
+        }}
+        exportLabel="Export all"
+        emptyIcon={<Ban className="size-10" aria-hidden="true" />}
+        emptyTitle="No opted-out contacts"
+        emptyDescription="Contacts who unsubscribe from your marketing communications will appear here."
+      />
 
-      {/* FilterBar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b flex-wrap">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search by name, email, or phone..."
-          activeFilters={activeFilters}
-          onRemoveFilter={(id) => {
-            if (id === 'channel') setChannelFilter('all');
-          }}
-          onClearFilters={() => setChannelFilter('all')}
-          actions={
-            <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger className="w-36 h-9">
-                <SelectValue placeholder="Channel" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Channels</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="manual">Manual</SelectItem>
-              </SelectContent>
-            </Select>
-          }
-        />
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="p-6 space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-            <AlertCircle className="h-8 w-8" />
-            <p className="text-sm">Failed to load opted-out contacts</p>
-            <Button variant="outline" size="sm" onClick={refetch}>
-              Retry
-            </Button>
-          </div>
-        ) : contacts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-            <Ban className="h-10 w-10 opacity-50" />
-            <p className="text-sm font-medium">No opted-out contacts</p>
-            <p className="text-xs max-w-xs text-center">
-              Contacts who unsubscribe from your marketing communications will appear here.
-            </p>
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Opted Out Date</TableHead>
-                  <TableHead>Channel</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead className="w-32" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contacts.map((contact) => (
-                  <TableRow key={contact.id} className="hover:bg-muted/50 group">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                          <Ban className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                        </div>
-                        <span className="text-sm font-medium">
-                          {contact.name || 'Unknown'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {contact.email ? (
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Mail className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate max-w-[200px]">{contact.email}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {contact.phone ? (
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Phone className="h-3.5 w-3.5 shrink-0" />
-                          {contact.phone}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {contact.optedOutAt
-                        ? new Date(contact.optedOutAt).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`text-xs capitalize gap-1 ${channelColor(contact.optOutChannel)}`}
-                      >
-                        {channelIcon(contact.optOutChannel)}
-                        {contact.optOutChannel || 'manual'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs text-muted-foreground max-w-[180px] truncate">
-                        {contact.optOutReason || '-'}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => setResubscribeContact(contact)}
-                      >
-                        <UserCheck className="h-3 w-3" />
-                        Re-subscribe
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <div ref={sentinelRef} className="flex items-center justify-center py-4">
-              {loadingMore && (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Re-subscribe Confirmation Dialog */}
-      <Dialog
-        open={!!resubscribeContact}
-        onOpenChange={() => setResubscribeContact(null)}
-      >
+      <Dialog open={!!resubscribeContact} onOpenChange={(open) => !open && setResubscribeContact(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Re-subscribe Contact</DialogTitle>
+            <DialogTitle>Re-subscribe contact</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ds-foreground-muted">
             Are you sure you want to re-subscribe{' '}
-            <span className="font-medium text-foreground">
-              {resubscribeContact?.name || 'this contact'}
-            </span>
-            ? They will start receiving marketing communications again.
+            <span className="font-medium text-ds-foreground">{resubscribeContact?.name || 'this contact'}</span>?
+            They will start receiving marketing communications again.
           </p>
           {resubscribeContact?.optOutReason && (
-            <div className="rounded-lg border p-3 bg-muted/50">
-              <p className="text-xs text-muted-foreground font-medium mb-1">
-                Original opt-out reason
-              </p>
-              <p className="text-sm">{resubscribeContact.optOutReason}</p>
+            <div className="rounded-ds-md border border-ds-border bg-ds-surface-sunken p-ds-3">
+              <p className="mb-ds-1 text-xs font-medium text-ds-foreground-muted">Original opt-out reason</p>
+              <p className="text-sm text-ds-foreground">{resubscribeContact.optOutReason}</p>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setResubscribeContact(null)}>
               Cancel
             </Button>
-            <Button onClick={handleResubscribe} disabled={resubscribing}>
-              {resubscribing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  Re-subscribing...
-                </>
-              ) : (
-                <>
-                  <UserCheck className="h-4 w-4 mr-1.5" />
-                  Re-subscribe
-                </>
-              )}
+            <Button onClick={() => void handleResubscribe()} disabled={resubscribing}>
+              <UserCheck aria-hidden="true" />
+              {resubscribing ? 'Re-subscribing…' : 'Re-subscribe'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

@@ -7,21 +7,20 @@ const supplierReports: ReportDefinition[] = [
         name: 'Supplier Usage & Bookings',
         category: 'supplier',
         description: 'Number of trips and total spend per supplier.',
-        requiredRole: ['admin', 'manager', 'accountant'],
+        requiredRole: ['admin', 'sales_manager', 'accountant'],
         allowedFilters: ['category'],
         allowedGroupBy: ['category'],
         defaultSort: { column: 'total_spend', order: 'desc' },
-        dateColumn: 'p.created_at',
+        dateColumn: 'v.created_at',
         baseQuery: `
       SELECT
         s.company_name as supplier_name,
         s.category,
-        COUNT(v.id) as trips_booked,
-        COALESCE(SUM(p.amount), 0) as total_spend
+        COUNT(DISTINCT v.id) as trips_booked,
+        COALESCE((SELECT SUM(pp.amount) FROM payments pp WHERE pp.supplier_id = s.id AND pp.type = 'outgoing'), 0) as total_spend
       FROM suppliers s
-      LEFT JOIN vouchers v ON v.supplier_id = s.id
-      LEFT JOIN payments p ON p.supplier_id = s.id
-      WHERE s.is_deleted = 0 {DATE_FILTER}
+      LEFT JOIN vouchers v ON v.supplier_id = s.id AND v.is_deleted = 0
+      WHERE 1 = 1 {DATE_FILTER}
       GROUP BY s.id
       {ORDER_BY}
     `,
@@ -52,7 +51,7 @@ const supplierReports: ReportDefinition[] = [
         COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_payments
       FROM suppliers s
       LEFT JOIN payments p ON p.supplier_id = s.id AND p.type = 'outgoing'
-      WHERE s.is_deleted = 0 {DATE_FILTER}
+      WHERE 1 = 1 {DATE_FILTER}
       GROUP BY s.id
       {ORDER_BY}
     `,
@@ -79,16 +78,17 @@ const supplierReports: ReportDefinition[] = [
       SELECT
         s.company_name as supplier_name,
         s.category,
-        COUNT(v.id) as total_vouchers,
-        COALESCE(SUM(v.amount), 0) as total_voucher_value,
-        COALESCE(SUM(p.amount), 0) as total_paid,
-        COALESCE(SUM(v.amount) - COALESCE(SUM(p.amount), 0), 0) as outstanding_balance
+        COUNT(DISTINCT v.id) as total_vouchers,
+        COALESCE(SUM(ii.cost_price * COALESCE(ii.quantity, 1)), 0) as total_voucher_value,
+        COALESCE((SELECT SUM(pp.amount) FROM payments pp WHERE pp.supplier_id = s.id AND pp.type = 'outgoing'), 0) as total_paid,
+        COALESCE(SUM(ii.cost_price * COALESCE(ii.quantity, 1)), 0)
+          - COALESCE((SELECT SUM(pp.amount) FROM payments pp WHERE pp.supplier_id = s.id AND pp.type = 'outgoing'), 0) as outstanding_balance
       FROM suppliers s
-      LEFT JOIN vouchers v ON v.supplier_id = s.id
-      LEFT JOIN payments p ON p.supplier_id = s.id AND p.type = 'outgoing'
-      WHERE s.is_deleted = 0 {DATE_FILTER}
+      JOIN vouchers v ON v.supplier_id = s.id AND v.is_deleted = 0
+      LEFT JOIN itinerary_items ii ON ii.id = v.itinerary_item_id
+      WHERE 1 = 1 {DATE_FILTER}
       GROUP BY s.id
-      HAVING COALESCE(SUM(v.amount) - COALESCE(SUM(p.amount), 0), 0) > 0
+      HAVING outstanding_balance > 0
       {ORDER_BY}
     `,
         columns: [

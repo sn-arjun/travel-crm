@@ -1,0 +1,118 @@
+{
+  "id": "R154",
+  "tier": 4,
+  "step": 10,
+  "title": "Departure-relative messages: rules that send a template to everyone on a departure N days before or after, with each person's own pickup point and time, through the Communication Hub, respecting consent, opt-out and caps",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An agency sets 'extras reminder 7 days before', 'pickup time 2 days before at 18:00' and 'review request 2 days after' once; every departure then sends (or proposes) the right message to each booking or passenger with their own details, exactly once.",
+  "why": "Gap 5: today this is a manual bulk send by tag and everyone gets the full pickup list. Design: TOUR-OPERATOR-DESIGN.md section 9.3.",
+  "featuresToWorks": ["automation.departures.scheduled_messages", "inbox.templates.departure-variables"],
+  "featureKeys": ["group_departures"],
+  "dependsOn": ["R150"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R155"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/communications.ts",
+      "backend/src/services/template-engine.ts",
+      "backend/src/services/automation/recipes.ts",
+      "backend/src/cron/dispatch.ts",
+      "backend/src/index.ts (one routeMounts line and one requireFeature line)",
+      "desktop/src/app/(app)/settings/group-tours/page.tsx (Scheduled messages section)",
+      "desktop/src/app/(app)/tours/[id]/** (per-tour overrides tab)",
+      "desktop/src/app/(app)/communication/templates/** (variable picker: the new variables only)",
+      "desktop/src/messages/en/departureMessages.json",
+      "desktop/src/messages/nl/departureMessages.json"
+    ],
+    "create": [
+      "backend/src/services/messaging/hub.ts",
+      "backend/src/services/departures/scheduled-messages.ts",
+      "backend/src/routes/departure-message-rules.ts",
+      "backend/test/departure-messages.test.ts",
+      "backend/test/hub-sender.test.ts",
+      "desktop/src/app/(app)/settings/group-tours/_components/message-rules.tsx",
+      "desktop/src/app/(app)/settings/group-tours/_components/message-preview.tsx",
+      "desktop/e2e/departure-messages.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/public.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "desktop/src/app/(public)/**",
+      "desktop/src/app/(app)/itineraries/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R154-1",
+      "what": "One hub sender",
+      "steps": [
+        "services/messaging/hub.ts sendHubMessage(env, tenantId, db, {contactId, leadId?, channel, templateId?|body, subject?, variables, purpose: service|marketing, actorId|null}): the body of POST /communications/send moved out (destination, metering with tryMeter and AllowanceExhausted, message_log, queueing, reply-to, WhatsApp template jobs), plus the consent rule: marketing -> marketingBlockedReason blocks; service -> blocked only by email_undeliverable or no address. The route calls it and answers exactly as before (existing communications tests are the guard)."
+      ]
+    },
+    {
+      "id": "R154-2",
+      "what": "Rules, variables and the job",
+      "steps": [
+        "Routes /departure-message-rules (feature group_departures): CRUD per design 3.1 columns, POST /:id/preview?departureId= renders per-person messages without sending; seeds three inactive default rules (extras reminder 7 days before, pickup time 2 days before, review request 2 days after the end with purpose marketing) when group_tours is first enabled.",
+        "template-engine.ts resolveVariables gains an optional departure context {seatBookingId, passengerId?} and the variables of design 9.3 (tour_name, departure_date, departure_code, return_date, pickup_point, pickup_time, pickup_address, seat_count, passenger_names, room_type, balance_due, tour_leader_name, tour_leader_phone; extras_link and details_link exist since R150), formatted with the agency locale; unknown variables stay as today.",
+        "scheduled-messages.ts and cron job 'departures.messages' (period tick): for each active rule and each open, departed or completed departure, due = anchor date + offset at local_time in the tenant zone; when due has passed and is less than 48 h old, process the audience (confirmed, confirmed_and_held or waitlisted; booking contact or each passenger with a phone/email): INSERT OR IGNORE into departure_message_sends first (the unique key makes reruns harmless), then auto -> sendHubMessage (status sent, skipped_opt_out, skipped_cap, skipped_no_address or failed; one staff notification per run when the cap is hit), suggest -> one assistant suggestion per departure 'Review and send N messages' opening the per-person list. WhatsApp without an approved template uses the rule's fallback channel.",
+        "Recipe entry departures.scheduled_messages (featureKey group_departures) so the rules show on the automations page with their mode."
+      ]
+    },
+    {
+      "id": "R154-3",
+      "what": "Screens",
+      "steps": [
+        "Settings > Group tours > Scheduled messages: list of rules (name, when, template, audience, recipient, purpose, mode, active), add/edit dialog (template via RelationCombobox over message templates, channel and fallback, anchor and offset with a plain sentence preview 'Sends 2 days before departure at 18:00'), preview against a chosen departure; per-tour overrides on the tour page.",
+        "Templates page: the variable picker lists the departure variables (only when the feature and agency switch are on)."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/hub-sender.test.ts: the route and the function give the same results for a service and a marketing message; consent blocks marketing only; cap exhausted -> AllowanceExhausted.",
+    "backend/test/departure-messages.test.ts: due time computed in Europe/Amsterdam and Asia/Kolkata; per-passenger pickup point and time in the body; each person gets their own; rerun of the job sends nothing twice; opted-out contact skipped for marketing but not for a service pickup message; cap hit -> skipped_cap with one notification; suggest mode creates one suggestion; 48 h late window respected; waitlisted audience.",
+    "e2e/departure-messages.spec.ts: enable the pickup rule in auto mode, run the scheduled job through the test route (or the automations 'Run daily checks now'), see one message per passenger in the outbox/simulator with their own pickup time; preview shows the same."
+  ],
+  "acceptance": [
+    "Each passenger receives their own pickup time once; consent and caps are respected; no message is sent twice."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/departure-messages.spec.ts e2e/communication-inbox.spec.ts e2e/message-templates.spec.ts e2e/assistant-rules.spec.ts e2e/marketing-opt-out.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/departure-messages.spec.ts", "e2e/communication-inbox.spec.ts", "e2e/message-templates.spec.ts", "e2e/assistant-rules.spec.ts", "e2e/marketing-opt-out.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: group_departures plus the agency switch on the routes, the job and the screens.",
+    "All sends go through the Communication Hub domain sender; consent, opt-out and communication caps apply; nothing bypasses metering.",
+    "Automations through the engine (recipes, cron/dispatch.ts); idempotent per rule, departure, booking and passenger.",
+    "Desktop: CONTRACT.md; RelationCombobox; t() with en and nl keys in departureMessages.json; RTL-safe classes; dates through lib/dates.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 9.3, routes/communications.ts (send and bulk), services/template-engine.ts, services/privacy/consent.ts, cron/dispatch.ts.",
+    "R155 runs in parallel and owns public.ts, itineraries.ts and migration 0063."
+  ],
+  "goLiveVerify": ["Approved WhatsApp templates for the default rules exist on the agency's Meta account before auto mode is used in production."]
+}

@@ -1,3 +1,5 @@
+import { getTenantTimeZone, localDateString } from './tz';
+
 /**
  * Compute badge counts for a specific user.
  * Used by both the REST endpoint and real-time broadcasts.
@@ -5,6 +7,7 @@
 export async function computeBadgeCounts(
   db: D1Database,
   userId: string,
+  today?: string,
 ): Promise<{
   unreadNotifications: number;
   pendingTasks: number;
@@ -12,6 +15,8 @@ export async function computeBadgeCounts(
   overdueInvoices: number;
 }> {
   const now = new Date().toISOString();
+  // invoice due dates are local calendar dates: compare against the tenant-local today
+  const localToday = today ?? localDateString(await getTenantTimeZone(db));
 
   const [notifs, tasks, followUps, invoices] = await Promise.all([
     db
@@ -30,9 +35,9 @@ export async function computeBadgeCounts(
       .first<{ c: number }>(),
     db
       .prepare(
-        "SELECT COUNT(*) AS c FROM invoices WHERE created_by = ? AND status NOT IN ('paid', 'cancelled') AND due_date < date('now')",
+        "SELECT COUNT(*) AS c FROM invoices WHERE created_by = ? AND status NOT IN ('paid', 'cancelled') AND due_date < ?",
       )
-      .bind(userId)
+      .bind(userId, localToday)
       .first<{ c: number }>(),
   ]);
 

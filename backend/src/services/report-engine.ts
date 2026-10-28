@@ -1,14 +1,101 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { ReportParams, ReportResult } from '../types/report';
 import { reportRegistry } from './report-registry';
+import {
+    DEFAULT_TIMEZONE,
+    getTenantTimeZone,
+    localDateString,
+    localDateStartUtcIso,
+    addDaysLocal,
+    sqlOffsetModifier,
+} from '../utils/tz';
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Express a report date bound for the column it filters.
+ *  - date-only column ('YYYY-MM-DD' local dates): instants become the tenant-local date.
+ *  - timestamp column (UTC ISO strings): a bare local date becomes the UTC instant of local midnight
+ *    (start) or of the last millisecond of that local day (end).
+ */
+export function normalizeDateBound(
+    value: string,
+    which: 'from' | 'to',
+    columnType: 'date' | 'timestamp',
+    timeZone: string,
+): string {
+    if (columnType === 'date') {
+        return DATE_ONLY.test(value) ? value : localDateString(timeZone, new Date(value));
+    }
+    if (!DATE_ONLY.test(value)) return value;
+    if (which === 'from') return localDateStartUtcIso(timeZone, value);
+    return new Date(new Date(localDateStartUtcIso(timeZone, addDaysLocal(value, 1))).getTime() - 1).toISOString();
+}
 // @ts-ignore
 import { HonoRequest } from 'hono';
+
+/** Roles whose report rows are restricted to records they own (see `_buildQuery`). */
+export const OWNER_FILTERED_ROLES = ['salesperson'] as const;
 
 export class ForbiddenError extends Error {
     constructor(message: string) {
         super(message);
         this.name = 'ForbiddenError';
     }
+}
+
+/**
+ * Index of the first top-level tail clause (GROUP BY / HAVING / ORDER BY / LIMIT, or the
+ * {GROUP_BY} / {ORDER_BY} placeholders that expand to them later). WHERE conditions must be
+ * spliced in before it. Anything inside parentheses (subqueries) or string literals is ignored.
+ */
+function findTailIndex(query: string): number {
+    let depth = 0;
+    let quote = '';
+    for (let i = 0; i < query.length; i++) {
+        const ch = query[i];
+        if (quote) {
+            if (ch === quote) quote = '';
+            continue;
+        }
+        if (ch === "'" || ch === '"') { quote = ch; continue; }
+        if (ch === '(') { depth++; continue; }
+        if (ch === ')') { depth--; continue; }
+        if (depth !== 0) continue;
+        const prev = i === 0 ? ' ' : query[i - 1];
+        if (!/\s/.test(prev) && ch !== '{') continue;
+        const rest = query.slice(i, i + 12);
+        if (/^(GROUP\s+BY|ORDER\s+BY)\b/i.test(rest) || /^(HAVING|LIMIT)\b/i.test(rest)
+            || rest.startsWith('{ORDER_BY}') || rest.startsWith('{GROUP_BY}')) {
+            return i;
+        }
+    }
+    return query.length;
+}
+
+/** True when the outermost SELECT already has a WHERE (a WHERE inside a subquery does not count). */
+function hasTopLevelWhere(query: string): boolean {
+    let depth = 0;
+    let quote = '';
+    for (let i = 0; i < query.length; i++) {
+        const ch = query[i];
+        if (quote) {
+            if (ch === quote) quote = '';
+            continue;
+        }
+        if (ch === "'" || ch === '"') { quote = ch; continue; }
+        if (ch === '(') { depth++; continue; }
+        if (ch === ')') { depth--; continue; }
+        if (depth === 0 && /\s/.test(i === 0 ? ' ' : query[i - 1]) && /^WHERE\b/i.test(query.slice(i, i + 6))) return true;
+    }
+    return false;
+}
+
+/** Add `condition` to the outer WHERE clause (creating it if needed), ahead of GROUP BY / ORDER BY / LIMIT. */
+function addWhereCondition(query: string, condition: string): string {
+    const idx = findTailIndex(query);
+    const joiner = hasTopLevelWhere(query) ? ' AND ' : ' WHERE ';
+    return query.slice(0, idx) + joiner + condition + ' ' + query.slice(idx);
 }
 
 export class ReportEngine {
@@ -19,28 +106,29 @@ export class ReportEngine {
         userId: string,
         userRole: string,
         dateFrom?: string,
-        dateTo?: string
+        dateTo?: string,
+        timeZone: string = DEFAULT_TIMEZONE,
+        now: Date = new Date()
     ): { query: string; bindings: any[] } {
-        let query = report.baseQuery;
+        // Tenant-calendar tokens: {TODAY} local date, {NOW} current instant, {TZ} SQLite offset modifier
+        let query: string = report.baseQuery
+            .split('{TODAY}').join(localDateString(timeZone, now))
+            .split('{NOW}').join(now.toISOString())
+            .split('{TZ}').join(sqlOffsetModifier(timeZone, now));
         const bindings: any[] = [];
 
         // Date range filter
-        if (dateFrom && dateTo) {
+        if (dateFrom && dateTo && !report.ignoreDateRange) {
             const dateColumn = params.date_column || report.dateColumn || 'created_at';
-            const hasWhere = query.toUpperCase().includes(' WHERE ');
-            const clause = hasWhere ? ' AND ' : ' WHERE ';
-
+            const columnType: 'date' | 'timestamp' = report.dateColumnType === 'date' ? 'date' : 'timestamp';
+            const fromBound = normalizeDateBound(dateFrom, 'from', columnType, timeZone);
+            const toBound = normalizeDateBound(dateTo, 'to', columnType, timeZone);
             if (query.includes('{DATE_FILTER}')) {
                 query = query.replace('{DATE_FILTER}', ` AND ${dateColumn} BETWEEN ? AND ? `);
-                bindings.push(dateFrom, dateTo);
+                bindings.push(fromBound, toBound);
             } else {
-                const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-                const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-                const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-                const dateCondition = ` ${clause} ${dateColumn} BETWEEN ? AND ? `;
-                query = query.slice(0, insertIdx) + dateCondition + query.slice(insertIdx);
-                bindings.push(dateFrom, dateTo);
+                query = addWhereCondition(query, `${dateColumn} BETWEEN ? AND ?`);
+                bindings.push(fromBound, toBound);
             }
         } else if (query.includes('{DATE_FILTER}')) {
             // No dates provided — remove placeholder so query is valid
@@ -48,31 +136,18 @@ export class ReportEngine {
         }
 
         // Auto-filter for salesperson role
-        if (userRole === 'salesperson') {
-            const hasWhere = query.toUpperCase().includes(' WHERE ');
-            const clause = hasWhere ? ' AND ' : ' WHERE ';
-            const assignedCondition = ` ${clause} assigned_to = ? `;
-
-            const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-            const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-            const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-            query = query.slice(0, insertIdx) + assignedCondition + query.slice(insertIdx);
+        // The condition goes into WHERE, ahead of GROUP BY / ORDER BY / LIMIT. `ownerColumn` lets a
+        // report name the column that records ownership (its main table may not have assigned_to).
+        if ((OWNER_FILTERED_ROLES as readonly string[]).includes(userRole)) {
+            const ownerColumn = report.ownerColumn || 'assigned_to';
+            query = addWhereCondition(query, `${ownerColumn} = ?`);
             bindings.push(userId);
         }
 
         // Dynamic filters based on allowedFilters
         for (const filter of report.allowedFilters) {
             if (params[filter] !== undefined && params[filter] !== null && params[filter] !== '') {
-                const hasWhere = query.toUpperCase().includes(' WHERE ');
-                const clause = hasWhere ? ' AND ' : ' WHERE ';
-                const condition = ` ${clause} ${filter} = ? `;
-
-                const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-                const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-                const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-                query = query.slice(0, insertIdx) + condition + query.slice(insertIdx);
+                query = addWhereCondition(query, `${filter} = ?`);
                 bindings.push(params[filter]);
             }
         }
@@ -137,8 +212,16 @@ export class ReportEngine {
             throw new ForbiddenError('Insufficient permissions for this report');
         }
 
-        const currentReq = this._buildQuery(report, params, userId, userRole, params.date_from, params.date_to);
-        const stmts: any[] = [db.prepare(currentReq.query).bind(...currentReq.bindings)];
+        // The tenant's calendar decides 'today', month buckets and date bounds (not the server's UTC clock)
+        const timeZone = await getTenantTimeZone(db);
+        const nowInstant = new Date();
+        const currentReq = this._buildQuery(report, params, userId, userRole, params.date_from, params.date_to, timeZone, nowInstant);
+        // stmts[0] = current rows, stmts[1] = real total row count (same query without LIMIT/OFFSET)
+        const countSql = `SELECT COUNT(*) AS total FROM (${currentReq.query.replace(/\s*LIMIT \? OFFSET \?\s*$/, '')})`;
+        const stmts: any[] = [
+            db.prepare(currentReq.query).bind(...currentReq.bindings),
+            db.prepare(countSql).bind(...currentReq.bindings.slice(0, -2)),
+        ];
 
         let prevReq;
         if (params.compare === 'true' && params.date_from && params.date_to) {
@@ -149,10 +232,11 @@ export class ReportEngine {
             const prevToMs = dateFromMs - 86400000; // 1 day before
             const prevFromMs = prevToMs - diff;
 
-            const prevFrom = new Date(prevFromMs).toISOString().split('T')[0];
-            const prevTo = new Date(prevToMs).toISOString().split('T')[0];
+            // previous period expressed as local calendar dates (normalised per column type in _buildQuery)
+            const prevFrom = localDateString(timeZone, new Date(prevFromMs));
+            const prevTo = localDateString(timeZone, new Date(prevToMs));
 
-            prevReq = this._buildQuery(report, params, userId, userRole, prevFrom, prevTo);
+            prevReq = this._buildQuery(report, params, userId, userRole, prevFrom, prevTo, timeZone, nowInstant);
             stmts.push(db.prepare(prevReq.query).bind(...prevReq.bindings));
         }
 
@@ -168,6 +252,8 @@ export class ReportEngine {
             throw new Error(`Report query failed: ${dbErr.message || 'Unknown database error'}`);
         }
         const currentData = results[0].results as Record<string, any>[];
+        const countRow = (results[1]?.results as Record<string, any>[] | undefined)?.[0];
+        const totalRows = Number(countRow?.total);
 
         const page = params.page ? Number(params.page) : 1;
         let perPage = params.per_page ? Number(params.per_page) : 25;
@@ -177,15 +263,33 @@ export class ReportEngine {
             data: currentData,
             columns: report.columns,
             meta: {
-                total: currentData.length === perPage ? -1 : currentData.length + ((page - 1) * perPage),
+                // Real row count (never -1); falls back to rows seen so far if the count is unavailable
+                total: Number.isFinite(totalRows) ? totalRows : currentData.length + ((page - 1) * perPage),
                 page,
-                per_page: perPage
+                per_page: perPage,
+                hasMore: (Number.isFinite(totalRows) ? totalRows : currentData.length + ((page - 1) * perPage)) > page * perPage
             }
         };
 
-        if (results.length > 1) {
-            const prevData = results[1].results as Record<string, any>[];
+        if (report.summarize) {
+            // Totals cover the whole period, not the page that was asked for
+            const allSql = currentReq.query.replace(/\s*LIMIT \? OFFSET \?\s*$/, '');
+            const all = await db.prepare(allSql).bind(...currentReq.bindings.slice(0, -2)).all<Record<string, any>>();
+            const columnType: 'date' | 'timestamp' = report.dateColumnType === 'date' ? 'date' : 'timestamp';
+            const bounds = params.date_from && params.date_to && !report.ignoreDateRange
+                ? {
+                    from: normalizeDateBound(params.date_from, 'from', columnType, timeZone),
+                    to: normalizeDateBound(params.date_to, 'to', columnType, timeZone),
+                }
+                : null;
+            response.summary = await report.summarize({ db, rows: all.results ?? [], params, bounds });
+        }
+
+        if (results.length > 2) {
+            const prevData = results[2].results as Record<string, any>[];
             // Format prev data as a keyed map for easier lookup if grouped, or just single object if aggregated
+            // Full previous-period row set, same shape as the current-period rows (additive)
+            response.previous_period_rows = prevData;
             if (params.group_by) {
                 const prevMap: Record<string, any> = {};
                 for (const row of prevData) {

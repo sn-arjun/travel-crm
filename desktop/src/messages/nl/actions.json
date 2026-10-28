@@ -1,0 +1,15 @@
+{
+  "actions.edit": "Bewerken",
+  "actions.delete": "Verwijderen",
+  "actions.view": "Bekijken",
+  "actions.add": "Toevoegen",
+  "actions.remove": "Verwijderen",
+  "actions.copy": "Kopiëren",
+  "actions.download": "Downloaden",
+  "actions.upload": "Uploaden",
+  "actions.send": "Verzenden",
+  "actions.share": "Delen",
+  "actions.export": "Exporteren",
+  "actions.import": "Importeren",
+  "actions.print": "Afdrukken"
+}

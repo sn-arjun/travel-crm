@@ -1,0 +1,79 @@
+{
+  "slice": "ai-business-intelligence",
+  "title": "Business Intelligence",
+  "status": "existing",
+  "showcaseOrder": 40,
+  "endpoints": [
+    "GET /api/v1/ai/bi/briefings",
+    "GET /api/v1/ai/bi/briefings/:id",
+    "GET /api/v1/ai/bi/cash-flow-forecast",
+    "GET /api/v1/ai/bi/customer-segments",
+    "GET /api/v1/ai/bi/destination-profitability",
+    "GET /api/v1/ai/bi/health-score",
+    "GET /api/v1/ai/bi/health-score/history",
+    "GET /api/v1/ai/bi/lead-source-roi",
+    "GET /api/v1/ai/bi/lost-deal-analysis",
+    "GET /api/v1/ai/bi/revenue-pulse",
+    "GET /api/v1/ai/bi/seasonal-demand",
+    "GET /api/v1/ai/bi/team-performance",
+    "GET /api/v1/ai/bi/trending-destinations",
+    "GET /api/v1/ai/bi/usage",
+    "GET /api/v1/ai/bi/workload-analysis",
+    "POST /api/v1/ai/bi/briefings/generate",
+    "POST /api/v1/ai/bi/customer-ltv/:contactId",
+    "POST /api/v1/ai/bi/customer-segments/calculate",
+    "POST /api/v1/ai/bi/health-score/calculate",
+    "POST /api/v1/ai/bi/recommendations/generate"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/ai.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/ai/bi/page.tsx",
+    "desktop/src/app/(app)/ai/bi/briefings/page.tsx",
+    "desktop/src/app/(app)/ai/bi/destinations/page.tsx",
+    "desktop/src/app/(app)/ai/bi/health-score/page.tsx",
+    "desktop/src/app/(app)/ai/bi/team/page.tsx",
+    "desktop/src/app/(app)/ai/bi/usage/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/ai/bi/segments/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/ai-business-intelligence.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/ai/bi/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/e2e/ai-business-intelligence.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "All six pages rebuilt on PageHeader/SectionCard/Stat/DataTable/chart archetypes with token classes, skeleton loading, EmptyState, and useFeatureGate (via AiGate, ai_assistant). listPage/filterBar/infiniteScroll/hoverActions/detailDrawer/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog are structurally N/A — this slice is dashboards and analytics, not an entity list or messaging surface. Wired previously-orphaned endpoints: briefings/generate, health-score/calculate + history, customer-segments (list + calculate), customer-ltv (via new RelationCombobox lookup on segments page), and bi/usage. workload-analysis and recommendations/generate remain unwired — no natural page slot for them in this manifest's page set; flagging for a future pass. Destinations page profitability table gets a CSV export; team performance and hub cash-flow/lead-source-roi/lost-deal sections added to surface previously-dead endpoints.",
+  "showcaseScript": [
+    "Open Business Intelligence",
+    "Generate today's executive briefing",
+    "Show the business health score and its trend",
+    "Open destination profitability and seasonal demand",
+    "Review the cash-flow forecast"
+  ]
+}

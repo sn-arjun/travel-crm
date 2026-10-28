@@ -106,14 +106,11 @@ describe('Fleet Management CRUD Integration Tests', () => {
         color: 'White',
         notes: 'Test vehicle',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('id');
-        vehicleId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('id');
+      vehicleId = body.data.id;
     });
 
     it('should reject vehicle with missing registration number', async () => {
@@ -145,7 +142,7 @@ describe('Fleet Management CRUD Integration Tests', () => {
         registrationNumber: 'MH01AB1234',
         type: 'suv',
       });
-      expect([409, 500]).toContain(res.status);
+      expect(res.status).toBe(409);
     });
 
     it('should get vehicle by ID', async () => {
@@ -256,14 +253,11 @@ describe('Fleet Management CRUD Integration Tests', () => {
         address: '123 Test Street, Mumbai',
         notes: 'Test driver',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('id');
-        driverId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('id');
+      driverId = body.data.id;
     });
 
     it('should reject driver with missing name', async () => {
@@ -388,7 +382,7 @@ describe('Fleet Management CRUD Integration Tests', () => {
   describe('Fleet Document Expiry', () => {
     it('should get expiring documents', async () => {
       const res = await authRequest('GET', '/fleet/documents/expiring', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -397,14 +391,14 @@ describe('Fleet Management CRUD Integration Tests', () => {
 
     it('should support days parameter on expiring documents', async () => {
       const res = await authRequest('GET', '/fleet/documents/expiring?days=60', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
   describe('Fleet Maintenance Due', () => {
     it('should get vehicles with maintenance due', async () => {
       const res = await authRequest('GET', '/fleet/maintenance/due', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -413,7 +407,7 @@ describe('Fleet Management CRUD Integration Tests', () => {
 
     it('should support days parameter', async () => {
       const res = await authRequest('GET', '/fleet/maintenance/due?days=30', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Save, RotateCcw, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { Save, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 
 interface UsageCap {
   id?: string;
@@ -24,34 +24,14 @@ interface AiVoipPanelProps {
 }
 
 const CAP_LABELS: Record<string, { label: string; unit: string; description: string }> = {
-  ai_actions_per_day: {
-    label: 'AI Actions / Day',
-    unit: 'actions',
-    description: 'Claude AI requests (assistant, extraction, intelligence)',
-  },
-  voip_minutes_per_month: {
-    label: 'VoIP Minutes / Month',
-    unit: 'minutes',
-    description: 'Inbound + outbound call minutes',
-  },
-  whatsapp_messages_per_month: {
-    label: 'WhatsApp Messages / Month',
-    unit: 'messages',
-    description: 'WhatsApp messages sent via campaigns or direct',
-  },
-  sms_per_month: {
-    label: 'SMS / Month',
-    unit: 'messages',
-    description: 'SMS messages sent',
-  },
-  storage_gb: {
-    label: 'Storage (GB)',
-    unit: 'GB',
-    description: 'R2 storage for recordings, documents, files',
-  },
+  ai_actions_per_day: { label: 'AI Actions / Day', unit: 'actions', description: 'AI requests (assistant, extraction, intelligence)' },
+  ai_tokens_per_month: { label: 'AI Tokens / Month', unit: 'tokens', description: 'Model tokens used by AI features' },
+  voip_minutes_per_month: { label: 'Call Minutes / Month', unit: 'minutes', description: 'Inbound and outbound call minutes' },
+  whatsapp_messages_per_month: { label: 'WhatsApp Messages / Month', unit: 'messages', description: 'WhatsApp messages sent via campaigns or direct' },
+  email_sends_per_month: { label: 'Emails / Month', unit: 'emails', description: 'Emails sent through the communication hub' },
+  sms_per_month: { label: 'SMS / Month', unit: 'messages', description: 'SMS messages sent' },
+  storage_gb: { label: 'Storage (GB)', unit: 'GB', description: 'File storage for recordings and documents' },
 };
-
-const PLAN_ORDER = ['trial', 'starter', 'pro', 'enterprise'];
 
 export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
   const [caps, setCaps] = useState<UsageCap[]>([]);
@@ -60,10 +40,16 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
   const [saving, setSaving] = useState(false);
   const [planChanging, setPlanChanging] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(currentPlan);
+  const [plans, setPlans] = useState<Array<{ key: string; name: string }>>([]);
+  const [message, setMessage] = useState('');
 
   const fetchCaps = useCallback(async () => {
     const res = await fetch(`/api/tenants/${tenantId}/caps`);
-    const data = (await res.json()) as { caps: UsageCap[] };
+    const data = (await res.json()) as { caps: UsageCap[]; error?: string };
+    if (!res.ok) {
+      setMessage(data.error || 'Could not load caps');
+      return;
+    }
     setCaps(data.caps || []);
 
     const edits: Record<string, number> = {};
@@ -77,6 +63,15 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
   }, [tenantId]);
 
   useEffect(() => { fetchCaps(); }, [fetchCaps]);
+  useEffect(() => {
+    fetch('/api/catalogue')
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = (await res.json()) as { plans: Array<{ key: string; name: string; isActive: boolean }> };
+        setPlans(json.plans.filter((p) => p.isActive).map((p) => ({ key: p.key, name: p.name })));
+      })
+      .catch(() => undefined);
+  }, []);
   useEffect(() => { setSelectedPlan(currentPlan); }, [currentPlan]);
 
   const handleCapChange = (key: string, value: number) => {
@@ -86,46 +81,46 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
 
   const handleSaveCaps = async () => {
     setSaving(true);
+    const current = Object.fromEntries(caps.map((c) => [c.capKey, c.capValue]));
     const capsToSave = Object.entries(editCaps)
-      .filter(([, val]) => val > 0)
+      .filter(([key, val]) => (current[key] ?? 0) !== val)
       .map(([capKey, capValue]) => ({
         capKey,
         capValue,
-        resetPeriod: capKey === 'ai_actions_per_day' ? 'daily' : 'monthly',
+        resetPeriod: capKey.endsWith('_per_day') ? 'daily' : 'monthly',
       }));
 
-    await fetch(`/api/tenants/${tenantId}/caps`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ caps: capsToSave }),
-    });
+    if (capsToSave.length > 0) {
+      const res = await fetch(`/api/tenants/${tenantId}/caps`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caps: capsToSave }),
+      });
+      if (!res.ok) setMessage(((await res.json()) as { error?: string }).error || 'Save failed');
+    }
 
     await fetchCaps();
     setSaving(false);
   };
 
-  const handleResetUsage = async (capKey?: string) => {
-    await fetch(`/api/tenants/${tenantId}/caps`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ capKey }),
-    });
-    await fetchCaps();
-  };
-
   const handlePlanChange = async () => {
     if (selectedPlan === currentPlan) return;
     setPlanChanging(true);
-    await fetch(`/api/tenants/${tenantId}/plan`, {
+    const res = await fetch(`/api/tenants/${tenantId}/plan`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: selectedPlan, resetFeatures: true }),
+      body: JSON.stringify({ plan: selectedPlan }),
     });
     setPlanChanging(false);
+    if (!res.ok) {
+      setMessage(((await res.json()) as { error?: string }).error || 'Plan change failed');
+      return;
+    }
     window.location.reload();
   };
 
-  const currentIdx = PLAN_ORDER.indexOf(currentPlan);
+  const planOrder = plans.map((p) => p.key);
+  const currentIdx = planOrder.indexOf(currentPlan);
 
   const capsMap = Object.fromEntries(caps.map((c) => [c.capKey, c]));
 
@@ -148,10 +143,10 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
                 value={selectedPlan}
                 onChange={(e) => setSelectedPlan(e.target.value)}
               >
-                {PLAN_ORDER.map((p) => (
-                  <option key={p} value={p}>
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                    {p === currentPlan ? ' (Current)' : ''}
+                {plans.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.name}
+                    {p.key === currentPlan ? ' (Current)' : ''}
                   </option>
                 ))}
               </select>
@@ -161,20 +156,22 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
               disabled={selectedPlan === currentPlan || planChanging}
               className="mb-0.5"
             >
-              {PLAN_ORDER.indexOf(selectedPlan) > currentIdx ? (
+              {planOrder.indexOf(selectedPlan) > currentIdx ? (
                 <ArrowUpCircle className="mr-2 h-4 w-4" />
               ) : (
                 <ArrowDownCircle className="mr-2 h-4 w-4" />
               )}
               {planChanging ? 'Changing...' : selectedPlan === currentPlan ? 'No Change' :
-                PLAN_ORDER.indexOf(selectedPlan) > currentIdx ? 'Upgrade' : 'Downgrade'}
+                planOrder.indexOf(selectedPlan) > currentIdx ? 'Upgrade' : 'Downgrade'}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Changing plans resets feature flags to the new plan's defaults.
+            The plan change is recorded in the audit log. Seats follow the new plan&apos;s included users plus any extra-user add-ons.
           </p>
         </CardContent>
       </Card>
+
+      {message && <p className="text-sm text-destructive">{message}</p>}
 
       {/* Usage Caps */}
       <Card>
@@ -182,13 +179,10 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
           <div>
             <CardTitle className="text-base">Usage Caps</CardTitle>
             <CardDescription>
-              Set limits per tenant. Set to 0 for uncapped (no limit).
+              Hard limits per agency. Set to 0 for no cap. AI credits and channel packs are managed under Usage &amp; add-ons.
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => handleResetUsage()}>
-              <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset All Counters
-            </Button>
             {dirty && (
               <Button size="sm" onClick={handleSaveCaps} disabled={saving}>
                 <Save className="mr-2 h-3.5 w-3.5" /> {saving ? 'Saving...' : 'Save Caps'}
@@ -245,16 +239,6 @@ export function AiVoipPanel({ tenantId, currentPlan }: AiVoipPanelProps) {
                       className="w-32 h-8 text-sm"
                     />
                     <span className="text-xs text-muted-foreground">{meta.unit}</span>
-                    {cap && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ml-auto text-xs"
-                        onClick={() => handleResetUsage(key)}
-                      >
-                        Reset Counter
-                      </Button>
-                    )}
                   </div>
                 </div>
               );

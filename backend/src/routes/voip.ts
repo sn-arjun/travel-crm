@@ -10,15 +10,33 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { rbac } from '../middleware/rbac';
-import { createVoipProvider } from '../services/voip-provider';
+import { rateLimit } from '../middleware/rate-limit';
+import { findContactByPhone, findOpenLeadForContact } from '../services/call-routing';
+import { createVoipProvider, loadVoipSettings, sealVoipSecret } from '../services/voip-provider';
+import { voipErrorHandler } from '../services/voip/http';
+import { loadTenant } from '../services/billing/subscriptions';
+import { accountView, agencyCountry, decisionFor, enableCalling, getAccount } from '../services/voip/subaccounts';
+import { getKyc, kycView, numberOffer, purchaseNumber, releaseTenantNumber, searchNumbers, submitKyc, type KycFile, type RegistryRow } from '../services/voip/numbers';
+import { getCountryPolicy } from '../services/voip/country-policy';
+import {
+  ALLOWED_DOCUMENT_TYPES,
+  MAX_DOCUMENT_BYTES,
+  MAX_DOCUMENT_FILES,
+  NUMBER_TYPES,
+  hasBundleFlow,
+  kycPrefix,
+  providerView,
+  validateAgainstRequirements,
+} from '../services/voip/regulatory';
 import type { VoipSettingsRow, VoipProviderName } from '../services/voip-provider';
 
 const voipRoutes = new Hono<AppContext>();
+voipRoutes.onError(voipErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 
@@ -66,37 +84,6 @@ const updateSettingsSchema = z.object({
 
 // ── Helper: load full VoIP settings ─────────────────────────────
 
-async function loadVoipSettings(db: D1Database): Promise<VoipSettingsRow | null> {
-  const row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<any>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    voipProvider: row.voip_provider || 'twilio',
-    providerAccountId: row.provider_account_id,
-    providerAuthToken: row.provider_auth_token,
-    providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: row.provider_api_key_secret,
-    providerAppId: row.provider_app_id,
-    twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: row.twilio_auth_token,
-    twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: row.twilio_api_key_secret,
-    twilioTwimlAppSid: row.twilio_twiml_app_sid,
-    defaultCallerId: row.default_caller_id,
-    recordingPolicy: row.recording_policy || 'all',
-    ivrEnabled: row.ivr_enabled || 0,
-    ivrConfig: row.ivr_config,
-    businessHoursEnabled: row.business_hours_enabled || 0,
-    businessHours: row.business_hours,
-    voicemailEnabled: row.voicemail_enabled ?? 1,
-    voicemailGreetingUrl: row.voicemail_greeting_url,
-    maxRingDuration: row.max_ring_duration || 30,
-    routingStrategy: row.routing_strategy || 'assigned',
-    autoCreateLeadMissedCall: row.auto_create_lead_missed_call ?? 1,
-    recordingRetentionDays: row.recording_retention_days ?? 90,
-    recordingStorageBytes: row.recording_storage_bytes ?? 0,
-  };
-}
 
 /** Mask sensitive string: show only last 4 chars */
 function maskSecret(val: string | null): string | null {
@@ -132,20 +119,23 @@ voipRoutes.get('/settings', rbac(['admin']), async (c) => {
     try { businessHours = JSON.parse(businessHours); } catch { /* keep string */ }
   }
 
+  // Masks show the last four characters of the real value, so the stored (encrypted) value is opened first.
+  const secrets = await loadVoipSettings(c.env, db);
+
   return success(c, {
     id: row.id,
     voipProvider: row.voip_provider || 'twilio',
     // Generic provider (masked)
     providerAccountId: row.provider_account_id,
-    providerAuthToken: maskSecret(row.provider_auth_token),
+    providerAuthToken: maskSecret(secrets?.providerAuthToken ?? null),
     providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: maskSecret(row.provider_api_key_secret),
+    providerApiKeySecret: maskSecret(secrets?.providerApiKeySecret ?? null),
     providerAppId: row.provider_app_id,
     // Legacy Twilio (masked)
     twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: maskSecret(row.twilio_auth_token),
+    twilioAuthToken: maskSecret(secrets?.twilioAuthToken ?? null),
     twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: maskSecret(row.twilio_api_key_secret),
+    twilioApiKeySecret: maskSecret(secrets?.twilioApiKeySecret ?? null),
     twilioTwimlAppSid: row.twilio_twiml_app_sid,
     // Common
     defaultCallerId: row.default_caller_id,
@@ -184,15 +174,15 @@ voipRoutes.put('/settings', rbac(['admin']), zValidator('json', updateSettingsSc
   if (data.voipProvider !== undefined) { updates.push('voip_provider = ?'); values.push(data.voipProvider); }
   // Generic provider credentials
   if (data.providerAccountId !== undefined) { updates.push('provider_account_id = ?'); values.push(data.providerAccountId); }
-  if (data.providerAuthToken !== undefined) { updates.push('provider_auth_token = ?'); values.push(data.providerAuthToken); }
+  if (data.providerAuthToken !== undefined) { updates.push('provider_auth_token = ?'); values.push(await sealVoipSecret(c.env, row.id, 'provider_auth_token', data.providerAuthToken)); }
   if (data.providerApiKeyId !== undefined) { updates.push('provider_api_key_id = ?'); values.push(data.providerApiKeyId); }
-  if (data.providerApiKeySecret !== undefined) { updates.push('provider_api_key_secret = ?'); values.push(data.providerApiKeySecret); }
+  if (data.providerApiKeySecret !== undefined) { updates.push('provider_api_key_secret = ?'); values.push(await sealVoipSecret(c.env, row.id, 'provider_api_key_secret', data.providerApiKeySecret)); }
   if (data.providerAppId !== undefined) { updates.push('provider_app_id = ?'); values.push(data.providerAppId); }
   // Legacy Twilio
   if (data.twilioAccountSid !== undefined) { updates.push('twilio_account_sid = ?'); values.push(data.twilioAccountSid); }
-  if (data.twilioAuthToken !== undefined) { updates.push('twilio_auth_token = ?'); values.push(data.twilioAuthToken); }
+  if (data.twilioAuthToken !== undefined) { updates.push('twilio_auth_token = ?'); values.push(await sealVoipSecret(c.env, row.id, 'twilio_auth_token', data.twilioAuthToken)); }
   if (data.twilioApiKeySid !== undefined) { updates.push('twilio_api_key_sid = ?'); values.push(data.twilioApiKeySid); }
-  if (data.twilioApiKeySecret !== undefined) { updates.push('twilio_api_key_secret = ?'); values.push(data.twilioApiKeySecret); }
+  if (data.twilioApiKeySecret !== undefined) { updates.push('twilio_api_key_secret = ?'); values.push(await sealVoipSecret(c.env, row.id, 'twilio_api_key_secret', data.twilioApiKeySecret)); }
   if (data.twilioTwimlAppSid !== undefined) { updates.push('twilio_twiml_app_sid = ?'); values.push(data.twilioTwimlAppSid); }
   // Common
   if (data.defaultCallerId !== undefined) { updates.push('default_caller_id = ?'); values.push(data.defaultCallerId); }
@@ -224,7 +214,7 @@ voipRoutes.put('/settings', rbac(['admin']), zValidator('json', updateSettingsSc
 
 voipRoutes.get('/test-connection', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
 
   if (!settings) {
     return error(c, 'VoIP not configured', 422);
@@ -239,30 +229,69 @@ voipRoutes.get('/test-connection', rbac(['admin']), async (c) => {
   }
 });
 
-// ── POST /token — Generate client token for browser/app calling ─
+// ── GET /token — Generate client token for browser/app calling ─
 // TICKET-369
 
-voipRoutes.post('/token', async (c) => {
+// R307: the softphone's access token. Agent roles only; the agency must be allowed calling (country, plan) and
+// have an active sub-account; the identity is derived here from the signed-in user (never from the request);
+// short-lived (SOFTPHONE_TOKEN_TTL_SECONDS), so the app asks again before it runs out.
+export const SOFTPHONE_TOKEN_TTL_SECONDS = 900;
+const AGENT_ROLES = ['admin', 'sales_manager', 'salesperson'] as const;
+
+const tokenRateLimit = rateLimit({ limit: 20, windowMs: 60_000, keyPrefix: 'rl:voip-token' });
+
+function notAvailable(c: Parameters<typeof error>[0], message: string, reason: string, status = 403) {
+  return error(c, message, status, { code: 'CALLING_NOT_AVAILABLE', reason });
+}
+
+voipRoutes.get('/token', rbac([...AGENT_ROLES]), tokenRateLimit, async (c) => {
+  const env = c.env;
   const userId = c.get('userId');
+  const tenantId = c.get('tenantId');
   const db = c.get('tenantDb');
-  const settings = await loadVoipSettings(db);
 
-  if (!settings) {
-    return error(c, 'VoIP not configured. Please set up credentials in Settings.', 422);
+  const tenant = await loadTenant(env, tenantId);
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const decision = await decisionFor(env, tenant, db);
+  if (!decision.allowed) return notAvailable(c, decision.message ?? 'Calling is not available for this agency.', decision.reason ?? 'not_allowed');
+
+  const account = await getAccount(env, tenantId);
+  if (!account || account.status !== 'active' || !account.sub_account_id) {
+    return notAvailable(c, 'Calling is not turned on for this agency.', account?.status === 'suspended' ? 'suspended' : 'no_account');
   }
 
-  try {
-    const provider = createVoipProvider(c.env, settings);
-    const token = await provider.generateClientToken(userId);
-    return success(c, {
-      token: token.token,
-      identity: token.identity,
-      expiresAt: new Date(Date.now() + token.expiresIn * 1000).toISOString(),
-      provider: settings.voipProvider,
-    });
-  } catch (e: any) {
-    return error(c, e.message || 'Failed to generate VoIP token', 422);
+  let settings = await loadVoipSettings(env, db);
+  // Tokens come from the agency's own sub-account; credentials of another account are never used for them.
+  if (!settings || settings.providerAccountId !== account.sub_account_id) {
+    return notAvailable(c, 'Calling is not turned on for this agency.', 'no_account', 409);
   }
+
+  const user = await db.prepare('SELECT is_active FROM users WHERE id = ?').bind(userId).first<{ is_active: number }>();
+  if (!user || !user.is_active) return error(c, 'User not found', 403);
+
+  // The first token of an agency creates the key that signs them, inside its sub-account.
+  if (!settings.providerApiKeyId || !settings.providerApiKeySecret) {
+    const provider = createVoipProvider(env, settings);
+    if (provider.provisionSoftphoneKey) {
+      const key = await provider.provisionSoftphoneKey();
+      const sealedSecret = await sealVoipSecret(env, settings.id, 'provider_api_key_secret', key.apiKeySecret);
+      await db
+        .prepare(`UPDATE voip_settings SET provider_api_key_id = ?, provider_api_key_secret = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
+        .bind(key.apiKeyId, sealedSecret, settings.id)
+        .run();
+      settings = (await loadVoipSettings(env, db)) ?? settings;
+    }
+  }
+
+  const provider = createVoipProvider(env, settings);
+  const token = await provider.generateClientToken(userId, { ttlSeconds: SOFTPHONE_TOKEN_TTL_SECONDS });
+  return success(c, {
+    token: token.token,
+    identity: token.identity,
+    expiresIn: token.expiresIn,
+    expiresAt: new Date(Date.now() + token.expiresIn * 1000).toISOString(),
+    provider: provider.providerName,
+  });
 });
 
 // ── GET /caller-info — Identify caller by phone (TICKET-380) ──
@@ -273,30 +302,8 @@ voipRoutes.get('/caller-info', async (c) => {
 
   if (!phone) return error(c, 'Phone number required', 400);
 
-  const phoneSuffix = phone.replace(/[\s\-\(\)\+]/g, '').slice(-10);
-
-  // Look up contact
-  const contact = await db.prepare(`
-    SELECT id, name, company, type, phone, email, assigned_to
-    FROM contacts
-    WHERE is_deleted = 0
-      AND (phone LIKE ? OR mobile LIKE ? OR work_phone LIKE ?)
-    ORDER BY updated_at DESC
-    LIMIT 1
-  `).bind(`%${phoneSuffix}`, `%${phoneSuffix}`, `%${phoneSuffix}`).first<Record<string, any>>();
-
-  // Look up active lead if contact found
-  let lead: Record<string, any> | null = null;
-  if (contact) {
-    lead = await db.prepare(`
-      SELECT id, title, status, value
-      FROM leads
-      WHERE contact_id = ? AND is_deleted = 0
-        AND status NOT IN ('won', 'lost')
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `).bind(contact.id).first<Record<string, any>>();
-  }
+  const contact = await findContactByPhone(db, phone);
+  const lead = contact ? await findOpenLeadForContact(db, contact.id) : null;
 
   // Get last interaction
   let lastInteraction: string | null = null;
@@ -322,13 +329,195 @@ voipRoutes.get('/caller-info', async (c) => {
       id: lead.id,
       title: lead.title,
       status: lead.status,
-      value: lead.value,
+      value: lead.estimated_value,
     } : null,
   });
 });
 
-// ── Numbers CRUD — Provider-agnostic (TICKET-390) ───────────────
-// Uses voip_numbers table (new) with fallback to twilio_numbers (legacy)
+// ── Calling account (one provider sub-account per agency, R304) ──
+
+const kycSchema = z.object({
+  country: z.string().length(2).optional(),
+  details: z.object({
+    businessName: z.string().trim().min(1).max(200),
+    address: z.string().trim().min(1).max(500),
+    registrationNumber: z.string().trim().max(100).optional(),
+    contactName: z.string().trim().max(200).optional(),
+  }),
+  files: z.array(z.object({ name: z.string().trim().min(1).max(200), url: z.string().url().max(2000) })).max(10).default([]),
+});
+
+voipRoutes.get('/account', rbac(['admin']), async (c) => {
+  const env = c.env;
+  const tenantId = c.get('tenantId');
+  const db = c.get('tenantDb');
+  const tenant = await loadTenant(env, tenantId);
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const decision = await decisionFor(env, tenant, db);
+  const policy = decision.policy;
+  return success(c, {
+    available: decision.allowed,
+    reason: decision.reason,
+    message: decision.message,
+    country: decision.country,
+    position: policy?.position ?? null,
+    notes: policy?.notes ?? null,
+    account: accountView(await getAccount(env, tenantId)),
+  });
+});
+
+voipRoutes.post('/account/enable', rbac(['admin']), async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { replaceOwnCredentials?: boolean };
+  const { account, created } = await enableCalling(c.env, c.get('tenantId'), { db: c.get('tenantDb'), replaceOwnCredentials: body.replaceOwnCredentials === true });
+  return success(c, { created, account: accountView(account) });
+});
+
+// ── Number offer and KYC ──
+
+voipRoutes.get('/number-offer', rbac(['admin']), async (c) => {
+  return success(c, await numberOffer(c.env, c.get('tenantId'), c.get('tenantDb')));
+});
+
+voipRoutes.get('/kyc', rbac(['admin']), async (c) => {
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const country = (c.req.query('country') || (await agencyCountry(c.env, tenant, c.get('tenantDb')))).toUpperCase();
+  const bundleFlow = hasBundleFlow(await getCountryPolicy(c.env, country));
+  return success(c, { country, document: kycView(await getKyc(c.env, tenant.id, country), bundleFlow) });
+});
+
+voipRoutes.post('/kyc', rbac(['admin']), zValidator('json', kycSchema), async (c) => {
+  const data = c.req.valid('json');
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const own = (await agencyCountry(c.env, tenant, c.get('tenantDb'))).toUpperCase();
+  const country = (data.country || own).toUpperCase();
+  // Documents are for the agency's own country only.
+  if (!country || country !== own) return error(c, 'Documents can be submitted for your own country only.', 403, { code: 'COUNTRY_MISMATCH', country: own });
+  const row = await submitKyc(c.env, tenant.id, country, { details: data.details as Record<string, string>, files: data.files });
+  return success(c, { document: kycView(row, hasBundleFlow(await getCountryPolicy(c.env, country))) });
+});
+
+// ── Country requirements and the structured documents form (R137) ──
+
+/** What the agency's country asks for before a number can be bought, and where its documents stand. */
+voipRoutes.get('/numbers/requirements', rbac(['admin']), async (c) => {
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const own = (await agencyCountry(c.env, tenant, c.get('tenantDb'))).toUpperCase();
+  const country = (c.req.query('country') || own).toUpperCase();
+  const policy = await getCountryPolicy(c.env, country);
+  const bundleFlow = hasBundleFlow(policy);
+  const document = await getKyc(c.env, tenant.id, country);
+  return success(c, {
+    country,
+    kycRequired: !!policy?.kycRequired,
+    bundleFlow,
+    requirements: policy?.kycRequirements ?? null,
+    notes: policy?.notes ?? null,
+    recordingDefault: policy?.recordingDefault ?? 'announce',
+    numberTypes: NUMBER_TYPES,
+    ...providerView(document, bundleFlow),
+    document: kycView(document, bundleFlow),
+  });
+});
+
+const safeFileName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'document';
+
+/**
+ * Send the documents for the agency's own country. Either a JSON body (details + links, the earlier flow) or multipart/form-data
+ * for a country with a requirement list: one form field per text requirement (an address as a JSON string of street, city,
+ * postalCode, region), one file part per file requirement named by its key, optional numberType, or a single "details" JSON field.
+ * Files go into our storage; the provider receives them from there when the super admin has approved.
+ */
+voipRoutes.post('/numbers/documents', rbac(['admin']), async (c) => {
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const own = (await agencyCountry(c.env, tenant, c.get('tenantDb'))).toUpperCase();
+
+  let country = own;
+  let numberType: string | undefined;
+  const details: Record<string, unknown> = {};
+  const files: KycFile[] = [];
+  const uploads: Array<{ key: string; file: File }> = [];
+
+  const contentType = c.req.header('Content-Type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    const form = await c.req.formData();
+    const requirements = (await getCountryPolicy(c.env, own))?.kycRequirements ?? [];
+    for (const [name, value] of form.entries() as unknown as Iterable<[string, string | File]>) {
+      if (typeof value !== 'string') {
+        if (uploads.length >= MAX_DOCUMENT_FILES) return error(c, `At most ${MAX_DOCUMENT_FILES} files can be sent.`, 400, { code: 'TOO_MANY_FILES' });
+        if (value.size > MAX_DOCUMENT_BYTES) return error(c, `${value.name} is larger than ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB.`, 400, { code: 'FILE_TOO_LARGE' });
+        if (!ALLOWED_DOCUMENT_TYPES.includes(value.type)) return error(c, `${value.name}: only PDF, PNG and JPEG files are accepted.`, 400, { code: 'FILE_TYPE_NOT_ALLOWED' });
+        const key = `${kycPrefix(tenant.id)}${own}/${generateId()}-${safeFileName(value.name)}`;
+        uploads.push({ key, file: value });
+        files.push({ name: value.name, key, field: name, contentType: value.type, size: value.size });
+        continue;
+      }
+      if (name === 'country') country = value.trim().toUpperCase();
+      else if (name === 'numberType') numberType = value.trim();
+      else if (name === 'details') {
+        try {
+          Object.assign(details, JSON.parse(value));
+        } catch {
+          return error(c, 'details must be JSON', 400, { code: 'INVALID_DETAILS' });
+        }
+      } else if (requirements.find((r) => r.key === name)?.type === 'address' && value.trim().startsWith('{')) {
+        try {
+          details[name] = JSON.parse(value);
+        } catch {
+          return error(c, `${name} must be JSON with street, city and postalCode`, 400, { code: 'INVALID_DETAILS' });
+        }
+      } else details[name] = value.trim();
+    }
+  } else {
+    const body = (await c.req.json().catch(() => null)) as { country?: string; numberType?: string; details?: Record<string, unknown>; files?: Array<{ name?: string; url?: string; field?: string }> } | null;
+    if (!body || typeof body !== 'object' || !body.details || typeof body.details !== 'object') return error(c, 'details are required', 400, { code: 'INVALID_DETAILS' });
+    if (body.country) country = String(body.country).trim().toUpperCase();
+    numberType = body.numberType;
+    Object.assign(details, body.details);
+    // Links only: a storage key is never taken from the client.
+    for (const f of (body.files ?? []).slice(0, 10)) {
+      if (typeof f?.name === 'string' && typeof f?.url === 'string' && /^https?:\/\//.test(f.url)) files.push({ name: f.name.slice(0, 200), url: f.url.slice(0, 2000), field: typeof f.field === 'string' ? f.field : undefined });
+    }
+  }
+
+  // Documents are for the agency's own country only.
+  if (!country || country !== own) return error(c, 'Documents can be submitted for your own country only.', 403, { code: 'COUNTRY_MISMATCH', country: own });
+  if (numberType && !NUMBER_TYPES.includes(numberType as (typeof NUMBER_TYPES)[number])) return error(c, 'numberType must be local, mobile or national', 400, { code: 'INVALID_NUMBER_TYPE' });
+
+  const policy = await getCountryPolicy(c.env, country);
+  const bundleFlow = hasBundleFlow(policy);
+  // Check completeness before anything is stored (submitKyc checks again with the stored keys).
+  if (bundleFlow && policy?.kycRequirements) {
+    const problems = validateAgainstRequirements(policy.kycRequirements, details, files);
+    if (problems.length > 0) return error(c, 'Some required information is missing or not valid.', 400, { code: 'KYC_INCOMPLETE', problems });
+  } else if (!details.businessName || !details.address) {
+    return error(c, 'Business name and address are required.', 400, { code: 'KYC_INCOMPLETE' });
+  }
+
+  const before = await getKyc(c.env, tenant.id, country);
+  for (const u of uploads) await c.env.FILE_STORAGE.put(u.key, await u.file.arrayBuffer(), { httpMetadata: { contentType: u.file.type } });
+  let row;
+  try {
+    row = await submitKyc(c.env, tenant.id, country, { details, files, numberType });
+  } catch (err) {
+    await Promise.all(uploads.map((u) => c.env.FILE_STORAGE.delete(u.key).catch(() => undefined)));
+    throw err;
+  }
+  // The replaced submission's files are not kept.
+  try {
+    const old = (before?.files ? JSON.parse(before.files) : []) as KycFile[];
+    await Promise.all(old.filter((f) => f.key && !files.some((n) => n.key === f.key)).map((f) => c.env.FILE_STORAGE.delete(f.key!).catch(() => undefined)));
+  } catch {
+    // an unreadable old list: nothing to clean
+  }
+  return success(c, { document: kycView(row, bundleFlow) });
+});
+
+// ── Numbers CRUD — Provider-agnostic (TICKET-390), rented through the agency's sub-account (R304) ──
+// voip_numbers is the agency's own list; master voip_number_registry holds ownership, rent and release.
 
 voipRoutes.get('/numbers', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
@@ -352,108 +541,51 @@ voipRoutes.get('/numbers', rbac(['admin']), async (c) => {
     `).all();
   }
 
-  return success(c, (rows.results || []).map((r: any) => ({
-    id: r.id,
-    phoneNumber: r.phone_number,
-    friendlyName: r.friendly_name,
-    providerNumberId: r.provider_number_id || r.twilio_sid,
-    provider: r.provider || 'twilio',
-    assignedTo: r.assigned_to,
-    assignedName: r.assigned_name,
-    purpose: r.purpose,
-    isDefault: !!r.is_default,
-    monthlyCost: r.monthly_cost,
-    capabilities: r.capabilities ? JSON.parse(r.capabilities) : null,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  })));
+  // Rent state from the registry (paid-through month, a scheduled release) joined by the agency's number id.
+  const registry = await c.env.MASTER_DB
+    .prepare(`SELECT * FROM voip_number_registry WHERE tenant_id = ? AND status IN ('active', 'release_scheduled')`)
+    .bind(c.get('tenantId'))
+    .all<RegistryRow>();
+  const byNumber = new Map((registry.results ?? []).map((r) => [r.tenant_number_id, r]));
+
+  return success(c, (rows.results || []).map((r: any) => {
+    const reg = byNumber.get(r.id);
+    return {
+      id: r.id,
+      phoneNumber: r.phone_number,
+      friendlyName: r.friendly_name,
+      providerNumberId: r.provider_number_id || r.twilio_sid,
+      provider: r.provider || 'twilio',
+      assignedTo: r.assigned_to,
+      assignedName: r.assigned_name,
+      purpose: r.purpose,
+      isDefault: !!r.is_default,
+      monthlyCost: r.monthly_cost,
+      capabilities: r.capabilities ? JSON.parse(r.capabilities) : null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      rental: reg ? { status: reg.status, paidThrough: reg.paid_through, releaseAt: reg.release_at, releaseReason: reg.release_reason, currency: reg.currency, monthlyPrice: reg.monthly_price } : null,
+    };
+  }));
 });
 
 voipRoutes.post('/numbers/search', rbac(['admin']), async (c) => {
-  const db = c.get('tenantDb');
-  const body = await c.req.json() as { country?: string; areaCode?: string; contains?: string };
-  const settings = await loadVoipSettings(db);
-
-  if (!settings) {
-    return error(c, 'VoIP credentials not configured', 422);
-  }
-
-  try {
-    const provider = createVoipProvider(c.env, settings);
-    const numbers = await provider.searchAvailableNumbers(
-      body.country || 'US',
-      body.areaCode,
-      body.contains,
-    );
-    return success(c, numbers.slice(0, 20));
-  } catch (e: any) {
-    return error(c, e.message || 'Failed to search numbers', 502);
-  }
+  const body = (await c.req.json().catch(() => ({}))) as { country?: string; areaCode?: string; contains?: string };
+  const numbers = await searchNumbers(c.env, c.get('tenantId'), c.get('tenantDb'), body);
+  return success(c, numbers);
 });
 
 voipRoutes.post('/numbers/purchase', rbac(['admin']), async (c) => {
-  const db = c.get('tenantDb');
-  const body = await c.req.json() as { phoneNumber: string; friendlyName?: string };
-  const settings = await loadVoipSettings(db);
-
-  if (!settings) {
-    return error(c, 'VoIP credentials not configured', 422);
-  }
-
-  const baseUrl = c.req.url.replace(/\/api\/v1\/voip\/numbers\/purchase.*$/, '');
-
-  try {
-    const provider = createVoipProvider(c.env, settings);
-    const result = await provider.purchaseNumber(
-      body.phoneNumber,
-      body.friendlyName,
-      baseUrl,
-    );
-
-    // Check if first number (auto-set as default)
-    let count: { cnt: number } | null;
-    try {
-      count = await db.prepare('SELECT COUNT(*) as cnt FROM voip_numbers').first<{ cnt: number }>();
-    } catch {
-      count = await db.prepare('SELECT COUNT(*) as cnt FROM twilio_numbers').first<{ cnt: number }>();
-    }
-    const isFirst = (count?.cnt ?? 0) === 0;
-
-    const id = generateId();
-
-    // Insert into voip_numbers (new table)
-    try {
-      await db.prepare(`
-        INSERT INTO voip_numbers (id, phone_number, friendly_name, provider_number_id, provider, purpose, is_default, monthly_cost, capabilities)
-        VALUES (?, ?, ?, ?, ?, 'general', ?, 0, ?)
-      `).bind(
-        id,
-        result.phoneNumber,
-        result.friendlyName,
-        result.providerNumberId,
-        settings.voipProvider,
-        isFirst ? 1 : 0,
-        JSON.stringify(result.capabilities),
-      ).run();
-    } catch {
-      // Fallback: insert into twilio_numbers if voip_numbers doesn't exist
-      await db.prepare(`
-        INSERT INTO twilio_numbers (id, phone_number, friendly_name, twilio_sid, purpose, is_default, monthly_cost, capabilities)
-        VALUES (?, ?, ?, ?, 'general', ?, 0, ?)
-      `).bind(
-        id,
-        result.phoneNumber,
-        result.friendlyName,
-        result.providerNumberId,
-        isFirst ? 1 : 0,
-        JSON.stringify(result.capabilities),
-      ).run();
-    }
-
-    return success(c, { id, phoneNumber: result.phoneNumber, providerNumberId: result.providerNumberId });
-  } catch (e: any) {
-    return error(c, e.message || 'Failed to purchase number', 502);
-  }
+  const body = (await c.req.json().catch(() => ({}))) as { phoneNumber?: string; friendlyName?: string };
+  if (!body.phoneNumber) return error(c, 'phoneNumber is required', 400);
+  const publicBase = c.env.API_PUBLIC_URL?.trim().replace(/\/+$/, '');
+  const result = await purchaseNumber(c.env, c.get('tenantId'), c.get('tenantDb'), {
+    phoneNumber: body.phoneNumber,
+    friendlyName: body.friendlyName,
+    idempotencyKey: c.req.header('Idempotency-Key'),
+    webhookBaseUrl: publicBase || c.req.url.replace(/\/api(\/v1)?\/voip\/numbers\/purchase.*$/, ''),
+  });
+  return success(c, { id: result.id, phoneNumber: result.phoneNumber, providerNumberId: result.providerNumberId, replay: result.replay });
 });
 
 voipRoutes.put('/numbers/:id', rbac(['admin']), async (c) => {
@@ -492,6 +624,10 @@ voipRoutes.put('/numbers/:id', rbac(['admin']), async (c) => {
   return success(c, { message: 'Number updated' });
 });
 
+/**
+ * Release a number. The provider releases it BEFORE the row goes (releaseTenantNumber): routing stops, the provider
+ * gives the number back, then the agency's list and the registry are cleaned. A provider failure leaves the number in place.
+ */
 voipRoutes.delete('/numbers/:id', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
@@ -512,11 +648,15 @@ voipRoutes.delete('/numbers/:id', rbac(['admin']), async (c) => {
   const count = await db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).first<{ cnt: number }>();
   if ((count?.cnt ?? 0) <= 1) return error(c, 'Cannot delete the only phone number', 409);
 
-  await db.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(id).run();
+  await releaseTenantNumber(c.env, c.get('tenantId'), db, id, { providerNumberId: existing.provider_id || null });
 
-  // If we deleted the default, promote the next one
-  if (existing.is_default) {
-    await db.prepare(`UPDATE ${table} SET is_default = 1 WHERE id = (SELECT id FROM ${table} ORDER BY created_at ASC LIMIT 1)`).run();
+  // The registry path removed the row and promoted a default; a number that had no registry row is removed here, after its release.
+  const left = await db.prepare(`SELECT id FROM ${table} WHERE id = ?`).bind(id).first();
+  if (left) {
+    await db.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(id).run();
+    if (existing.is_default) {
+      await db.prepare(`UPDATE ${table} SET is_default = 1 WHERE id = (SELECT id FROM ${table} ORDER BY created_at ASC LIMIT 1)`).run();
+    }
   }
 
   return success(c, { message: 'Number released' });

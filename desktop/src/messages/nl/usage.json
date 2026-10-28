@@ -1,0 +1,22 @@
+{
+  "usage.title": "Gebruik en limieten",
+  "usage.description.plan": "Abonnement {plan}. Het tegoed wordt vernieuwd op {date}.",
+  "usage.description.default": "Uw maandelijkse tegoed",
+  "usage.error": "Het gebruik kon niet worden geladen. Alleen beheerders kunnen het zien.",
+  "usage.note.warning": "80% gebruikt. Overweeg meer aan te vragen voordat het op is.",
+  "usage.note.exhausted": "Opgebruikt. Nieuwe verzendingen worden geweigerd tot het tegoed wordt vernieuwd.",
+  "usage.renews": "Wordt vernieuwd op {date}",
+  "usage.buyMore": "Meer kopen",
+  "usage.requestTopUp": "Extra tegoed aanvragen",
+  "usage.requestUpgrade": "Upgrade aanvragen",
+  "usage.requestSent": "Aanvraag verzonden. We nemen binnenkort contact met u op.",
+  "usage.requestFailed": "De aanvraag kon niet worden verzonden. Probeer het opnieuw.",
+  "usage.progress": "{label} gebruikt",
+  "usage.channel.ai_credits": "AI-tegoed",
+  "usage.channel.sms": "Sms",
+  "usage.channel.whatsapp": "WhatsApp-serviceberichten",
+  "usage.channel.whatsapp_marketing": "WhatsApp-marketingberichten",
+  "usage.channel.otp": "Inlogcodes",
+  "usage.channel.call_minute": "Belminuten",
+  "usage.channel.email": "E-mails"
+}

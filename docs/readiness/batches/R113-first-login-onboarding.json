@@ -1,0 +1,103 @@
+{
+  "id": "R113",
+  "tier": 1,
+  "title": "First login: forced password change, onboarding wizard reachable, change password in settings",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "A new agency admin is made to choose their own password and is taken through company, regional and branding setup the first time they log in.",
+  "why": "No forced first-login password change exists; settings.change-password is a stub (no backend endpoint); the onboarding wizard (desktop/src/app/(app)/onboarding/page.tsx) is linked from nowhere and its logo button shows \"coming soon\".",
+  "featuresToWorks": [
+    "settings.change-password",
+    "settings.onboarding",
+    "auth.login"
+  ],
+  "dependsOn": [
+    "R104"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R111"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/auth.ts",
+      "backend/src/utils/jwt.ts",
+      "backend/src/middleware/tenant.ts",
+      "backend/src/routes/settings.ts",
+      "desktop/src/app/(auth)/login/page.tsx",
+      "desktop/src/app/(app)/onboarding/page.tsx",
+      "desktop/src/app/(app)/layout.tsx",
+      "desktop/src/lib/api/auth.ts"
+    ],
+    "create": [
+      "desktop/src/app/(auth)/change-password/page.tsx",
+      "desktop/src/app/(app)/settings/security/page.tsx",
+      "backend/test/first-login.test.ts",
+      "desktop/e2e/first-login.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/admin.ts",
+      "backend/src/middleware/auth.ts",
+      "backend/src/middleware/require-super-admin.ts",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Backend: POST /auth/change-password { currentPassword, newPassword } (authenticated; min 10 characters with at least one letter and one digit until R209 strengthens it; rejects reuse of the current password; bcrypt via utils/password.ts; clears must_change_password; revokes the user's other refresh tokens in SESSIONS; sends password_changed via sendTransactional). Login response and access token carry mustChangePassword (claim mcp); middleware/tenant.ts returns 403 PASSWORD_CHANGE_REQUIRED for any request with mcp=true except /auth/change-password, /auth/logout and /users/me.",
+    "Desktop: after login, if mustChangePassword -> /change-password (auth layout, EntityForm-style card with current/new/confirm, strength hint); on success refresh the token and continue. Then, if settings onboarding_completed is false and the user is admin -> /onboarding.",
+    "Onboarding page: wire the logo upload to the existing upload endpoint (POST /files/upload; replace the \"coming soon\" toast), save company, country, currency, timezone, tax system, numbering prefix through the existing settings endpoints, set onboarding_completed = true at the end, skip button sets it too. Add a \"Finish setting up\" item to the dashboard/sidebar for admins while onboarding_completed is false (desktop/src/app/(app)/layout.tsx).",
+    "Settings > Security page with change password (and placeholders for 2FA added by R209)."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/first-login.test.ts: provisioned admin (R104 path) logs in with mustChangePassword true; GET /leads -> 403 PASSWORD_CHANGE_REQUIRED; change-password with wrong current -> 401, too short -> 400, success -> new token works and old refresh tokens are revoked; outbox has password_changed.",
+    "desktop/e2e/first-login.spec.ts (multi slot): create an agency through the backend admin API (helper with a super admin token created via the test route or SQL), read the temporary password from GET /test/outbox, log in, land on /change-password, set a new one, land on /onboarding, upload a logo, finish, dashboard shows company name."
+  ],
+  "acceptance": [
+    "A first login cannot reach any data until the password is changed (tests).",
+    "Onboarding is reachable and completes (e2e)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/first-login.spec.ts e2e/auth-shell.spec.ts e2e/settings-company.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/first-login.spec.ts",
+      "e2e/auth-shell.spec.ts",
+      "e2e/settings-company.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md: ds-* indigo tokens only (no raw palette classes or hex), archetypes (ListPage/EntityForm/DetailPage or PageContainer + PageHeader), FilterBar + useInfiniteScroll for lists, RelationCombobox for relations, PhoneInput for phones, useConfirm instead of window.confirm, graceful degradation when an env key is missing. lint-gate must not rise for any file you touch.",
+    "The seeded demo admin has must_change_password 0, so existing e2e specs are unaffected.",
+    "Creating a super admin for e2e: add a TEST_MODE-only POST /test/super-admin in routes/test.ts if no simpler path exists (allowed edit: backend/src/routes/test.ts; note it)."
+  ]
+}

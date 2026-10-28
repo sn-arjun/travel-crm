@@ -1,7 +1,7 @@
 /// TravelCRM Pro — Shared Package
 ///
 /// Models, API client, constants, and utilities shared
-/// between crm_app and driver_app.
+/// by driver_app (and formerly the Flutter CRM app).
 library;
 
 // Storage
@@ -40,6 +40,7 @@ export 'models/generated_flyer_model.dart';
 export 'models/vehicle_model.dart';
 export 'models/driver_model.dart';
 export 'models/trip_assignment_model.dart';
+export 'models/trip_stop_model.dart';
 export 'models/vehicle_rate_card_model.dart';
 export 'models/document_model.dart';
 export 'models/bookmark_model.dart';
@@ -60,6 +61,7 @@ export 'models/marketing_suggestion_model.dart';
 
 // Utils
 export 'utils/date_utils.dart';
+export 'constants/countries.dart';
 export 'utils/currency_utils.dart';
 export 'utils/validators.dart';
 export 'utils/id_utils.dart';

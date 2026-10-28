@@ -1,0 +1,520 @@
+{
+  "program": "launch-readiness",
+  "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
+  "branch": "launch-readiness",
+  "updated": "2026-10-22T03:53:26.917Z",
+  "baseline": {
+    "measuredAt": "2026-10-09T18:50+05:30",
+    "tag": "pre-launch-baseline",
+    "backend": {
+      "tsc": 0,
+      "testFiles": 57,
+      "tests": 1296
+    },
+    "desktop": {
+      "tsc": 0,
+      "testFiles": 64,
+      "tests": 1294,
+      "lintErrors": 0
+    }
+  },
+  "backup": "C:/Users/Admin/Downloads/pro/CRM-backups/2026-10-09 (travelcrm-before-history-strip.bundle holds every branch before the rewrite)",
+  "ownerGates": {
+    "push": "BLOCKED: owner says the repo is not private yet (2026-10-15).",
+    "G1": "DONE 2026-10-15: Twilio only; no calling for Indian agencies (or Gulf/TH/LK/NP/BD) at launch; R308 dropped.",
+    "G2": "DONE 2026-10-14: style approved, voice changed to American female (kokoro af_heart). Pilot re-rendered: studio/out/pilot-assistant.mp4 (75.3 s)."
+  },
+  "waves": {
+    "W0": {
+      "status": "done",
+      "commits": [
+        "feat(backend): inbound gateway, automation engine and AI credits",
+        "feat(desktop): assistant embedded in every screen, permissions hook",
+        "feat(showcase): assistant and automations part"
+      ]
+    },
+    "W1a": {
+      "status": "done-except-push",
+      "output": "docs/launch/CLEANUP-MANIFEST.md",
+      "freshClone": "PASS 2026-10-14 with a single root npm ci: backend tsc 0, 57/1296; desktop tsc 0, 64/1294, lint 0"
+    },
+    "W1b": {
+      "status": "done",
+      "outputs": [
+        "docs/FEATURES.md",
+        "docs/features.json"
+      ],
+      "result": "312 features: 157 works, 124 partial, 20 stub, 11 broken",
+      "refreshAfter": "W3"
+    },
+    "W1c": {
+      "status": "done",
+      "outputs": [
+        "docs/decisions/ADR-001-voip.md (with Addendum A)",
+        "docs/COST-MODEL.md",
+        "docs/CALL-AUTOMATION.md"
+      ]
+    },
+    "W1d": {
+      "status": "done",
+      "output": "studio/out/pilot-assistant.mp4"
+    },
+    "W1e": {
+      "status": "done",
+      "outputs": [
+        "docs/marketing/MARKETING-PLAN.md",
+        "LANDING-COPY.md",
+        "EMAIL-SEQUENCES.md",
+        "DEMO-SCRIPT.md"
+      ]
+    },
+    "W2": {
+      "status": "done",
+      "outputs": [
+        "docs/readiness/SCORECARD.md",
+        "docs/readiness/READINESS-PLAN.md",
+        "docs/readiness/batches/ (46 + INDEX.json)"
+      ],
+      "patchedByOrchestrator": [
+        "R109",
+        "R110",
+        "R304",
+        "R305",
+        "R307",
+        "R308"
+      ]
+    },
+    "W3": {
+      "status": "done",
+      "howItRuns": "one Sonnet agent per batch in .claude/worktrees/<id> on branch batch/<id>; node_modules are PowerShell junctions into the main checkout (remove junctions before git worktree remove); orchestrator gates and merges into launch-readiness",
+      "batches": {
+        "R100": "DEFERRED by owner 2026-10-21 (secrets are dummy; repo privacy later).",
+        "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
+        "R114": "merged (e543b39..5d33400): desktop tsc 0, 64 files / 1297 tests, lint 0; installer built and smoke-tested in the worktree (install, login, server stops on close). Open: electron-updater not installed yet (install after R103 finishes, then rebuild and run the update-available smoke test).",
+        "R102": "merged (0e62374): backend tsc 0, 60 files / 1325 tests",
+        "R103": "merged + migration bundle regenerated (0043): backend 65 files / 1377 tests; gen-wrangler self-test passed; e2e 760/3 failed/8 not run, failures shown pre-existing (also fail without R103); fixes in R123",
+        "R106": "merged (a0b5c4d..a43bc23): backend tsc 0, 61 files / 1341 tests. e2e: auth-shell reset-password test failed once, passed alone (possible cold-start flake; watch in R121).",
+        "R107": "merged (5d41780, 2900f53): backend tsc 0, 63 files / 1368 tests; tenant migration 0043_chatbot_allowed_origins. Desktop install tab and chatbot.spec seeding follow-ups moved into R120.",
+        "R120": "merged: backend 64/1374, desktop 65/1313, lint 0; palette search, calendar 0, credit notes, numbering reset, chatbot install tab",
+        "R123": "merged: full desktop e2e 771 passed / 0 failed / 0 did not run (38 skipped, plan-gated); backend 69/1423; desktop 65/1313; lint 0. Chatbot website channel is canonical with legacy web fallback.",
+        "R104": "merged + line-ending fix (e5e1baa): backend 67 files / 1402 tests; master 0012, tenant 0044. Cloudflare provisioner only tested with mocked fetch; binding registration may need the generated deploy (pending_deploy).",
+        "R105": "merged: backend 69 files / 1422 tests; master 0013, tenant 0045; crons */5, hourly, daily 00:30 UTC fan out via TENANT_JOBS_QUEUE (inline when unbound)",
+        "R109": "merged: backend 70 files / 1444 tests; master 0015_plan_catalogue (0014 reserved for R108). Catalogue values are placeholders except yearly prices and included users; see owner table.",
+        "R119": "merged: backend 71 files / 1453 tests; desktop 65 / 1314; lint 0; tenant 0046 (call_logs.created_by nullable, unique provider_call_id). Follow-ups for Tier 3: Dial action no-answer to voicemail, per-agent analytics on inbound rows.",
+        "R111": "merged: backend 72 files / 1487 tests; master 0017_impersonation_audit (0016 free). Super admin has its own login/token; tenant-email super admin path removed.",
+        "R113": "merged + adapted to R111 (9f07619): backend 73 files / 1499; desktop 66 / 1323; lint 0; first-login + auth-shell + settings-company e2e 29 passed on a multi-agency stack (slot 3).",
+        "R112": "merged: desktop tsc 0 (after clearing stale .next/types caches), vitest 66/1323, lint 0; super-admin tsc 0, next build OK; OpenNext build deferred to R118 (half-separate super-admin install). Manual run by the agent: console create agency -> desktop login with temp password -> support session banner.",
+        "R108": "merged: backend 75 files / 1519 tests; master 0014_api_key_hashing; AES-256-GCM per value with key ids; API keys SHA-256 + prefix",
+        "R110": "merged: backend 80 files / 1569 tests; desktop 67 / 1328; lint 0; master 0016_otp_requests (otp_requests, usage_alerts, metered_events, email unit cost, email_1000 and call_minutes_100 packs). Unknown phones now get a generic 200 on OTP (no account disclosure).",
+        "R117": "merged: backend 78 files / 1543 tests; gen-wrangler self-test passed; backup --verify restored copy matches; notifications + inbox e2e 54 passed. No migrations.",
+        "R121": "merged: isolation spec 9/9 passed three runs in a row on the branch; re-run on merged line (with R110): 9 passed (18.7s)",
+        "R124": "merged: backend 81 files / 1576 tests; reminders reach the queues in the consumer shape with tenantId, metered, claimed per recipient (cron_job_runs, no migration)",
+        "R116": "merged: backend 82 files / 1586 tests; landing link check OK; no unverifiable claims; master 0018_platform_enquiries; enquiries visible to the operator at GET /admin/enquiries",
+        "R115": "merged; merged-line gate: backend 83 files / 1592 tests, flutter analyze clean, flutter test 106 passed: agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554.",
+        "R201": "merged (Tier 2): tax engine GST/VAT+reverse charge/sales tax/none, stored per invoice and note; tenant 0047. Branch gate: backend 83/1603, desktop 67/1333, lint 0, contacts+invoices e2e 50/50. Merged-line gate run was stopped by Claude Code for low system memory (not a failure); not restarted, owner asked.",
+        "R118": "merged: single root workspace install (nested lockfiles removed), CI on master, fresh-clone check, OpenNext build, terraform landing + workers domains + backup/update buckets (validate passed). Main checkout reinstalled from the root lockfile. Merged-line fresh-clone check PASSED: npm ci once; backend tsc + vitest 84/1609; desktop tsc + vitest 67/1333 + lint; super-admin tsc, lint, next build, OpenNext build (.open-next/worker.js); landing link check.",
+        "R122": "merged: README, CONTRIBUTING, env examples and backend/.dev.vars.example rewritten from code; fresh-clone check passed (13/13)",
+        "R202": "merged (Tier 2): locale core; backend 85/1629; desktop 68/1353 (exit 0 after a mock fix); lint 0; master 0019_exchange_rates, tenant 0048_user_locale_timezone",
+        "R125": "merged: terraform queues + Oracle split into terraform/oracle + app Workers domain; gen-wrangler first-deploy path; safe push-secrets/sync-config with dry-run; update feed baked into the installer; weekly backup workflow; domain placeholder YOUR-DOMAIN.example in one place per toolchain; agency web build (desktop/.open-next/worker.js) with /q/<token>, /download, /quick-start, reset and invite pages (web e2e 9/9); branch fresh-clone 21/21. Merged-line gate: backend 87/1692, desktop 71/1371, lint 0, gen-wrangler + shell self-tests passed, terraform fmt + validate (both roots) passed, landing build + link check passed.",
+        "R301": "merged (Tier 3): VoipProvider reselling contract, mock provider, country gating (VOIP_CALLING_COUNTRIES, default GB,US,AU,SG; unset country = not offered); backend 86/1678; local stacks pass VOIP_CALLING_COUNTRIES=* (e229395). Merged line: desktop 69/1357, lint 0, calls + voip-settings e2e green after the mock failing-area-code fix (95ab598).",
+        "R302": "merged (Tier 3): provider callbacks exactly once (tenant 0049 provider_events), inbound Dial action -> voicemail and missed once, outbound placeCall with agent leg; backend 87/1692; calls e2e 16/16",
+        "R204": "merged (Tier 2): phones by agency country (226-country generated table), desktop PhoneInput all countries, driver app fares in agency currency, routing on national number; merged line: backend 88/1710, desktop 71/1382, lint 0, driver flutter 114 passed; packages/shared 2 pre-existing failures (3 before R204) -> R126",
+        "R126": "merged: LeadModel destinations tests used the singular key (test bug, model correct); driver-app.yml runs shared analyze + test; fresh-clone-check runs shared Flutter steps when flutter is on PATH. Merged line: shared 88 passed, driver 114 passed. Follow-up noted: LeadModel.toJson encodes destinations as a JSON string (unused today).",
+        "R303": "merged (Tier 3): 7 call events emitted once (provider_events claims), 7 call recipes (client-facing ones suggest-only), timeline entries, incoming-call screen pop + call:status push, analytics on answered_by; merged line: backend 89/1732, desktop 72/1389, lint 0; e2e calls-simulator + calls + assistant-rules 22 passed on the identical batch tree",
+        "R209": "merged (Tier 2): TOTP 2FA (WebCrypto, sealed secret, hashed single-use recovery codes, replay-safe step, KV challenge 5 min / 5 attempts + rate limits), admin reset, agency-wide require_2fa with setup-only token, 12-char password policy on change/reset/invite; tenant migration 0051. Merged line: backend 90/1761, desktop 74/1400, lint 0; e2e two-factor + auth-shell + token-refresh + first-login 27 passed (slot 2). Follow-ups: super admin 2FA; KV attempt counter is soft (rate limits back it).",
+        "R205": "merged (Tier 2): BillingGateway (Stripe, Razorpay, mock via fetch + WebCrypto), checkout/upgrade/extra users/cancel, signed idempotent ordered webhooks (billing_events), platform invoices PINV-YYYY-n with R201 tax, grace period then read-only (402 on writes, nothing deleted), trial-ending email; master 0020. Merged line: backend 91/1775, desktop 75/1404, lint 0, super-admin tsc 0. Orchestrator review: mock webhook refused when ENVIRONMENT=production. Follow-ups: super-admin tenant page shows billing fields; expired trial cannot log in to reach /billing; AI-credit and communication packs (R206).",
+        "R208": "merged (Tier 2): append-only contact_consents, consent checked on every marketing send (WhatsApp campaigns had no opt-out check before), contact export (51-table registry with schema completeness test, signed 15-min download), erasure (hard delete + anonymise, invoices kept, R2 files deleted, PII scan test), signed public unsubscribe link + List-Unsubscribe headers, landing cookie notice, contact Privacy section; tenant 0052. Merged line: backend 92/1789, desktop 75/1404, lint 0, landing build + link check OK, e2e contacts + marketing-opt-out + campaigns 53 passed (slot 1). Follow-ups: bulk import/export files in R2 not rewritten on erasure; invoice free-text rewrite is case-sensitive.",
+        "R206": "merged (Tier 2): add-on orders (extra users pro rata to the paid year, AI credit pack, SMS/WhatsApp/OTP packs priced unit cost x (1+margin) with a hard floor of cost x 1.2), one-off Stripe Checkout / Razorpay payment links / mock, exactly-once crediting (billing_events + order claim + unique reference), packs scoped to the month paid, Buy more on usage rows, limit dialog and Settings > Billing; master 0021. Merged line: backend 93/1803 (after orchestrator fix: addon_orders added to PRIVACY_NOT_PERSONAL, R208 completeness test saw the master table), desktop 76/1410, lint 0, super-admin tsc 0.",
+        "R207": "merged (Tier 2): agency connects own Razorpay/Stripe (secrets sealed, last-4 only), invoice payment links (balance due, invoice currency, replacing a link cancels the old one), sent via Communication Hub templates, per-agency webhook /webhooks/payments/:tenantKey/:gateway (signature with the agency secret over raw body, payment_events claim + payments.reference guard), shared recordInvoicePayment used by manual payments too; tenant 0054. Merged line (identical to the tested branch): backend 94/1823, desktop 79/1421, lint 0; e2e invoices + payments + webhooks-integrations 52 passed (slot 2).",
+        "R306": "merged (Tier 3): recordings copied once to R2 (provider_events claim), provider copy deleted, 5-min signed per-user playback with role rules, consent modes announce/off/on_request, retention job (default 90 days), call AI producer: Whisper 3 credits/min standard, Deepgram Nova-3 premium 25/min, summary 5 credits per 5 min, suggestions only (calls.summarise recipe); Anthropic call removed from ai-extraction; tenant 0053. Merged line (with R206/R207, bundle regenerated): backend 95/1862, desktop 80/1433, lint 0; e2e calls + calls-simulator + invoices + payments 62 passed (slot 1). Follow-ups: transcript FTS index unmaintained (search misses AI transcripts); inbound legacy extract_lead still auto-creates follow-ups.",
+        "R213": "merged (Tier 2): Meta WhatsApp Cloud API provider per agency (text, media, templates; 24h window enforced before send with refund), agency connection (sealed token/app secret, number ownership via tenant_channel_addresses meta_whatsapp), webhook GET handshake + X-Hub-Signature-256 over raw body, tenant by phone_number_id, inbound deduped, statuses once and monotonic, utility/marketing ledger rows, campaigns require {{unsubscribe_url}}; tenant 0055. Merged line: backend 96/1892, desktop 81/1436, lint 0; e2e inbox + whatsapp-campaigns + webhooks-integrations + calls-simulator 60 passed (slot 1). Follow-ups: festival campaign-queue still sends WhatsApp via Twilio; inbound media not downloaded; no template sync from Meta.",
+        "R210": "merged (Tier 2): t() with interpolation, plurals, English fallback, dev-only missing-key warning; provider mounted; en.json 753 keys (shell, nav, command palette, auth incl. 2FA, shared ui/domain archetypes; 49 files enforced by scripts/i18n-check.mjs + eslint jsx-no-literals warn); language saved per device and to users.language; html lang/dir follow; hi.json 62% (draft, needs native review); ar registered rtl but disabled. Merged line: desktop 84/1459 (after orchestrator fix: shebang removed from i18n-check.mjs, CRLF shebang broke vitest import), lint 0, i18n-check PASS; e2e auth-shell + two-factor passed, dashboard passed alone (17/17). Follow-ups: page bodies not converted; shell uses left/right classes (R211 must switch to logical start/end); API error texts shown as received; e2e seeding can hit the API rate limit when several specs run together.",
+        "R304": "merged (Tier 3): voip_accounts (one Twilio sub-account per agency, claimed before provider call, token sealed + mirrored to tenant voip_settings for webhook checks), suspend/resume/close wired to agency suspend/cancel/reactivate (14-day release after cancel), number search/purchase (Idempotency-Key, registry claim)/release (routing first), call_country_policy seeded (IN, AE, SA, QA, TH, LK, NP, BD not offered) enforced server-side, KYC document review (links), trial switch voip_calling_on_trial default off, number rental as R206 add-on at cost +20% renewed monthly (7-day release if unpaid), super admin Calling tab; master 0022. Merged line: backend 97/1918, desktop 84/1463, lint 0, i18n-check PASS, super-admin tsc 0; e2e voip-settings + calls-simulator + auth-shell 32 passed (slot 1). Follow-ups moved to R305: channel-registration ownership check, minute billing.",
+        "R309": "merged (Tier 3): signed provisioner requests (HMAC over timestamp, method, path+query, body; 300 s window; provisioner refuses to start without a strong PROVISIONER_SECRET), wordpress_sites status model queued/provisioning/active/failed with attempts, backoff 60/300 s, 3 attempts, 30-min build timeout, cron sweep for lost messages, one site per agency, history table, super admin WordPress page + Website tab with retry, website_ready email without credentials; provisioner rewritten on node:http (express removed), container-per-agency driver, PROVISIONER_MODE=shared reserved (Q9 undecided); master 0023. Merged line (orchestrator resolved mail template and super-admin tab conflicts with R304, typed a test helper): backend 98/1933, super-admin tsc + lint (0 errors) + build OK, provisioner 13/13 + tsc OK, desktop 84/1463. Docker test skipped (engine not running).",
+        "R305": "merged (Tier 3): voip.usage-import every 5 min from sub-account fetchUsage (cursor, 3 h overlap, charged once per provider call id, customer leg only, weighting by destination cost), callback metering removed, minute packs at cost x1.2+ (draft costs), 402 at cap (calls in progress not cut, inbound still rings), fraud preflight (premium/satellite prefixes, destination allow-list, 10/min, 3 concurrent, 600 min/day ceiling, 7200 s time limit), spend spike + platform flags emailed, console flags with lift/dismiss, POST /integrations/channels requires an owned number; master 0024. Merged line: backend 99/1955, desktop 84/1463, lint 0, i18n PASS, super-admin tsc 0; e2e calls + calls-simulator + voip-settings + webhooks-integrations 40 passed (slot 2). Orchestrator fixes: non-production wildcard skips the destination allow-list; calls.spec ends its open calls via the simulator. Owner to confirm: plan call-minute caps (all 0), per-minute costs, fraud defaults, spike flag-only vs block.",
+        "R307": "merged (Tier 3): Softphone interface with Twilio (@twilio/voice-sdk 2.18.5, lazy) and mock implementations, state machine + controller (token refresh at 70%), GET /voip/token (agent roles, active sub-account, 900 s, 20/min, refuses 2FA setup-only tokens, API key created once in the sub-account and sealed), Electron mic permission for the app loopback origin only, SoftphoneHost registration, screen-pop Answer/Decline, in-call panel (timer, mute, hold, note, lead link, consent tick), mic check; fix-stack runs VOIP_PROVIDER=mock. Merged line: backend 100/1965, desktop 89/1510, lint 0, i18n PASS, super-admin tsc 0; e2e softphone + calls-simulator + calls + voip-settings + auth-shell 52 passed (slot 1). Orchestrator fixes: mock testConnection refuses unknown accounts; softphone.spec closes (not suspends) the account it opened. Go-live: real sub-account token + device ring, mic/permission prompt in packaged app and browser, one real call per resell country, emergency-calling disclaimer in terms.",
+        "R203": "merged (Tier 2): ~110 money and ~175 date/number sites moved to lib/format.ts + lib/locale-options.ts helpers, INR/en-IN/Asia/Kolkata literals gone outside an allow-list (locale-literals.test.ts), GSTIN only for IN agencies, invoice currency wins over agency default, e2e locale.spec (UK/UAE/US + Indian demo). Orchestrator: phone search aliases (UAE/UK/USA/KSA), rate limiter uses scaled in-memory window in test mode (binding only when RATE_LIMIT_MULTIPLIER=1), invoice-defaults spec enters a VAT rate for India, multi-tenant specs skip on single stacks (GET /test/tenancy). Full e2e on slot 0: 773 passed; the 21 load timeouts re-ran clean (156 passed); remaining real failure fixed. Multi stack: handoff 41/41, locale + isolation 13/13 (--pool 8).",
+        "R127": "merged: feature registry (40), one resolution (platform off > agency override > plan) used by feature-gate, tenant summary, AI settings, automation, reports; FEATURE_DISABLED (no upgrade) vs upgrade:true; /admin/features plan grid + platform switches (audited, reason required to switch off), agency panel with source and follow-plan; KV cache 60 s with invalidation; master 0025. Merged line: backend 101/1978, desktop 91/1527, lint 0, i18n PASS, super-admin tsc + lint + build OK.",
+        "R310": "merged: provisioner SharedSiteManager (WordPress Multisite, default mode; container mode kept), docker-compose.shared.yml (WordPress+WP-CLI, MariaDB, Caddy on-demand TLS with /tls-check, provisioner on Node 22 without build), terraform Oracle VM sized to Always Free 2 OCPU/12 GB/100 GB, DNS-only *.sites + wp-api records, docs/ops/WORDPRESS-HOSTING.md; capacity ~88 sites on 12 GB (assumption). Merged line: provisioner 24/24 + tsc, terraform validate both roots + fmt OK. Go-live: SMTP mu-plugin needed for WordPress password emails; Let's Encrypt ~50 certs/week; Oracle may reclaim idle free instances.",
+        "R128": "merged: provider message ids saved on every outbound email row (email_message_log, message_log.external_id, campaign_recipients.message_id), SendGrid events idempotent and forward-only with counters once; itinerary email really sent (secure quotation link); invoice email (summary + Pay online link) and voucher email (PDF attachment) really sent; hard bounce flags contacts.email_undeliverable instead of erasing, sends suppressed and refunded, flag cleared on edit; Hub/campaign reply-to = agency email address or sender; tenant 0056. Merged line: backend 102/1985 (cron-fanout inline test flaked once, passed alone and on re-run), e2e on the identical batch tree: invoices, vouchers, itineraries, campaigns, communication-inbox, marketing-opt-out 125 passed.",
+        "R211": "merged (Tier 2): ar.json 791/791 (AI draft, needs native review), ar enabled, html lang/dir set before first paint, 251 physical classes -> logical in shell/auth/ui/domain + dashboard/leads/contacts/itineraries (rtl-logical.test guards them), icon mirroring via one CSS rule, bidi isolation for email/phone/code, Latin digits for Arabic (-u-nu-latn), localized currency/time-zone names; rtl.spec 10 tests. Merged line: desktop 94/1544 after orchestrator fix (R128 tag used ml- -> ms-), lint 0, i18n PASS; e2e rtl + contacts + dashboard + auth-shell 67 passed (slot 1). Full suite on the batch: 798 passed, 10 invoice load timeouts passed when re-run alone. Native reviewer: Gulf terms for leads/credit notes/vouchers/rate cards/fleet, weekday abbreviations, sign-in and 2FA wording, placeholder order.",
+        "R131": "merged: EmailProvider (SendGrid, Cloudflare send_email, mock) + sendMail routing by kind: platform_system -> Cloudflare when EMAIL_SYSTEM_PROVIDER=cloudflare and EMAIL binding (else SendGrid), one retry on SendGrid on failure; agency_transactional and agency_marketing -> SendGrid always (test: marketing never on Cloudflare). Inbound: Worker email() handler for Email Routing, reply+<24-char token>@EMAIL_INBOUND_DOMAIN (KV 180 days), dependency-free MIME reader, ingestInbound into the one agency, setReject for unknown/expired/oversize, auto-replies ignored. gen-wrangler: [[send_email]] EMAIL, EMAIL_SYSTEM_PROVIDER (default sendgrid), EMAIL_INBOUND_DOMAIN. GO-LIVE 9.1a. Merged line: backend 103/2008 (second run; first run hit the cron-fanout timeout flake, now fixed with a 30 s timeout), gen-wrangler self-test passed; e2e communication-inbox + first-login + campaigns + two-factor 58 passed on the identical batch tree. Gaps: no Cloudflare delivery-event webhook (dashboard logs for system mail); campaign-queue inline SendGrid fetch and the template-send path not yet behind the interface (both stay SendGrid).",
+        "R129": "merged: master 0026 loads PRICING.md step A (plans 4, plan_prices 54 founder+list across 9 markets, plan_allowances 36, plan_features 96, comm_unit_costs 69, addon_products 68; step-B rows inactive), markets IN/UK/EU/ANZ/WEST/SG/GULF/MY_TH/LK_NP_BD, founder window 2026-11-01..2027-03-31 with a 24-month lock on the subscription, earliest row used before any window opens, packOffers per market, packs carry into the next month (usage_period_history), MIN_COMM_MARGIN_PCT 25, landing shows founder prices, console shows founder and list rows. Merged line: backend 104/2034, desktop 94/1544, lint 0, super-admin tsc + lint + build OK, landing build + links OK; e2e handoff 41/41 and locale 5/5 (slot 2, multi, pool 8) after orchestrator fix to locale.spec (agency browser clock and agency today). Follow-ups: nothing re-prices the gateway subscription at month 24; UK/AU calling stays off until VOIP_CALLING_COUNTRIES is widened; NZ and non-DE EU call-minute weights fall back to 1.",
+        "R132": "merged: default = Cloudflare for platform system mail with SendGrid fallback (gen-wrangler default cloudflare; no binding or refusal -> SendGrid, reason logged; test/local -> outbox); agency mail always SendGrid; resolution console > EMAIL_SYSTEM_PROVIDER > built-in; console Email page (/email): routing per kind, provider status, switches (provider, fallback, reply addresses) with audited reason, test send, delivery log; master platform_email_log (masked addresses, SendGrid events update it, Cloudflare rows \"accepted\", 90-day purge); campaign queue and template sends now through sendMail. Master 0027. Merged line: backend 105/2053, gen-wrangler self-test OK, super-admin tsc + lint + build OK; e2e communication-inbox + campaigns + marketing-opt-out + first-login + two-factor 67 passed (slot 1). Orchestrator: backend network guard (test/setup/network-guard.ts) after finding security-hardening sent 6 real SendGrid requests per run with the test key.",
+        "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted.",
+        "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings.",
+        "R212": "DEFERRED by owner 2026-10-21 (single location for now).",
+        "R134": "merged: push-secrets.sh covers 30 secret names (7 required, fail before pushing, also in --dry-run; --partial; placeholders count as missing; CF_API_TOKEN never from the deploy token; BILLING_MOCK_SECRET and TEST_MODE never pushed); gen-wrangler writes every plain var (platform tax, BILLING_GRACE_DAYS, VOIP_CALLING_COUNTRIES default US, WHATSAPP_META_GRAPH_VERSION, optional provider vars) and refuses mock billing, TEST_MODE, mock VoIP and a * calling list on staging/production; deploy-backend.yml passes every plain var. Self-tests: gen-wrangler ALL PASSED, shell-scripts ALL PASSED. Go-live note: delete any hand-set secrets that are now plain vars before the first deploy (wrangler rejects a name that is both).",
+        "R135": {
+          "status": "merged",
+          "head": "5e788ff",
+          "what": "bugs found while recording: team report for sales_manager, inbox realtime refresh, AI itinerary 120 s client timeout, mock hang-up of simulator calls, softphone token only where calling is on, empty transcript 200 null, mock checkout URL port, zero amounts neutral",
+          "gates": "backend tsc 0, vitest 108 files / 2079; desktop typecheck 0, vitest 1557, lint-gate PASS, i18n PASS; e2e inbox 33/33, softphone 6/6, calls/simulator/reports 70 + rewritten softphone test"
+        }
+      },
+      "merged": [
+        "R101",
+        "R102",
+        "R114",
+        "R106",
+        "R107",
+        "R120",
+        "R103",
+        "R104",
+        "R105",
+        "R123",
+        "R109",
+        "R119",
+        "R111",
+        "R113",
+        "R108",
+        "R112",
+        "R117",
+        "R110",
+        "R121",
+        "R124",
+        "R116",
+        "R115",
+        "R201",
+        "R118",
+        "R122",
+        "R202",
+        "R301",
+        "R302",
+        "R125",
+        "R204",
+        "R303",
+        "R126",
+        "R209",
+        "R205",
+        "R208",
+        "R206",
+        "R207",
+        "R306",
+        "R213",
+        "R210",
+        "R304",
+        "R309",
+        "R305",
+        "R307",
+        "R203",
+        "R127",
+        "R310",
+        "R128",
+        "R211",
+        "R131",
+        "R129",
+        "R132",
+        "R130",
+        "R133",
+        "R134"
+      ],
+      "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
+    },
+    "W4": {
+      "status": "done",
+      "desktop": "PASS 2026-10-14 on launch-readiness b6eb16e: desktop/release/TravelCRM Pro Setup 0.1.0.exe (167,388,167 bytes, unsigned, sha256 a4fcf6aef9474e98...). Electron smoke: installed app logs in against slot-1 API and stops its server on close; updater reports update-available from a local feed (2 passed). Logs: CRM-backups/2026-10-09/w4-*.log",
+      "note": "docs/BUILD-VERIFICATION.md: all 8 items passed on the final line; APK built but not launched (no emulator)"
+    },
+    "W5": {
+      "status": "done",
+      "result": "desktop/e2e/handoff.spec.ts: operator section + 11 steps for 3 agencies (India/Basic/INR/GST, UK/Pro/GBP/VAT, UAE/Enterprise/AED/VAT); green 3 runs in a row on a reset --multi stack (41/41 each); first-login 4/4, tenant-isolation 9/9. docs/HANDOFF-PLAYBOOK.md (operator checklist, done definition, welcome pack, credential sheet template, per-country table, manual staging checks). Bugs fixed: console-created agencies got en-IN/+91/empty country (resolver now maps country names; provisioning seeds locale + phone_default_country); new agencies were billed at the India price in INR (now own market + currency). fix-stack passes BILLING_GATEWAY=mock. Merged line: backend 100/1967, desktop tsc + lint OK. Not automatable locally: real inbox/SPF/DKIM, real payments, real SMS code, Meta test connection, real calls, clean-machine installer, super admin console UI login (spec drives the admin API)."
+    },
+    "W6": {
+      "status": "done",
+      "date": "2026-10-21",
+      "outputs": "studio/out/ (gitignored): 25 films, hero (80 s), master (47.4 min, 122 chapters), 116 shorts",
+      "coverage": "353 works/partial: 342 in a chapter, 11 not filmed with a reason, 0 missing",
+      "aiRequests": "about 11 of 12 (ai-session, 2 takes)",
+      "gateMisses": [
+        "role-sales-manager render 56.3 s vs 60 s minimum, left unpadded"
+      ],
+      "reRecordLater": [
+        "website (domain placeholder)",
+        "driver (emulator, agency-code screen)"
+      ],
+      "bugsFound": "docs/LAUNCH-REPORT.md section 8"
+    },
+    "W7": {
+      "status": "done",
+      "outputs": [
+        "docs/INFRA.md",
+        "docs/GO-LIVE.md (updated for R125/R301/R302)",
+        "docs/KEYS-AND-ACCOUNTS.md"
+      ],
+      "remaining": [
+        "docs/HANDOFF-PLAYBOOK.md (W5)",
+        "docs/LAUNCH-REPORT.md"
+      ],
+      "note": "GO-LIVE, INFRA, KEYS-AND-ACCOUNTS refreshed 2026-10-21; LAUNCH-REPORT complete including videos"
+    },
+    "W8": {
+      "name": "tour operator, EU calling, Dutch (R136-R162)",
+      "design": "docs/readiness/TOUR-OPERATOR-DESIGN.md",
+      "status": "running",
+      "batches": {
+        "R137": {
+          "status": "merged",
+          "head": "78a1ab6",
+          "what": "EU calling NL first: master 0029, NL gate, country-first number price, regulatory bundles, recording default per country, Dutch prompts, ADR-001 Addendum B; NL prices draft",
+          "gates": "backend 109/2118 in batch; merged line 110/2147"
+        },
+        "R136": {
+          "status": "merged",
+          "head": "6b1a9ab",
+          "what": "Dutch foundation: catalogue split per namespace, nl 811 keys, i18n-check en+nl, backend i18n en/nl, driver app nl + no INR/+91 defaults, NL-REVIEW.md",
+          "gates": "merged line backend 110/2147, desktop 98/1568, lint PASS, i18n PASS; e2e 52 passed"
+        },
+        "R139": {
+          "status": "merged",
+          "head": "26608f3",
+          "what": "departures model: tenant 0057, master 0030 feature keys, tours/departures API, capacity by vehicles, calendar sync, privacy registry + erasure, shared types",
+          "gates": "merged line backend 111/2167; e2e calendar+super-admin 15/15"
+        },
+        "R138": {
+          "status": "merged",
+          "head": "6ac6c5b",
+          "what": "India defaults removed: template/lead/itinerary/credit-note currency from agency, PDF money by locale, AI budget label, invoice defaults by country, guard test no-india-defaults, monotonic UUIDv7 (Dart + TS)",
+          "gates": "merged line backend 113/2192, desktop 99/1570, lint PASS, i18n PASS"
+        },
+        "R143": {
+          "status": "merged",
+          "head": "2c63ad6",
+          "what": "seat bookings: holds, confirm, cancel, change, move, passengers + travellers, waitlist auto-offer, hold expiry + lifecycle cron, lead link, departure events, 5 recipes, actions confirm_seat_booking/offer_seats/mark_lead_lost; concurrency test 20 parallel on 10 seats",
+          "gates": "merged line backend 116/2248 (after fixing security-hardening quotation limit flake 6fb0e75), desktop 99/1576"
+        },
+        "R140": {
+          "status": "merged",
+          "head": "3191b7c",
+          "what": "bank details by country (IBAN mod-97, BIC, sort code, BSB, US routing), invoice bank snapshot + PDF, payment methods by country (UPI India only, iDEAL/SEPA EU), message reader currencies + child ages, recipes warn on foreign currency",
+          "gates": "merged line backend 118/2319, desktop 101/1595, lint PASS, i18n PASS"
+        },
+        "R144": {
+          "status": "merged",
+          "head": "5b47703",
+          "what": "departures desktop: group tours switch + Settings > Group tours, tours list/form, departures list/page (bookings, waitlist, stops, prices, costs), hold-seats dialog, bulk confirm/move/cancel/offer, passengers editor; open: seatNumber/documentsStatus not in passenger schema, no realtime seat events (carry to R146)",
+          "gates": "merged line desktop 102/1617, lint PASS, i18n PASS; e2e 32/32 on multi stack"
+        },
+        "R142": {
+          "status": "merged",
+          "head": "2551a16",
+          "what": "agency mail to local outbox in TEST_MODE (tenant-tagged), createInvoice domain function, mock agency gateway (iDEAL/card/Bancontact EUR, UPI INR) through shared applyEvent, tenant 0058 link amount/purpose, deposit/balance/custom link dialog + send via hub, Stripe method types per currency",
+          "gates": "merged line backend 120/2337, desktop 103/1622, lint PASS, i18n PASS; e2e 109 passed"
+        },
+        "R145": {
+          "status": "merged",
+          "head": "2a02394",
+          "what": "coach trips: tenant 0059 trip_stops/trip_passengers, crew roles + tour leaders, staff API (stops, ticks with opId dedupe, head count, realtime), trips from a departure, driver API for stops/passengers, desktop stops editor + check-in panel",
+          "gates": "merged line backend 122/2364, desktop 104/1632, lint PASS, i18n PASS; e2e 60/60"
+        },
+        "R141": {
+          "status": "merged",
+          "head": "20030e7",
+          "what": "NL calling screens: requirements form from API, 6-state bundle chip + resubmit, buy disabled until approved/priced, recording default card with Dutch preview, super admin bundle review actions + draft price guard, NL phone paste/grouping fixes; open: console cannot download agency-uploaded KYC files (needs backend route, carry to R151)",
+          "gates": "merged line desktop 107/1660, lint PASS, i18n PASS, super-admin tsc/lint/build PASS; e2e calling-nl 9, voip-settings 12, super-admin 6"
+        },
+        "R147": {
+          "status": "merged",
+          "head": "a76e5db",
+          "what": "driver app coach trips: stop/passenger/headcount models, stop timeline with arrive/depart, stop screen with boarded/no-show/documents ticks, offline check-in queue (Hive, opId, backoff), cached trip + banners; emulator run not done (optional in spec)",
+          "gates": "shared flutter analyze clean, 98 tests; driver_app analyze clean, 150 tests"
+        },
+        "R146": {
+          "status": "merged",
+          "head": "9521df7",
+          "what": "seats left on calendar/lead/quote, manifest (pickup/rooming/full, CSV/PDF, room suggestions), tour reports, editable seat number/room/documents, live departure:seats_changed, create coach trips button",
+          "gates": "merged line backend 124/2389 x2 (after mock-gateway rate-count test fix), desktop 108/1664, lint PASS, i18n PASS; e2e 10 new + 89"
+        },
+        "R151": {
+          "status": "merged",
+          "head": "3eef4f5",
+          "what": "chat widget contact capture: tenant 0061 (config + conversation consent), public contact route with origin allow-list + rate limit, consent rows, lead-from-conversation service, widget form, settings tab, visitor panel; widget.js served cross-origin (was blocked by CORP); carry: super admin opens agency KYC files with audit",
+          "gates": "merged line backend 126/2405, desktop 108/1664, lint PASS, i18n PASS, super-admin tsc PASS; e2e chatbot 21 passed"
+        },
+        "R149": {
+          "status": "merged",
+          "head": "e397ffc",
+          "what": "age-band pricing: shared resolver (backend + desktop), tenant 0060, agency + template bands, create-from with party, fill-quantities from ages/travellers/lead childAges, assistant reason with party, desktop editors; zero-quantity lines allowed (public quote/PDF still show 0 x)",
+          "gates": "merged line backend 127/2421, desktop 109/1672, lint PASS, i18n PASS; e2e age-bands 6/6 + 31"
+        },
+        "R148": {
+          "status": "merged",
+          "head": "9d5024e",
+          "what": "public booking page: master 0031 public_links (random 128-bit tokens), public GET/POST with honeypot, signed form token, Turnstile option, idempotency key, rate limits, uniform 404; creates contact, website lead, band-priced passengers, held seats, consent; booking invoice + deposit link; /book/[token] en/nl; staff Public page card + iframe snippet; PUBLIC_PAGES_URL/TURNSTILE keys in gen-wrangler",
+          "gates": "merged line backend 129/2456, desktop 110/1691, lint PASS, i18n PASS, gen-wrangler self-test PASS; e2e public-booking 2, tenant-isolation 9/9 after fixing stale plan-gate test"
+        },
+        "R153": {
+          "status": "merged",
+          "head": "0e8cbab",
+          "what": "leads pipeline board: GET /leads/board with column counts and values (agency currency, mixed flagged), board settings API, List/Board toggle, HTML5 drag-and-drop on the shared KanbanBoard, keyboard Move to, optimistic moves via the status route, Lost reason + Won confirm; no settings screen for board columns yet",
+          "gates": "merged line backend 130/2464, desktop 111/1708, lint PASS, i18n PASS; e2e 41"
+        },
+        "R163": {
+          "status": "merged",
+          "head": "786510e",
+          "what": "film tooling: per-scene speed + SpeedBadge, beat x speed, multi-part clips, navTo/hoverNav/tab, showInPhoneFrame, aiGuard (ai-session budget 7), showPdf (needs pdfjs-dist), record-films --clip, driver-* recordings, record-driver -Test/-AgencyCode, coverage skips prospect clips",
+          "gates": "desktop typecheck 0, lint PASS, vitest 1708, coverage OK, film-kit.spec 8 passed 1 skipped (pdf), fixture 4x render OK"
+        },
+        "R150": {
+          "status": "merged",
+          "head": "f93751d",
+          "what": "extras and traveller self-service: catalogue tour-wide/tour/departure with band and rate-card prices, capacity, cut-off, extras invoice per booking, paid status via shared recorder, refund suggestion; self-service links (booking/passenger), /public/booking routes with masked documents + rate limits, /trip/[token] 3-step page en/nl, collect_details recipe drafts the link",
+          "gates": "merged line backend 132/2493, desktop 112/1718, lint PASS, i18n PASS; e2e self-service-extras 2 + public-booking, manifest, travellers, visa"
+        },
+        "R152": {
+          "status": "merged",
+          "head": "8e34550",
+          "what": "margin-scheme invoices: tenant 0062 margin cost/source/rate/wording, regime on all invoice paths (create, booking, extras, from-itinerary, trips, AI extraction, credit notes), no VAT line, editable wording with presets marked for accountant, no default rate, margin report + tax report pointer, staff-only margin view",
+          "gates": "merged line backend 133/2525 (after rate-limit window fix and room-suggestion order fix), desktop 114/1734, lint PASS, i18n PASS; e2e 94"
+        },
+        "R154": {
+          "status": "merged",
+          "head": "470ef91",
+          "what": "departure-relative messages: shared hub sender with consent rule, rules CRUD/preview/send, 13 departure variables per person, departures.messages job (idempotent, cap/opt-out/no-address skips, suggest mode), starter rules en/nl, Settings > Group tours scheduled messages",
+          "gates": "merged line backend 2557, desktop 1734, i18n PASS"
+        },
+        "R155": {
+          "status": "merged",
+          "head": "842c995",
+          "what": "quote accept and book: tenant 0063 accepted fields (IP hash only), quotes.accept setting, public accept with rate limit and single-claim idempotency, seats by confirm mode (waitlist if full), invoice from quote lines + deposit link or bank details, staff mark-accepted API, /q/[token] accept sheet + badge; zero-quantity lines hidden on public quote and PDF; quote.accepted custom trigger added",
+          "gates": "merged line backend 2580, desktop 1734, lint PASS, i18n PASS; e2e 49 passed 2 skipped"
+        },
+        "R164": {
+          "status": "merged",
+          "head": "158ac0c",
+          "what": "payment return states on /book and /trip, tour-level age bands (tenant 0064), company language select writes default_language + all languages, admin tenant create takes language, TEST_MODE mock pay page frameable + showInPhoneFrame allowOrigins, narration-gate regex fix + self-check, plural count strings",
+          "gates": "merged line backend 2585, desktop 1744, lint PASS, i18n PASS, super-admin tsc PASS, narration-gate self-check ok"
+        }
+      }
+    }
+  },
+  "notes": [
+    "The other session (assistant/automation) finished; owner confirmed on 2026-10-09. Its work is committed.",
+    "Sub-agents hit the account session limit twice on 2026-10-09; resume with SendMessage, do not restart.",
+    "gh CLI and git filter-repo are not installed; history was stripped with git filter-branch. Docker 28 is installed.",
+    "Audit correction: backend/package-lock.json was in sync.",
+    "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118.",
+    "Since R101 the local API refuses to start unless backend/.dev.vars has TENANCY_MODE=single (added to the main checkout on 2026-10-14; untracked). R103 makes the local stack multi-agency.",
+    "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards.",
+    "Desktop standalone builds inside a worktree create symlinks into the main node_modules under desktop/.next/standalone; unlink every reparse point before removing a worktree.",
+    ".gitattributes forces LF for backend/drizzle/**/*.sql: the D1 migration reader splits CRLF and LF files differently; after adding a tenant migration run node backend/scripts/bundle-tenant-migrations.mjs.",
+    "Stale generated .next/types and .next/dev/types in desktop/ and super-admin/ reference deleted routes and break tsc locally after pages are removed; delete those gitignored folders (not a code problem).",
+    "Never run npm install/ci inside backend/ or super-admin/: they are root workspaces (R118). Reinstall only at the root.",
+    "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them.",
+    "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15.",
+    "2026-10-22: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R133 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors.",
+    "2026-10-21: backend/test/cron-fanout.test.ts \"without a bound queue scheduled() runs agencies inline\" flaked once on a full run (passed alone and on re-run). Watch it.",
+    "2026-10-21: intermittent \"Request timeout\" on invoice list/detail under load in local stacks (R203 and R211 full runs, locale.spec once). Invoice pages do not call the exchange-rate service. Investigate as R133.",
+    "2026-10-22: while fixing the quotation-limit test, one run that first waited ~40 s inside the workers test runtime saw 61 requests all allowed (KV limiter appeared to fail open). Not reproduced; the KV limiter catches errors and fails open by design. Worth a look if public-link limits matter."
+  ],
+  "ownerDecisions": {
+    "2026-10-14": [
+      "Pricing: flat yearly price per agency + paid extra users + AI credit packs (not per user).",
+      "Communication (SMS, WhatsApp, login codes, calls) stays included with per-plan caps; at the cap upgrade or buy credits; communication add-ons priced at provider cost + 20%.",
+      "VoIP: something easier than Plivo (sign-up failed).",
+      "Video voice: American female (af_heart)."
+    ],
+    "2026-10-15": [
+      "Agency app also deployed on the web at app.<domain> (emailed links + browser access).",
+      "Domain not decided: single placeholder.",
+      "VoIP: Twilio only, skip India calling.",
+      "Repo: not private yet; keep holding the push."
+    ],
+    "2026-10-21": {
+      "repo": "Stays public for now; owner will make it private later and says the exposed keys are invalid. (Push still needs an explicit go.)",
+      "pricing": "Owner delegates: set prices for good profit and good value for the customer; propose in docs/PRICING.md, then apply to the catalogue.",
+      "trialCalling": "Off on trials by default with the super admin switch (as built).",
+      "featureFlags": "Super admin must switch features on/off per plan (all agencies on that plan) and per agency -> batch R127.",
+      "numberRelease": "14 days after cancel, 7 days unpaid rent: approved.",
+      "spendSpike": "Raise a flag and send email (as built), no automatic block.",
+      "email": "Analyse Cloudflare Email instead of SendGrid: md doc with go/no-go and cost analysis.",
+      "wordpress": "Q9 answered: one shared installation for now; revisit container-per-agency when revenue allows -> R310 unblocked."
+    },
+    "2026-10-21b": {
+      "pricing": "docs/PRICING.md approved as proposed -> R129 (load step A + market split), R130 (step B). Login codes stay on SMS (2026-10-14 decision) unless the owner changes it.",
+      "email": "Cloudflare + SendGrid: Cloudflare Email Routing for inbound and Cloudflare sending for platform system mail with SendGrid fallback; SendGrid for all agency mail -> R131 after R128."
+    },
+    "2026-10-21c": {
+      "email": "Default = Cloudflare + SendGrid (Cloudflare for platform system mail, SendGrid fallback; SendGrid for agency mail); routing editable later from the super admin console; close the R131 gaps -> R132."
+    },
+    "2026-10-21d": {
+      "R212": "Deferred: keep all agency data in one place for now (owner: \"I don't think we have regions in Cloudflare\").",
+      "R100": "Deferred: the owner will make the repo private and rotate later; all secrets in the repo are dummy values. Owner: \"you just complete all the tasks\"."
+    }
+  },
+  "goLiveConfig": [
+    "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production",
+    "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners.",
+    "R106: ENVIRONMENT=production, TEST_MODE unset, CORS_ORIGINS (exact web origins), ALLOW_LOOPBACK_ORIGINS=true for the desktop app; add Cloudflare WAF rate-limit rules at the edge.",
+    "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB.",
+    "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency.",
+    "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment.",
+    "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null.",
+    "R112: console secret SUPER_ADMIN_JWT_SECRET (same as backend), BACKEND_API_URL in super-admin/wrangler.toml, optional NEXT_PUBLIC_DESKTOP_URL; deploy with cd super-admin && npm run deploy after R118 fixes the OpenNext build.",
+    "R117: secrets ERROR_REPORTER_DSN and HEALTH_TOKEN; uptime monitor on /api/v1/health/deep with X-Health-Token; rate-limit bindings API_RATE_LIMITER (1001, 600/60s) and UPLOAD_RATE_LIMITER (1002, 20/60s) in wrangler.base.toml; R2 bucket travelcrm-backups + lifecycle rule; weekly backup-tenants.mjs --remote from CI with CLOUDFLARE_API_TOKEN (D1 read, R2 write); Time Travel restore rehearsal on staging; 5xx alert. See docs/ops/BACKUPS.md.",
+    "R116: fill landing/config.js (apiBase, siteUrl, contactEmail, whatsappNumber, demoVideoUrl, appDownloadUrl, turnstileSiteKey, city, legalEntity, senderEmail) and replace https://travelcrm.pro in index.html canonical/og tags, sitemap.xml, robots.txt; add the landing origin to CORS_ORIGINS; optional TURNSTILE_SECRET; landing host must publish landing/public/ at the site root; legal pages are drafts needing legal review.",
+    "R115: create the real Android upload keystore outside the repo and android/key.properties on the build machine; Play Console app com.travelcrm.driver_app (internal track first, never upload debug/throwaway builds); iOS signing on a Mac with an Apple Developer account for com.travelcrm.driverApp; give each agency its slug as the drivers' agency code. Throwaway test key lives in CRM-backups/throwaway-keystore (not for release).",
+    "R118: GitHub Actions secrets/vars per workflows (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, vars.API_URL, TF_VAR_* app secrets); deploys are workflow_dispatch only; Workers travelcrm-api and travelcrm-super-admin must exist before the first terraform apply (workers domains); terraform state backend set up by hand.",
+    "R301: set VOIP_CALLING_COUNTRIES (e.g. GB,US,AU,SG); ENVIRONMENT=production must be set on the production Worker or the \"*\" wildcard would be honoured; each agency must have its country set (unset = calling hidden).",
+    "R209: existing users with short passwords keep signing in; change Admin@123-style seeds before go-live. Optional per agency: Settings > Security > require two-factor sign-in.",
+    "R205: secrets STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET; vars PLATFORM_TAX_COUNTRY/STATE/ID, PLATFORM_GST_RATE (18), PLATFORM_VAT_COUNTRIES/RATE, BILLING_GRACE_DAYS (7). Register webhooks at <API_PUBLIC_URL>/api/v1/billing/webhooks/stripe and /razorpay. NEVER set BILLING_GATEWAY=mock or TEST_MODE on staging or production (the mock secret has a public default). Non-India markets need price rows in the plan catalogue before those agencies can pay (409 PRICE_NOT_CONFIGURED otherwise).",
+    "R208: set UNSUB_SECRET (otherwise derived from JWT_SECRET, and rotating JWT_SECRET would break every unsubscribe link already sent). Lawyer review of privacy policy, DPA, erasure scope and consent wording before go-live.",
+    "R206: Razorpay webhook events payment_link.paid, payment_link.expired, payment.failed; Stripe events checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired. Test-mode purchase of every add-on with the owner test keys. Card fees (~2%) bring the 20% communication margin to ~18%: owner decides margin_pct. Only India has add-on price rows.",
+    "R207: CREDENTIALS_KEYS must be set (sealing fails closed). Pilot agency: connect test-mode Razorpay and Stripe, paste the webhook URL shown in Settings > Integrations into each dashboard (Razorpay payment_link.* events, Stripe checkout.session.completed), pay one full and one part-paid invoice.",
+    "R306: DEEPGRAM_API_KEY for premium transcription; Workers AI binding; lawyer consent wording per market; owner decides recording default and Call AI default; 20-call transcription quality test.",
+    "R213: Meta Business verification, WABA + registered number, system-user token (whatsapp_business_messaging + management), app secret, verify token; callback URL <API_PUBLIC_URL>/api/v1/webhooks/inbound/meta/whatsapp subscribed to messages; approved templates named exactly like the CRM templates, marketing ones with {{unsubscribe_url}}; secrets WHATSAPP_META_TOKEN, WHATSAPP_META_PHONE_NUMBER_ID, WHATSAPP_META_APP_SECRET, WHATSAPP_META_VERIFY_TOKEN.",
+    "R304: platform Twilio credentials + written OK from Twilio for reselling via sub-accounts; real number monthly prices replace drafts (US/UK $1.38, SG $5.00 retail); per-country regulatory bundles are approved in the console but not yet submitted to Twilio (manual at first); live check that sub-account webhook signatures verify; owner confirms trial calling off, 14/7-day release grace periods, document-required countries (GB, AU, SG, DE, MY; US not).",
+    "R309: on the Oracle VM run the provisioner with PROVISIONER_SECRET (24+ chars), docker compose plugin and wp-network network, outbound internet and mail; Worker secrets OCI_PROVISIONER_URL, PROVISIONER_SECRET, WP_SITES_DOMAIN (add them to push-secrets.sh); no path-rewriting proxy in front of the provisioner; one real site end to end. Wildcard DNS + Caddy TLS is R310 (blocked on Q9).",
+    "R131: Cloudflare dashboard: Email Routing on in.<domain> with a catch-all to the API Worker; Email Sending onboarding for <domain> (Workers Paid); DMARC p=none first; keep SendGrid CNAMEs; set EMAIL_INBOUND_DOMAIN and EMAIL_SYSTEM_PROVIDER=cloudflare on staging, verify spf/dkim/dmarc pass in Gmail and Outlook and an external reply reaching the agency inbox, then production. Rollback: EMAIL_SYSTEM_PROVIDER=sendgrid.",
+    "R132: default email routing is Cloudflare for platform mail with SendGrid fallback; it takes effect only after Cloudflare Email Sending onboarding for the platform domain (until then mail goes through SendGrid automatically). Switch or roll back from the console Email page. Note: turning \"customer reply addresses\" off also refuses replies to addresses already sent."
+  ],
+  "todo": [
+    "NEXT (2026-10-22): R155 quote accept running in .claude/worktrees/R155 (slot 5); then R164 (docs/readiness/batches/R164-film-blockers.json); then seed + dry run + record the Skanda film per prospects/skanda/SPEC-PLAN.md. Sweeps R156-R162 after.",
+    "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later). Secret scan done before it.",
+    "Re-record website (after domain) and driver (on an emulator).",
+    "Skanda Travels client demo film: plan in prospects/skanda/ (gitignored), then record with the driver app on the Resizable_Experimental emulator."
+  ],
+  "e2eBaseline": {
+    "date": "2026-10-15",
+    "passed": 771,
+    "failed": 0,
+    "skipped": 38,
+    "didNotRun": 0,
+    "source": "R123 full run on slot 3"
+  },
+  "ownerToConfirm": {
+    "settled": "Prices, allowances, packs and unit costs: superseded by docs/PRICING.md (approved 2026-10-21, loaded by R129/R130). Trial calling off, number release 14/7 days, spike = flag + email: approved 2026-10-21.",
+    "stillOpen": {
+      "tax": [
+        "Export (LUT) and reverse-charge invoice wording",
+        "Default VAT rates GB 20, AE 5, SA 15, DE 19 (accountant)",
+        "Gulf agencies below the VAT threshold use \"none\"?",
+        "GST defaults 18% itinerary invoices, 5% trip invoices",
+        "US sales tax single rate, no nexus handling",
+        "Mandatory invoice fields per country (accountant)"
+      ],
+      "otp": [
+        "OTP abuse limits: 3 per 10 min and 10 per day per number, 20 per hour per IP"
+      ],
+      "perMarketAllowances": [
+        "Enterprise allowance numbers for EU/DE, MY_TH, LK_NP_BD if wanted (R130 mechanism exists, no rows seeded)"
+      ],
+      "loginCodes": [
+        "Login codes stay on SMS (2026-10-14); WhatsApp would cut India cost from about INR 13 to 0.14 per code"
+      ]
+    }
+  },
+  "incidents": [
+    {
+      "date": "2026-10-15",
+      "what": "A docs sub-agent broke shell quoting and executed document lines; wrangler secret put created a placeholder Worker travelcrm-api with 8 secrets on the owner's real Cloudflare account. Found with a read-only workers_list; owner approved deletion; deleted (wrangler delete). Values were local placeholders or junk (no real secrets exist on this machine). Safeguard: memory cloudflare-account-safety; every agent brief forbids account-touching wrangler commands."
+    }
+  ],
+  "finalVerification": {
+    "date": "2026-10-21",
+    "fullE2E_slot0": "818 passed, 0 failed, 73 skipped (multi-tenant specs skip on single) in 22.7 min",
+    "multiSpecs": "handoff 41/41, locale + tenant-isolation 13/13 on a multi stack (earlier the same day)",
+    "backend": "106 files / 2074 tests",
+    "desktop": "95 files / 1548 tests"
+  }
+}

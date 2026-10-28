@@ -1,0 +1,96 @@
+{
+  "id": "R206",
+  "tier": 2,
+  "title": "Self-serve add-ons: buy extra users, AI credit packs and communication packs online",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Let an agency that hits a limit buy more users, AI credits or SMS/WhatsApp/login-code/call packs itself, paying online, instead of waiting for the platform team.",
+  "why": "Owner decision 2026-10-14: plans include users, AI credits and communication caps; beyond them agencies upgrade or buy add-ons (extra users priced per user, AI credit packs, communication packs priced at provider cost + 20%). R109 models the add-ons and R109/R112 let the super admin grant them; nothing lets the agency buy them.",
+  "featuresToWorks": [
+    "assistant.usage-credits",
+    "team.seat-limit"
+  ],
+  "dependsOn": [
+    "R205",
+    "R110"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R209"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/billing.ts",
+      "backend/src/services/billing/subscriptions.ts",
+      "backend/src/routes/settings.ts",
+      "backend/src/index.ts",
+      "desktop/src/app/(app)/settings/billing/page.tsx",
+      "desktop/src/app/(app)/settings/ai-usage/page.tsx",
+      "desktop/src/components/domain/allowance-exhausted-dialog.tsx",
+      "desktop/src/lib/api/billing.ts"
+    ],
+    "create": [
+      "backend/src/services/billing/addons.ts",
+      "backend/drizzle/master/0021_addon_purchases.sql",
+      "backend/test/addon-purchases.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/users.ts",
+      "desktop/src/app/(app)/settings/security/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master 0021 addon_orders (id, tenant_id, product_key, quantity, unit_price REAL, currency, total REAL, gateway, gateway_ref, status pending|paid|failed, idempotency_key UNIQUE, created_at, paid_at).",
+    "services/billing/addons.ts: quote(env, tenantId, productKey, quantity) uses services/plans/pricing.ts (comm packs = units x provider unit cost x (1 + margin), AI packs and extra users from the catalogue); createOrder -> one-time checkout through the R205 gateway (Razorpay for IN, Stripe elsewhere, mock locally); on the paid webhook (idempotent through billing_events) insert tenant_addons with source purchase (comm and AI packs for the current period; extra users until the subscription renews, then on the renewal invoice at the catalogue price).",
+    "Endpoints: GET /billing/addons (products with live prices for the tenant market), POST /billing/addons/checkout { productKey, quantity }, GET /billing/addons/orders.",
+    "Desktop: the Usage and limits page and the allowance-exhausted dialog (R110) get \"Buy more\" next to \"Upgrade plan\"; Settings > Billing lists add-on orders; when billing is not configured the buttons fall back to R110's \"Request top-up\"."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0021_addon_purchases.sql"
+  ],
+  "tests": [
+    "backend/test/addon-purchases.test.ts: quote for sms_100 in IN equals 100 x unit_cost x 1.2 and follows a unit-cost change; paid webhook grants the pack once (replay ignored); a pack bought this month does not carry into next month; extra-user purchase raises the seat limit immediately; failed payment grants nothing."
+  ],
+  "acceptance": [
+    "Agencies can buy add-ons end to end against the mock gateway (tests).",
+    "No add-on price is hardcoded (tests change catalogue rows)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Test-mode purchase of each add-on with the owner's gateway test keys; card fees (about 2%) cut the 20% communication margin to roughly 18%: owner to confirm or raise margin_pct."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "New ids use generateId() (UUIDv7) from backend/src/utils/uuid.ts. D1 conventions: TEXT ISO dates, REAL money, TEXT JSON, INTEGER booleans.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file."
+  ]
+}

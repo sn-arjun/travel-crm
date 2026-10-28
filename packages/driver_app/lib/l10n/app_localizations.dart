@@ -8,6 +8,7 @@ import 'package:intl/intl.dart' as intl;
 import 'app_localizations_ar.dart';
 import 'app_localizations_en.dart';
 import 'app_localizations_hi.dart';
+import 'app_localizations_nl.dart';
 
 // ignore_for_file: type=lint
 
@@ -98,6 +99,7 @@ abstract class AppLocalizations {
     Locale('ar'),
     Locale('en'),
     Locale('hi'),
+    Locale('nl'),
   ];
 
   /// No description provided for @appTitle.
@@ -729,6 +731,444 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hindi'**
   String get hindi;
+
+  /// No description provided for @dutch.
+  ///
+  /// In en, this message translates to:
+  /// **'Dutch'**
+  String get dutch;
+
+  /// No description provided for @loginTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Your trips, check-ins and navigation in one place'**
+  String get loginTagline;
+
+  /// No description provided for @tripsLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your trips'**
+  String get tripsLoadError;
+
+  /// No description provided for @tripLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this trip'**
+  String get tripLoadError;
+
+  /// No description provided for @refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// No description provided for @emptyTripsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'New assignments from dispatch will appear here.'**
+  String get emptyTripsHint;
+
+  /// No description provided for @showingSavedTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing saved trips. Pull down to refresh.'**
+  String get showingSavedTrips;
+
+  /// No description provided for @noMatchingTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'No trips match your search'**
+  String get noMatchingTrips;
+
+  /// No description provided for @tryDifferentFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Try a different search or date range.'**
+  String get tryDifferentFilter;
+
+  /// No description provided for @route.
+  ///
+  /// In en, this message translates to:
+  /// **'Route'**
+  String get route;
+
+  /// No description provided for @openInMaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get openInMaps;
+
+  /// No description provided for @callPassenger.
+  ///
+  /// In en, this message translates to:
+  /// **'Call passenger'**
+  String get callPassenger;
+
+  /// No description provided for @tripDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip details'**
+  String get tripDetails;
+
+  /// No description provided for @dropTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop time'**
+  String get dropTime;
+
+  /// No description provided for @booking.
+  ///
+  /// In en, this message translates to:
+  /// **'Booking'**
+  String get booking;
+
+  /// No description provided for @tripType.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip type'**
+  String get tripType;
+
+  /// No description provided for @estimatedCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated cost'**
+  String get estimatedCost;
+
+  /// No description provided for @actualCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Actual cost'**
+  String get actualCost;
+
+  /// No description provided for @distance.
+  ///
+  /// In en, this message translates to:
+  /// **'Distance'**
+  String get distance;
+
+  /// No description provided for @profileLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your profile'**
+  String get profileLoadError;
+
+  /// No description provided for @documentsLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your documents'**
+  String get documentsLoadError;
+
+  /// No description provided for @noDocuments.
+  ///
+  /// In en, this message translates to:
+  /// **'No documents uploaded'**
+  String get noDocuments;
+
+  /// No description provided for @noDocumentsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload your licence and ID so dispatch can verify them.'**
+  String get noDocumentsHint;
+
+  /// No description provided for @docValid.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid'**
+  String get docValid;
+
+  /// No description provided for @docExpiringSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Expiring soon'**
+  String get docExpiringSoon;
+
+  /// No description provided for @docExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get docExpired;
+
+  /// No description provided for @docNoExpiry.
+  ///
+  /// In en, this message translates to:
+  /// **'No expiry'**
+  String get docNoExpiry;
+
+  /// No description provided for @expiresOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String expiresOn(String date);
+
+  /// No description provided for @agencyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find your agency'**
+  String get agencyTitle;
+
+  /// No description provided for @agencySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the agency code your company gave you'**
+  String get agencySubtitle;
+
+  /// No description provided for @agencyCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Agency code'**
+  String get agencyCodeHint;
+
+  /// No description provided for @agencyCodeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your agency code'**
+  String get agencyCodeRequired;
+
+  /// No description provided for @agencyContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get agencyContinue;
+
+  /// No description provided for @agencyConfirmPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Is this your agency?'**
+  String get agencyConfirmPrompt;
+
+  /// No description provided for @agencyConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, continue'**
+  String get agencyConfirm;
+
+  /// No description provided for @agencyNotYours.
+  ///
+  /// In en, this message translates to:
+  /// **'Not your agency?'**
+  String get agencyNotYours;
+
+  /// No description provided for @agencyInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'We could not find that agency code. Check it with your company.'**
+  String get agencyInvalid;
+
+  /// No description provided for @changeAgency.
+  ///
+  /// In en, this message translates to:
+  /// **'Change agency'**
+  String get changeAgency;
+
+  /// No description provided for @changeAgencyConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'This signs you out and removes the agency from this phone. You will need the agency code again.'**
+  String get changeAgencyConfirm;
+
+  /// No description provided for @agencyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Agency'**
+  String get agencyLabel;
+
+  /// No description provided for @selectCountry.
+  ///
+  /// In en, this message translates to:
+  /// **'Select country'**
+  String get selectCountry;
+
+  /// No description provided for @countrySearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search country or code'**
+  String get countrySearchHint;
+
+  /// No description provided for @noCountryFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No country found'**
+  String get noCountryFound;
+
+  /// No description provided for @stopsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stops'**
+  String get stopsTitle;
+
+  /// No description provided for @coachSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{stops, plural, =1{1 stop} other{{stops} stops}}, {passengers, plural, =1{1 passenger} other{{passengers} passengers}}'**
+  String coachSummary(int stops, int passengers);
+
+  /// No description provided for @nextStopAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name} at {time}'**
+  String nextStopAt(String name, String time);
+
+  /// No description provided for @nextStopOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name}'**
+  String nextStopOnly(String name);
+
+  /// No description provided for @crewTourLeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Tour leader'**
+  String get crewTourLeader;
+
+  /// No description provided for @stopStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get stopStatusPending;
+
+  /// No description provided for @stopStatusArrived.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrived'**
+  String get stopStatusArrived;
+
+  /// No description provided for @stopStatusDeparted.
+  ///
+  /// In en, this message translates to:
+  /// **'Departed'**
+  String get stopStatusDeparted;
+
+  /// No description provided for @stopStatusSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get stopStatusSkipped;
+
+  /// No description provided for @stopArrived.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrived'**
+  String get stopArrived;
+
+  /// No description provided for @stopDepart.
+  ///
+  /// In en, this message translates to:
+  /// **'Depart'**
+  String get stopDepart;
+
+  /// No description provided for @documentsCheckBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Documents check'**
+  String get documentsCheckBadge;
+
+  /// No description provided for @documentsChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Documents checked'**
+  String get documentsChecked;
+
+  /// No description provided for @markDocumentsChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark documents checked'**
+  String get markDocumentsChecked;
+
+  /// No description provided for @passengerBoarded.
+  ///
+  /// In en, this message translates to:
+  /// **'Boarded'**
+  String get passengerBoarded;
+
+  /// No description provided for @passengerNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'No-show'**
+  String get passengerNoShow;
+
+  /// No description provided for @passengerMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get passengerMore;
+
+  /// No description provided for @passengerSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} seats'**
+  String passengerSeats(int count);
+
+  /// No description provided for @completeStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete stop'**
+  String get completeStop;
+
+  /// No description provided for @completeStopPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Passengers not ticked'**
+  String get completeStopPendingTitle;
+
+  /// No description provided for @completeStopPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 passenger has} other{{count} passengers have}} not been ticked yet. Complete the stop anyway?'**
+  String completeStopPendingBody(int count);
+
+  /// No description provided for @headcountThisStop.
+  ///
+  /// In en, this message translates to:
+  /// **'This stop'**
+  String get headcountThisStop;
+
+  /// No description provided for @headcountOverall.
+  ///
+  /// In en, this message translates to:
+  /// **'Overall'**
+  String get headcountOverall;
+
+  /// No description provided for @headcountBoarded.
+  ///
+  /// In en, this message translates to:
+  /// **'{boarded} of {expected} boarded'**
+  String headcountBoarded(int boarded, int expected);
+
+  /// No description provided for @headcountNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} no-show'**
+  String headcountNoShow(int count);
+
+  /// No description provided for @passengersAtStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Passengers boarding here'**
+  String get passengersAtStop;
+
+  /// No description provided for @noPassengersAtStop.
+  ///
+  /// In en, this message translates to:
+  /// **'No passengers board here'**
+  String get noPassengersAtStop;
+
+  /// No description provided for @changesWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change waiting to be sent} other{{count} changes waiting to be sent}}'**
+  String changesWaiting(int count);
+
+  /// No description provided for @savedTripNoSignal.
+  ///
+  /// In en, this message translates to:
+  /// **'No signal. Showing the saved trip.'**
+  String get savedTripNoSignal;
+
+  /// No description provided for @stopGone.
+  ///
+  /// In en, this message translates to:
+  /// **'This stop is no longer on the trip.'**
+  String get stopGone;
 }
 
 class _AppLocalizationsDelegate
@@ -742,7 +1182,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['ar', 'en', 'hi'].contains(locale.languageCode);
+      <String>['ar', 'en', 'hi', 'nl'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -757,6 +1197,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsEn();
     case 'hi':
       return AppLocalizationsHi();
+    case 'nl':
+      return AppLocalizationsNl();
   }
 
   throw FlutterError(

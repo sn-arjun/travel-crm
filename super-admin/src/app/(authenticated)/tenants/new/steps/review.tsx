@@ -2,28 +2,18 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import type { WizardData } from '../page';
 import { Loader2, CheckCircle2 } from 'lucide-react';
+import { PLATFORM_DOMAIN } from '@/lib/domain';
+import { AGENCY_LANGUAGES } from './company-details';
 
 interface Props {
-  data: {
-    company: { name: string; slug: string; ownerName: string; ownerEmail: string; ownerPhone: string; country: string; timezone: string };
-    plan: { name: string; monthlyAmount: number };
-    admin: { password: string };
-    wordpress: { enabled: boolean; subdomain?: string; template?: string };
-  };
+  data: WizardData;
   onProvision: () => void;
   isProvisioning: boolean;
   provisionStep: string;
   onBack: () => void;
 }
-
-const planLabels: Record<string, string> = {
-  free: 'Free Trial (14 days)',
-  starter: 'Starter — ₹999/mo',
-  pro: 'Professional — ₹2,499/mo',
-  enterprise: 'Enterprise — ₹4,999/mo',
-};
 
 export function ReviewStep({ data, onProvision, isProvisioning, provisionStep, onBack }: Props) {
   return (
@@ -34,33 +24,23 @@ export function ReviewStep({ data, onProvision, isProvisioning, provisionStep, o
       <CardContent className="space-y-6">
         <Section title="Company Details">
           <Row label="Company Name" value={data.company.name} />
-          <Row label="Subdomain" value={`${data.company.slug}.travelcrmpro.com`} />
+          <Row label="Subdomain" value={`${data.company.slug}.${PLATFORM_DOMAIN}`} />
           <Row label="Owner" value={`${data.company.ownerName} (${data.company.ownerEmail})`} />
-          {data.company.ownerPhone && <Row label="Phone" value={data.company.ownerPhone} />}
-          <Row label="Location" value={`${data.company.country} (${data.company.timezone})`} />
+          <Row label="Location" value={`${data.company.country} (${data.company.timezone}), data region ${data.company.region.toUpperCase()}`} />
+          <Row label="Currency / tax" value={`${data.company.currency} / ${data.company.taxSystem}`} />
+          <Row label="Language" value={AGENCY_LANGUAGES.find((l) => l.value === data.company.language)?.label ?? 'Automatic (Dutch for the Netherlands, else English)'} />
         </Section>
 
         <Section title="Plan">
-          <Row label="Selected Plan" value={planLabels[data.plan.name] || data.plan.name} />
+          <Row label="Selected Plan" value={data.plan} />
         </Section>
 
         <Section title="Admin User">
           <Row label="Admin Email" value={data.company.ownerEmail} />
-          <Row label="Password" value="••••••••" />
+          <Row label="Password" value="Generated for you and shown once after provisioning" />
         </Section>
 
-        <Section title="WordPress">
-          <Row
-            label="Website"
-            value={
-              data.wordpress.enabled
-                ? `${data.wordpress.subdomain}.travelcrmpro.com (${data.wordpress.template} template)`
-                : 'Not enabled'
-            }
-          />
-        </Section>
-
-        {isProvisioning && (
+        {provisionStep && (
           <div className="flex items-center gap-3 rounded-lg bg-primary/5 border p-4">
             {provisionStep.startsWith('Error') ? (
               <span className="text-sm text-destructive">{provisionStep}</span>

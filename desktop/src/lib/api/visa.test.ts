@@ -235,3 +235,41 @@ describe('travellersApi', () => {
     });
   });
 });
+
+describe('visa and travellers envelope normalisation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('visaApi.list flattens { data: { data, pagination } } and normalises rows', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      data: {
+        data: [{ id: 'v1', traveller_id: 'tr1', destination_country: 'Japan', visa_type: 'tourist', applied_date: '2026-01-02', status: 'applied', created_at: '2026-01-01T00:00:00Z' }],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      },
+    });
+    const result = await visaApi.list({ page: 1, limit: 20 });
+    expect(result.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+    expect(result.data[0]).toMatchObject({ id: 'v1', travellerId: 'tr1', countryName: 'Japan', visaType: 'tourist', applicationDate: '2026-01-02', createdAt: '2026-01-01T00:00:00Z' });
+  });
+
+  it('travellersApi.list flattens the nested snake_case envelope and keeps email and phone', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      data: {
+        data: [{ id: 'tr1', first_name: 'Asha', last_name: 'Rao', passport_number: 'P123', email: 'asha@example.com', phone: '+919876543210', passport_expiry_date: '2030-01-01', created_at: '2026-01-01T00:00:00Z' }],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      },
+    });
+    const result = await travellersApi.list({ page: 1, limit: 20 });
+    expect(result.pagination.total).toBe(1);
+    expect(result.data[0]).toMatchObject({
+      id: 'tr1', firstName: 'Asha', lastName: 'Rao', passportNumber: 'P123', email: 'asha@example.com', phone: '+919876543210', passportExpiryDate: '2030-01-01',
+    });
+  });
+
+  it('travellersApi.getById unwraps { data } and camelizes', async () => {
+    vi.mocked(client.get).mockResolvedValue({ data: { id: 'tr1', first_name: 'Asha', last_name: 'Rao', contact_name: 'Rao Family', documents: [] } });
+    const result = await travellersApi.getById('tr1');
+    expect(result.data).toMatchObject({ id: 'tr1', firstName: 'Asha', contactName: 'Rao Family' });
+  });
+});

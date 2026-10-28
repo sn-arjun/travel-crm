@@ -1,0 +1,76 @@
+{
+  "slice": "dashboard",
+  "title": "Dashboard",
+  "status": "existing",
+  "showcaseOrder": 2,
+  "endpoints": [
+    "DELETE /api/v1/bookmarks/:id",
+    "DELETE /api/v1/sticky-notes/:id",
+    "GET /api/v1/bookmarks",
+    "GET /api/v1/bookmarks/check",
+    "GET /api/v1/notifications/badge-counts",
+    "GET /api/v1/reports/dashboard",
+    "GET /api/v1/sticky-notes",
+    "POST /api/v1/bookmarks",
+    "POST /api/v1/sticky-notes",
+    "PUT /api/v1/sticky-notes/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/reports.ts",
+    "desktop/src/lib/api/bookmarks.ts",
+    "desktop/src/lib/api/sticky-notes.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/dashboard/page.tsx",
+    "desktop/src/app/(app)/page.tsx",
+    "desktop/src/app/(app)/bookmarks/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/bookmarks-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/02-dashboard.spec.ts",
+    "desktop/e2e/17-bookmarks-notes.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/dashboard.spec.ts",
+  "seedHelpers": [
+    "seedStickyNote",
+    "seedBookmark"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/dashboard/**",
+    "desktop/src/app/(app)/page.tsx",
+    "desktop/src/app/(app)/bookmarks/**",
+    "desktop/src/lib/api/bookmarks.ts",
+    "desktop/src/lib/api/sticky-notes.ts",
+    "desktop/src/components/domain/dashboard/**",
+    "desktop/src/stores/bookmarks-store.ts",
+    "desktop/e2e/dashboard.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Dashboard links to /planner which does not exist — must be /calendar (IMPROVEMENTS #15). sticky-notes PUT/DELETE have no client function. Bookmarks page has no FilterBar/skeleton.",
+  "showcaseScript": [
+    "Land on the Dashboard after login",
+    "Point out live KPI tiles for leads, revenue and overdue invoices",
+    "Pin a sticky note to the dashboard",
+    "Jump to Leads from a dashboard KPI tile"
+  ]
+}

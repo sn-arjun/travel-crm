@@ -3,37 +3,30 @@
 # NEVER commit terraform.tfvars to git (it's in .gitignore).
 #
 # After filling in values:
-#   cd terraform && terraform init && terraform apply
-#   cd .. && npm run infra:sync   # generates .dev.vars + wrangler IDs
-#   npm run secrets:push           # pushes secrets to Cloudflare Workers
+#   cd terraform && terraform init && terraform plan   (see docs/GO-LIVE.md phase 2)
+# Only domain, cloudflare_account_id and cloudflare_api_token are required. Everything else is optional.
+# Real application secrets go to the Worker with wrangler secret put, not through terraform.
 
 # ─── Project ─────────────────────────────────────────────────
 
 project_name = "travelcrm"
-domain       = "yourdomain.com"
+# PLACEHOLDER: the domain is not decided yet. This is the ONE place terraform learns it; every hostname
+# (api., admin., app., downloads., the landing site) is derived. Replace before the first plan.
+domain       = "YOUR-DOMAIN.example"
 environment  = "production"
 
-# ─── Oracle Cloud (Always Free ARM) ─────────────────────────
-
-oci_tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."
-oci_user_ocid        = "ocid1.user.oc1..aaaa..."
-oci_fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
-oci_private_key      = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
-oci_compartment_ocid = "ocid1.compartment.oc1..aaaa..."
-oci_region           = "ap-mumbai-1"
-oci_image_id         = "ocid1.image.oc1.ap-mumbai-1..aaaa..."
-ssh_public_key       = "ssh-rsa AAAA... your-key"
+# ─── Oracle Cloud (Tier 3) ───────────────────────────────────
+# Not part of this configuration: the VM is created from terraform/oracle/. No oci_* values are needed here.
+# After that exists, put its public IP here to create the wildcard DNS record:
+# oci_instance_ip = ""
 
 # ─── Cloudflare ──────────────────────────────────────────────
 
 cloudflare_account_id = "your-account-id"
 cloudflare_api_token  = "your-api-token"
 
-# ─── Application Secrets ────────────────────────────────────
-
-jwt_secret         = "change-this-min-32-chars-production-secret"
-jwt_refresh_secret = "change-this-min-32-chars-refresh-secret"
-app_url            = "https://yourdomain.com"
+# ─── Application secrets (optional for terraform; read by nothing but legacy scripts) ───
+# Do not put real secrets in files. Set them with wrangler secret put (GO-LIVE phase 3).
 
 # ─── Twilio (SMS + WhatsApp + Voice + OTP) ──────────────────
 # Sign up: https://console.twilio.com
@@ -58,7 +51,7 @@ plivo_whatsapp_from_number  = ""
 # Sign up: https://sendgrid.com (100 emails/day free)
 
 sendgrid_api_key    = "SG.xxxxxxxxxxxxxxxxxxxx"
-sendgrid_from_email = "noreply@yourdomain.com"
+sendgrid_from_email = "noreply@YOUR-DOMAIN.example"
 
 # ─── Firebase (Push Notifications) ──────────────────────────
 # Console: https://console.firebase.google.com
@@ -82,7 +75,19 @@ anthropic_api_key = "sk-ant-xxxxxxxxxxxxx"
 
 google_maps_api_key = ""
 
-# ─── Super Admin Portal ────────────────────────────────────
-
-super_admin_email    = "admin@yourdomain.com"
-super_admin_password = "YourSecurePassword123!"
+# ─── Backend secrets and settings read by scripts/push-secrets.sh (names only; not Terraform variables) ───
+credentials_keys            = ""
+credentials_active_key_id   = ""
+super_admin_jwt_secret      = ""
+error_reporter_dsn          = ""
+health_token                = ""
+turnstile_secret            = ""
+inbound_email_secret        = ""
+sendgrid_webhook_public_key = ""
+api_public_url              = ""
+cors_origins                = ""
+allow_loopback_origins      = ""
+quotes_url                  = ""
+email_from                  = ""
+email_from_name             = ""
+platform_support_email      = ""

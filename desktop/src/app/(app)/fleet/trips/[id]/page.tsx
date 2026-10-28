@@ -1,441 +1,612 @@
 'use client';
 
+
+import { getLocaleContext } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
+import { formatLocaleTime } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, MapPin, ArrowRight, Truck, User, Phone, Calendar,
-  DollarSign, FileText, CheckCircle2, Circle, AlertTriangle, Plus, Trash2, Loader2,
+  CheckCircle2, DollarSign, ExternalLink, FileText, Pencil, Phone, Plus, Receipt, RefreshCw, Trash2, Truck, User, XCircle,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { DetailPage } from '@/components/domain';
+import {
+  Button, Tag, SectionCard, Stat, Avatar, AvatarFallback,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, CurrencyInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  EmptyState, Skeleton, useConfirm,
+} from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
+import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi, type Trip, type TripCost, type TripTimeline } from '@/lib/api/fleet';
 import { toast } from 'sonner';
+import { TRIP_STATUS_LABELS, VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
+import type { TimelineItem } from '@/components/ui/timeline';
 import {
-  TRIP_STATUS_LABELS, TRIP_STATUS_COLORS,
-  FLEET_TRIP_TYPE_LABELS, VEHICLE_TYPE_LABELS,
-} from '@travelcrm/shared';
+  formatCoordinates, formatTripDay, formatTripDuration, formatTripWhen,
+  isTripActive, tripEventLabel, tripEventTone, tripStatusTone, tripTypeLabel,
+} from '@/components/domain/fleet/trip-format';
+import { TRIP_LOAD_MAX_RETRIES, tripLoadView } from '@/components/domain/fleet/trip-load-state';
+import { formatDisplayDate } from '@/lib/dates';
+import { formatPhone } from '@/lib/phone';
+import { useT } from '@/lib/i18n';
+import { CoachTripPanel } from '../_components/passenger-checkin';
 
 const TRIP_STATUS_ORDER = ['assigned', 'accepted', 'en_route', 'started', 'completed'] as const;
 
+/** How often an active trip re-reads itself so driver-app updates show without a reload. */
+const POLL_INTERVAL_MS = 10_000;
+
 const COST_TYPE_LABELS: Record<string, string> = {
   fuel: 'Fuel', toll: 'Toll', parking: 'Parking',
-  driver_allowance: 'Driver Allowance', maintenance: 'Maintenance', other: 'Other',
+  driver_allowance: 'Driver Allowance', other: 'Other',
 };
 
-function StatusTimeline({ currentStatus, history }: { currentStatus: string; history: TripTimeline[] }) {
-  const currentIdx = TRIP_STATUS_ORDER.indexOf(currentStatus as typeof TRIP_STATUS_ORDER[number]);
-  return (
-    <div className="space-y-0">
-      {TRIP_STATUS_ORDER.map((status, idx) => {
-        const historyEntry = history.find((h) => h.status === status);
-        const isComplete = idx <= currentIdx && currentStatus !== 'cancelled';
-        const isCurrent = status === currentStatus;
-        const color = TRIP_STATUS_COLORS[status as keyof typeof TRIP_STATUS_COLORS] || '#64748B';
-        const label = TRIP_STATUS_LABELS[status as keyof typeof TRIP_STATUS_LABELS] || status;
-        return (
-          <div key={status} className="flex gap-3">
-            <div className="flex flex-col items-center">
-              {isComplete ? (
-                <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color }} />
-              ) : (
-                <Circle className={cn('h-5 w-5 shrink-0', isCurrent ? 'text-blue-500' : 'text-muted-foreground/30')} />
-              )}
-              {idx < TRIP_STATUS_ORDER.length - 1 && (
-                <div className={cn('w-px flex-1 min-h-8', isComplete ? 'bg-green-300' : 'bg-border')} />
-              )}
-            </div>
-            <div className="pb-6">
-              <p className={cn('text-sm font-medium', isComplete ? 'text-foreground' : 'text-muted-foreground')}>{label}</p>
-              {historyEntry && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {new Date(historyEntry.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  {' · '}{historyEntry.userName}
-                </p>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+const NOT_CANCELLABLE_MESSAGE =
+  'This trip is already under way, so it can no longer be cancelled. Mark it as completed instead, or contact the driver.';
+const NOT_DELETABLE_MESSAGE =
+  'Only trips that are still Assigned can be deleted. Trips that have started stay on record.';
+
+function errorMessage(e: unknown, fallback: string): string {
+  const m = (e as { message?: string } | null)?.message;
+  return m && m.trim() ? m : fallback;
+}
+
+function formatClock(d: Date) {
+  return formatLocaleTime(d, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 }
 
 export default function TripDetailPage() {
+  const t = useT();
   const router = useRouter();
   const params = useParams();
   const tripId = params.id as string;
   const [showAddCostDialog, setShowAddCostDialog] = React.useState(false);
-  const [costForm, setCostForm] = React.useState({ costType: 'fuel' as string, amount: '', notes: '' });
+  const [costForm, setCostForm] = React.useState<{ costType: string; amount: number | undefined; notes: string }>({
+    costType: 'fuel', amount: undefined, notes: '',
+  });
+  const { confirm, dialog } = useConfirm();
 
-  const { data: response, loading, error, refetch } = useApiQuery<any>(
-    () => fleetApi.trips.getById(tripId),
-    [tripId],
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
+  const [isAddingCost, setIsAddingCost] = React.useState(false);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = React.useState(false);
+  const [isGeneratingVoucher, setIsGeneratingVoucher] = React.useState(false);
+
+  // Timeline and costs are best-effort: when one fails the last good copy stays on screen.
+  const lastGood = React.useRef<{ timeline: TripTimeline[]; costs: TripCost[] }>({ timeline: [], costs: [] });
+  const { data: bundle, loading, error, refetch } = useApiQuery(async () => {
+    const [tripRes, timelineRes, costsRes] = await Promise.all([
+      fleetApi.trips.getById(tripId),
+      fleetApi.trips.getTimeline(tripId).catch(() => null),
+      fleetApi.trips.listCosts(tripId).catch(() => null),
+    ]);
+    if (timelineRes) lastGood.current.timeline = Array.isArray(timelineRes.data) ? timelineRes.data : [];
+    if (costsRes) lastGood.current.costs = Array.isArray(costsRes.data) ? costsRes.data : [];
+    setUpdatedAt(new Date());
+    return { trip: tripRes.data ?? null, timeline: lastGood.current.timeline, costs: lastGood.current.costs };
+  }, [tripId]);
+  const trip: Trip | null = bundle?.trip ?? null;
+  const timeline = bundle?.timeline ?? [];
+  const costs = bundle?.costs ?? [];
+  const timelineLoading = loading;
+  const costsLoading = loading;
+
+  // A failed first load (e.g. a request racing the navigation) is retried before the page
+  // settles, so "Trip not found" never flashes for a trip that exists.
+  const [loadRetries, setLoadRetries] = React.useState(0);
+  const [prevTripId, setPrevTripId] = React.useState(tripId);
+  if (prevTripId !== tripId) {
+    setPrevTripId(tripId);
+    setLoadRetries(0);
+  }
+  const view = tripLoadView({ hasTrip: !!trip, loading, error, retries: loadRetries });
+  React.useEffect(() => {
+    if (trip || loading || !error || loadRetries >= TRIP_LOAD_MAX_RETRIES) return;
+    const timer = window.setTimeout(() => {
+      setLoadRetries((n) => n + 1);
+      void refetch();
+    }, 600 * (loadRetries + 1));
+    return () => window.clearTimeout(timer);
+  }, [trip, loading, error, loadRetries, refetch]);
+
+  /** Re-reads trip, timeline and costs. A silent load never swaps content for skeletons. */
+  const load = React.useCallback(
+    async (silent: boolean) => {
+      if (!silent) setRefreshing(true);
+      try {
+        await refetch({ silent: true });
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [refetch],
   );
 
-  const timelineQuery = useApiQuery(
-    () => fleetApi.trips.getTimeline(tripId).then(res => res.data),
-    [tripId]
-  );
+  const active = isTripActive(trip?.status);
+  React.useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true);
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, load]);
 
-  const costsQuery = useApiQuery(
-    () => fleetApi.trips.listCosts(tripId).then(res => res.data),
-    [tripId]
-  );
-
-  const { mutate: updateTrip, loading: isUpdatingStatus } = useApiMutation<any, any>(
-    (data) => fleetApi.trips.update(tripId, data),
-  );
-
-  const { mutate: addCost, loading: isAddingCost } = useApiMutation<any, any>(
-    (data) => fleetApi.trips.addCost(tripId, data),
-  );
-
-  const { mutate: deleteCost } = useApiMutation<any, any>(
-    (costId: string) => fleetApi.trips.deleteCost(tripId, costId),
-  );
-
-  const trip = response?.data as Trip | undefined;
-  const timeline: TripTimeline[] = Array.isArray(timelineQuery.data) ? timelineQuery.data as TripTimeline[] : [];
-  const costs: TripCost[] = Array.isArray(costsQuery.data) ? costsQuery.data as TripCost[] : [];
   const totalCosts = costs.reduce((sum, c) => sum + (c.amount ?? 0), 0);
 
-  const handleStatusUpdate = async (newStatus: string) => {
-    const result = await updateTrip({ status: newStatus });
-    if (result) {
-      toast.success(`Trip status updated to ${newStatus.replace('_', ' ')}`);
-      refetch();
-      timelineQuery.refetch();
-    } else {
-      toast.error('Failed to update trip status');
+  async function handleStatusUpdate(newStatus: string) {
+    if (!trip) return;
+    if (newStatus === 'cancelled') {
+      if (trip.status !== 'assigned' && trip.status !== 'accepted') {
+        toast.error(NOT_CANCELLABLE_MESSAGE, { duration: 8000 });
+        return;
+      }
+      const ok = await confirm({
+        title: 'Cancel trip',
+        description: 'Are you sure you want to cancel this trip?',
+        confirmLabel: 'Cancel trip',
+        tone: 'destructive',
+      });
+      if (!ok) return;
     }
-  };
+    setIsUpdatingStatus(true);
+    try {
+      await fleetApi.trips.updateStatus(tripId, newStatus);
+      toast.success(`Trip status updated to ${TRIP_STATUS_LABELS[newStatus as keyof typeof TRIP_STATUS_LABELS] || newStatus}`);
+      await load(true);
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to update trip status'));
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }
 
-  const handleCancelTrip = async () => {
-    if (!confirm('Are you sure you want to cancel this trip?')) return;
-    const result = await updateTrip({ status: 'cancelled' });
-    if (result) {
-      toast.success('Trip cancelled successfully');
-      refetch();
-    } else {
-      toast.error('Failed to cancel trip');
+  async function handleDeleteTrip() {
+    if (!trip) return;
+    if (trip.status !== 'assigned') {
+      toast.error(NOT_DELETABLE_MESSAGE, { duration: 8000 });
+      return;
     }
-  };
+    const ok = await confirm({
+      title: 'Delete trip',
+      description: 'Delete this trip? This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await fleetApi.trips.delete(tripId);
+      toast.success('Trip deleted');
+      router.push('/fleet/trips');
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to delete trip'));
+    }
+  }
 
   async function handleAddCost(e: React.FormEvent) {
     e.preventDefault();
-    const result = await addCost({
-      costType: costForm.costType,
-      amount: parseFloat(costForm.amount),
-      notes: costForm.notes || undefined,
-    });
-    if (result) {
+    if (costForm.amount === undefined) return;
+    setIsAddingCost(true);
+    try {
+      await fleetApi.trips.addCost(tripId, {
+        costType: costForm.costType as TripCost['costType'],
+        amount: costForm.amount,
+        notes: costForm.notes || undefined,
+      });
       toast.success('Cost added');
-      costsQuery.refetch();
+      await load(true);
       setShowAddCostDialog(false);
-      setCostForm({ costType: 'fuel', amount: '', notes: '' });
-    } else {
-      toast.error('Failed to add cost');
+      setCostForm({ costType: 'fuel', amount: undefined, notes: '' });
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to add cost'));
+    } finally {
+      setIsAddingCost(false);
     }
   }
 
   async function handleDeleteCost(costId: string) {
-    if (!confirm('Delete this cost entry?')) return;
-    const result = await deleteCost(costId);
-    if (result !== null) {
+    const ok = await confirm({
+      title: 'Delete cost entry',
+      description: 'Delete this cost entry? This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await fleetApi.trips.deleteCost(tripId, costId);
       toast.success('Cost deleted');
-      costsQuery.refetch();
-    } else {
-      toast.error('Failed to delete cost');
+      await load(true);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete cost'));
     }
   }
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-full"><div className="text-muted-foreground">Loading trip details...</div></div>;
+  async function handleGenerateInvoice() {
+    if (trip?.invoiceId) {
+      router.push(`/invoices/${trip.invoiceId}`);
+      return;
+    }
+    setIsGeneratingInvoice(true);
+    try {
+      const res = await fleetApi.trips.generateInvoice(tripId);
+      toast.success('Invoice generated');
+      const id = res.data?.id;
+      if (id) router.push(`/invoices/${id}`);
+      else await load(true);
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to generate invoice'));
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
   }
 
-  if (error || !trip) {
+  async function handleGenerateVoucher() {
+    if (trip?.voucherId) {
+      router.push(`/vouchers/${trip.voucherId}`);
+      return;
+    }
+    setIsGeneratingVoucher(true);
+    try {
+      const res = await fleetApi.trips.generateVoucher(tripId);
+      toast.success('Voucher generated');
+      const id = res.data?.id;
+      if (id) router.push(`/vouchers/${id}`);
+      else await load(true);
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to generate voucher'));
+    } finally {
+      setIsGeneratingVoucher(false);
+    }
+  }
+
+  if (view === 'loading') {
+    // Mirrors the loaded layout (header, stat row, route card, two cards) so nothing jumps
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Truck className="h-12 w-12 text-muted-foreground/50" />
-        <p className="text-muted-foreground">Trip not found</p>
-        <Button variant="outline" onClick={() => router.push('/fleet/trips')}>Back to Trips</Button>
-      </div>
+      <PageContainer>
+        <div className="flex flex-col gap-ds-6" data-testid="trip-skeleton">
+          <Skeleton className="h-16 w-full" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+          <Skeleton className="h-48 w-full" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
+            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-52 w-full" />
+          </div>
+        </div>
+      </PageContainer>
     );
   }
 
-  const statusColor = TRIP_STATUS_COLORS[trip.status as keyof typeof TRIP_STATUS_COLORS] || '#64748B';
-  const statusLabel = TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status;
-  const tripTypeLabel = FLEET_TRIP_TYPE_LABELS[(trip as any).tripType as keyof typeof FLEET_TRIP_TYPE_LABELS] || (trip as any).tripType || 'Standard';
-  const vehicle = (trip as any).vehicle;
-  const driver = (trip as any).driver;
+  if (view === 'error') {
+    return (
+      <EmptyState
+        title="Could not load this trip"
+        description="Something went wrong while loading the trip. Check your connection and try again."
+        action={
+          <div className="flex gap-ds-2">
+            <Button onClick={() => { setLoadRetries(0); void refetch(); }}>Try again</Button>
+            <Button variant="outline" onClick={() => router.push('/fleet/trips')}>Back to trips</Button>
+          </div>
+        }
+      />
+    );
+  }
+
+  if (view === 'not-found' || !trip) {
+    return (
+      <EmptyState
+        title="Trip not found"
+        description="This trip may have been removed."
+        action={<Button variant="outline" onClick={() => router.push('/fleet/trips')}>Back to trips</Button>}
+      />
+    );
+  }
+
+  const tripTypeText = tripTypeLabel(trip.tripType);
+  const vehicle = trip.vehicle;
+  const driver = trip.driver;
   const vehicleTypeLabel = vehicle?.type ? (VEHICLE_TYPE_LABELS[vehicle.type as keyof typeof VEHICLE_TYPE_LABELS] || vehicle.type) : '';
 
   const statusIdx = TRIP_STATUS_ORDER.indexOf(trip.status as typeof TRIP_STATUS_ORDER[number]);
   const nextStatus = statusIdx >= 0 && statusIdx < TRIP_STATUS_ORDER.length - 1 ? TRIP_STATUS_ORDER[statusIdx + 1] : null;
   const nextStatusLabel = nextStatus ? TRIP_STATUS_LABELS[nextStatus as keyof typeof TRIP_STATUS_LABELS] : null;
+  const isFinal = !isTripActive(trip.status);
+
+  // Newest first, so a fresh driver-app event lands at the top of the list.
+  const activity: TimelineItem[] = timeline
+    .map((h, i) => {
+      const coords = formatCoordinates(h.latitude, h.longitude);
+      const detail = [h.notes || h.userName, coords ? `Location ${coords}` : null].filter(Boolean).join(' · ');
+      return {
+        id: `${h.status}-${i}`,
+        title: tripEventLabel(h.status),
+        description: detail || undefined,
+        timestamp: formatTripWhen(h.timestamp),
+        tone: tripEventTone(h.status),
+      } satisfies TimelineItem;
+    })
+    .reverse();
 
   return (
     <>
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon-sm" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" /></Button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                  {trip.startLocation} → {trip.endLocation}
-                </h1>
-                <Badge variant="outline" className="text-[10px] border-transparent" style={{ backgroundColor: `${statusColor}15`, color: statusColor }}>
-                  {statusLabel}
-                </Badge>
+      {dialog}
+      <DetailPage
+        assistant={{ entityType: 'trip', entityId: tripId }}
+        entity={trip}
+        title={`${trip.startLocation} → ${trip.endLocation}`}
+        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeText} · ${formatTripDay(trip.startTime)}`}
+        status={<Tag tone={tripStatusTone(trip.status)}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>}
+        onBack={() => router.push('/fleet/trips')}
+        messaging={driver ? {
+          recipientId: trip.driverId,
+          recipientName: driver.name || trip.driverName || 'Driver',
+          phone: driver.phone,
+        } : undefined}
+        primaryActions={
+          <>
+            <span
+              className="hidden text-xs text-ds-foreground-muted md:inline"
+              data-testid="trip-refresh-status"
+              aria-live="off"
+            >
+              {active ? 'Live' : 'Updated'}{updatedAt ? ` · ${formatClock(updatedAt)}` : ''}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void load(false)}
+              disabled={refreshing}
+              aria-label="Refresh trip"
+            >
+              <RefreshCw className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />Refresh
+            </Button>
+            {trip.status === 'assigned' && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/fleet/trips/${tripId}/edit`}><Pencil aria-hidden="true" />Edit</Link>
+              </Button>
+            )}
+            {nextStatus && nextStatusLabel && !isFinal && (
+              <Button size="sm" onClick={() => void handleStatusUpdate(nextStatus)} disabled={isUpdatingStatus}>
+                <CheckCircle2 aria-hidden="true" />Mark as {nextStatusLabel}
+              </Button>
+            )}
+          </>
+        }
+        actions={[
+          {
+            label: trip.invoiceId ? 'View invoice' : 'Generate invoice',
+            icon: <FileText aria-hidden="true" />,
+            onSelect: () => void handleGenerateInvoice(),
+            disabled: isGeneratingInvoice,
+          },
+          {
+            label: trip.voucherId ? 'View voucher' : 'Generate voucher',
+            icon: <Receipt aria-hidden="true" />,
+            onSelect: () => void handleGenerateVoucher(),
+            disabled: isGeneratingVoucher,
+          },
+          {
+            label: 'Cancel trip',
+            icon: <XCircle aria-hidden="true" />,
+            onSelect: () => void handleStatusUpdate('cancelled'),
+            destructive: true,
+            disabled: trip.status === 'completed' || trip.status === 'cancelled' || isUpdatingStatus,
+            separatorBefore: true,
+          },
+          {
+            label: 'Delete trip',
+            icon: <Trash2 aria-hidden="true" />,
+            onSelect: () => void handleDeleteTrip(),
+            destructive: true,
+          },
+        ]}
+        activity={activity}
+        activityLoading={timelineLoading}
+        related={[
+          {
+            title: `Cost entries (${costs.length})`,
+            action: (
+              <Button size="sm" onClick={() => setShowAddCostDialog(true)}>
+                <Plus aria-hidden="true" />Add cost
+              </Button>
+            ),
+            content: costsLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : costs.length === 0 ? (
+              <EmptyState
+                title="No cost entries yet"
+                description="Track fuel, tolls, and other trip costs."
+                icon={<DollarSign aria-hidden="true" />}
+              />
+            ) : (
+              <div className="flex flex-col gap-ds-2">
+                {costs.map((cost) => (
+                  <div key={cost.id} className="flex items-center gap-ds-4 p-ds-3 rounded-ds-md border border-ds-border hover:bg-ds-surface-sunken">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{COST_TYPE_LABELS[cost.costType] || cost.costType}</p>
+                      {cost.notes && <p className="text-xs text-ds-foreground-muted">{cost.notes}</p>}
+                      <p className="text-xs text-ds-foreground-muted">{formatDisplayDate(cost.createdAt)}</p>
+                    </div>
+                    <p className="text-sm font-semibold shrink-0">{formatCurrency(cost.amount)}</p>
+                    <Button variant="ghost" size="icon-sm" aria-label="Delete cost" onClick={() => void handleDeleteCost(cost.id)}>
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
               </div>
-              <p className="text-sm text-muted-foreground">
-                {trip.passengerName || 'No passenger'} · {tripTypeLabel} · {(trip.startTime || '').split('T')[0] || '—'}
-              </p>
+            ),
+          },
+        ]}
+        overview={
+          <div className="flex flex-col gap-ds-6">
+            {trip.status === 'completed' && trip.invoiceId && (
+              <div
+                className="flex flex-wrap items-center gap-ds-3 rounded-ds-md border border-ds-success bg-ds-success-subtle p-ds-3 text-sm text-ds-success-on-subtle"
+                data-testid="trip-invoice-banner"
+              >
+                <FileText className="size-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1">Trip completed. An invoice was created for this trip.</span>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/invoices/${trip.invoiceId}`}>View invoice<ExternalLink aria-hidden="true" /></Link>
+                </Button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
+              <Stat label="Distance" value={`${trip.distance ?? 0} km`} />
+              <Stat label="Fare" value={formatCurrency(trip.fare ?? 0)} />
+              <Stat label="Total costs" value={formatCurrency(totalCosts)} icon={<DollarSign aria-hidden="true" />} />
+            </div>
+
+            {trip.tripKind === 'coach' && (
+              <SectionCard title={t('coachTrips.detail.checkin')} description={t('coachTrips.detail.checkinHint')}>
+                <CoachTripPanel tripId={tripId} readOnly={trip.status === 'completed' || trip.status === 'cancelled'} />
+              </SectionCard>
+            )}
+
+            <SectionCard title="Route">
+              <div className="flex items-center gap-ds-4">
+                <div className="flex-1">
+                  <p className="text-xs text-ds-foreground-muted uppercase tracking-wide">Pickup</p>
+                  <p className="text-sm font-medium mt-0.5">{trip.startLocation}</p>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-ds-foreground-muted uppercase tracking-wide">Drop</p>
+                  <p className="text-sm font-medium mt-0.5">{trip.endLocation}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-ds-4 mt-ds-4 pt-ds-4 border-t border-ds-border">
+                <div>
+                  <p className="text-xs text-ds-foreground-muted">Start</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripWhen(trip.startTime)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted">End</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripWhen(trip.endTime)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted">Duration</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripDuration(trip.startTime, trip.endTime) || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted">Est. distance</p>
+                  <p className="text-sm font-medium mt-0.5">{trip.distance ?? 0} km</p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
+              <SectionCard title="Passenger">
+                <div className="flex flex-col gap-ds-3">
+                  <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Name</span><span className="text-sm font-medium">{trip.passengerName || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Phone</span><span className="text-sm font-medium">{formatPhone(trip.passengerPhone) || '—'}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-sm text-ds-foreground-muted">Trip type</span><Tag>{tripTypeText}</Tag></div>
+                  {trip.leadId && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-ds-foreground-muted">Lead</span>
+                      <Link href={`/leads/${trip.leadId}`} className="text-sm font-medium text-ds-primary hover:underline">View lead</Link>
+                    </div>
+                  )}
+                  {trip.specialInstructions && (
+                    <div>
+                      <p className="text-xs text-ds-foreground-muted mb-1">Special instructions</p>
+                      <p className="text-sm">{trip.specialInstructions}</p>
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Vehicle & driver">
+                <div className="flex flex-col gap-ds-4">
+                  <div className="flex items-center gap-ds-3">
+                    <div className="h-9 w-9 rounded-ds-md bg-ds-surface-sunken flex items-center justify-center shrink-0">
+                      <Truck className="h-4 w-4" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || vehicle.registrationNumber : trip.vehicleRegistration || '—'}
+                      </p>
+                      <p className="text-xs text-ds-foreground-muted font-mono truncate">
+                        {vehicle?.registrationNumber || trip.vehicleRegistration || '—'}
+                        {vehicleTypeLabel ? ` · ${vehicleTypeLabel}` : ''}
+                        {vehicle?.seatingCapacity ? ` · ${vehicle.seatingCapacity} seats` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-ds-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback>{(driver?.name || trip.driverName || 'D').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{driver?.name || trip.driverName || '—'}</p>
+                      <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
+                        {driver?.phone && <><Phone className="h-3 w-3" aria-hidden="true" />{formatPhone(driver.phone)}</>}
+                        {driver?.rating ? ` · ★${driver.rating}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {trip.tourLeaderId && (
+                    <div className="flex items-center gap-ds-3" data-testid="trip-tour-leader">
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback>{(trip.tourLeaderName || 'T').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{trip.tourLeaderName || '—'}</p>
+                        <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
+                          {t('coachTrips.detail.tourLeader')}
+                          {trip.tourLeaderPhone && <> · <Phone className="h-3 w-3" aria-hidden="true" />{formatPhone(trip.tourLeaderPhone)}</>}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {!vehicle && !driver && !trip.tourLeaderId && (
+                    <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
+                      <User className="h-3 w-3" aria-hidden="true" />No vehicle or driver assigned yet.
+                    </p>
+                  )}
+                </div>
+              </SectionCard>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {nextStatus && nextStatusLabel && trip.status !== 'completed' && trip.status !== 'cancelled' && (
-              <Button onClick={() => handleStatusUpdate(nextStatus)} disabled={isUpdatingStatus}>
-                {isUpdatingStatus ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}
-                Mark as {nextStatusLabel}
-              </Button>
-            )}
-            {trip.status !== 'completed' && trip.status !== 'cancelled' && (
-              <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleCancelTrip} disabled={isUpdatingStatus}>
-                Cancel Trip
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <Tabs defaultValue="info" className="flex-1 flex flex-col">
-          <div className="px-6 pt-3 border-b">
-            <TabsList>
-              <TabsTrigger value="info">Trip Info</TabsTrigger>
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              <TabsTrigger value="costs">Costs ({costs.length})</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <div className="flex-1 overflow-auto p-6">
-            <TabsContent value="info" className="mt-0">
-              <div className="max-w-4xl space-y-6">
-                <Card>
-                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" />Route</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Pickup</p>
-                        <p className="text-sm font-medium mt-0.5">{trip.startLocation}</p>
-                      </div>
-                      <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Drop</p>
-                        <p className="text-sm font-medium mt-0.5">{trip.endLocation}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Start Date</p>
-                        <p className="text-sm font-medium flex items-center gap-1 mt-0.5"><Calendar className="h-3 w-3" />{(trip.startTime || '').split('T')[0] || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">End Date</p>
-                        <p className="text-sm font-medium flex items-center gap-1 mt-0.5"><Calendar className="h-3 w-3" />{(trip.endTime || '').split('T')[0] || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Est. Distance</p>
-                        <p className="text-sm font-medium mt-0.5">{trip.distance ?? 0} km</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" />Passenger</CardTitle></CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Name</span><span className="text-sm font-medium">{trip.passengerName || '—'}</span></div>
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Phone</span><span className="text-sm font-medium">{trip.passengerPhone || '—'}</span></div>
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Trip Type</span><Badge variant="outline" className="text-xs">{tripTypeLabel}</Badge></div>
-                      {trip.specialInstructions && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Special Instructions</p>
-                          <p className="text-sm">{trip.specialInstructions}</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader><CardTitle className="text-base flex items-center gap-2"><Truck className="h-4 w-4" />Vehicle & Driver</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Vehicle</p>
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
-                            <Truck className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">
-                              {vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() : trip.vehicleRegistration || trip.vehicleId?.slice(0, 8) || '—'}
-                            </p>
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {vehicle?.registrationNumber || trip.vehicleRegistration || '—'}
-                              {vehicleTypeLabel ? ` · ${vehicleTypeLabel}` : ''}
-                              {vehicle?.seatingCapacity ? ` · ${vehicle.seatingCapacity} seats` : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <Separator />
-                      <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Driver</p>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="text-xs">
-                              {(driver?.name || trip.driverName || 'D').split(' ').map((n: string) => n[0]).join('')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-sm font-medium">{driver?.name || trip.driverName || '—'}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {driver?.phone ? <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{driver.phone}</span> : ''}
-                              {driver?.rating ? ` · ★${driver.rating}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="timeline" className="mt-0">
-              <div className="max-w-xl">
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Status Timeline</CardTitle></CardHeader>
-                  <CardContent>
-                    {timelineQuery.loading ? (
-                      <div className="flex items-center gap-2 text-muted-foreground py-4 justify-center"><Loader2 className="h-4 w-4 animate-spin" /><span>Loading timeline...</span></div>
-                    ) : trip.status === 'cancelled' ? (
-                      <div className="flex items-center gap-3 p-4 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
-                        <AlertTriangle className="h-5 w-5 text-red-500" />
-                        <div>
-                          <p className="text-sm font-medium text-red-700 dark:text-red-400">Trip Cancelled</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <StatusTimeline currentStatus={trip.status} history={timeline} />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="costs" className="mt-0">
-              <div className="max-w-2xl space-y-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">{costs.length} cost entr{costs.length !== 1 ? 'ies' : 'y'} · Total: <strong>₹{totalCosts.toLocaleString('en-IN')}</strong></p>
-                  <Button size="sm" onClick={() => setShowAddCostDialog(true)}><Plus className="h-4 w-4 mr-1.5" />Add Cost</Button>
-                </div>
-
-                {costsQuery.loading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground py-4 justify-center"><Loader2 className="h-4 w-4 animate-spin" /><span>Loading costs...</span></div>
-                ) : costs.length === 0 ? (
-                  <Card><CardContent className="p-8 text-center text-muted-foreground"><DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" /><p className="text-sm">No cost entries yet</p></CardContent></Card>
-                ) : (
-                  <div className="space-y-2">
-                    {costs.map((cost) => (
-                      <div key={cost.id} className="flex items-center gap-4 p-3 rounded-lg border hover:bg-muted/50">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{COST_TYPE_LABELS[cost.costType] || cost.costType}</p>
-                          {cost.notes && <p className="text-xs text-muted-foreground">{cost.notes}</p>}
-                          <p className="text-xs text-muted-foreground">{new Date(cost.createdAt).toLocaleDateString('en-IN')}</p>
-                        </div>
-                        <p className="text-sm font-semibold shrink-0">₹{cost.amount.toLocaleString('en-IN')}</p>
-                        <Button variant="ghost" size="icon-sm" className="text-red-500 hover:text-red-600" onClick={() => handleDeleteCost(cost.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Card>
-                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" />Cost Summary</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between"><span className="text-sm text-muted-foreground">Estimated Fare</span><span className="text-sm font-medium">₹{((trip as any).estimatedCost ?? trip.fare ?? 0).toLocaleString('en-IN')}</span></div>
-                    {(trip as any).actualCost != null && (
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Actual Cost</span><span className="text-sm font-semibold">₹{(trip as any).actualCost.toLocaleString('en-IN')}</span></div>
-                    )}
-                    {costs.length > 0 && (
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Additional Costs</span><span className="text-sm font-medium">₹{totalCosts.toLocaleString('en-IN')}</span></div>
-                    )}
-                    <Separator />
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        const cost = (trip as any).actualCost ?? (trip as any).estimatedCost ?? trip.fare ?? 0;
-                        const q = new URLSearchParams({
-                          tripId,
-                          amount: String(cost),
-                          description: `Fleet Trip: ${trip.startLocation} → ${trip.endLocation}`,
-                        });
-                        router.push(`/invoices/new?${q.toString()}`);
-                      }}
-                    >
-                      <FileText className="h-4 w-4 mr-1.5" />
-                      Create Invoice from Trip
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          </div>
-        </Tabs>
-      </div>
+        }
+      />
 
       <Dialog open={showAddCostDialog} onOpenChange={setShowAddCostDialog}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Cost Entry</DialogTitle></DialogHeader>
-          <form onSubmit={handleAddCost} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Cost Type <span className="text-destructive">*</span></Label>
-              <Select value={costForm.costType} onValueChange={(v) => setCostForm(p => ({ ...p, costType: v }))}>
+          <DialogHeader><DialogTitle>Add cost entry</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddCost} className="flex flex-col gap-ds-4">
+            <div className="flex flex-col gap-ds-2">
+              <Label>Cost type <span className="text-ds-danger">*</span></Label>
+              <Select value={costForm.costType} onValueChange={(v) => setCostForm((p) => ({ ...p, costType: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(COST_TYPE_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="costAmount">Amount (₹) <span className="text-destructive">*</span></Label>
-              <Input id="costAmount" type="number" min={0} step="0.01" placeholder="0" value={costForm.amount} onChange={(e) => setCostForm(p => ({ ...p, amount: e.target.value }))} required />
+            <div className="flex flex-col gap-ds-2">
+              <Label htmlFor="costAmount">Amount ({currencySymbol(getLocaleContext().currency)}) <span className="text-ds-danger">*</span></Label>
+              <CurrencyInput
+                id="costAmount"
+                placeholder="0"
+                value={costForm.amount}
+                onChange={(v) => setCostForm((p) => ({ ...p, amount: v }))}
+                required
+              />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-ds-2">
               <Label htmlFor="costNotes">Notes</Label>
-              <Input id="costNotes" placeholder="Optional notes..." value={costForm.notes} onChange={(e) => setCostForm(p => ({ ...p, notes: e.target.value }))} />
+              <Input id="costNotes" placeholder="Optional notes..." value={costForm.notes} onChange={(e) => setCostForm((p) => ({ ...p, notes: e.target.value }))} />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowAddCostDialog(false)}>Cancel</Button>
-              <Button type="submit" disabled={isAddingCost}>
-                {isAddingCost && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}Add Cost
-              </Button>
+              <Button type="submit" disabled={isAddingCost}>Add cost</Button>
             </DialogFooter>
           </form>
         </DialogContent>

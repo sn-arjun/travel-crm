@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { emitFromRequest } from '../services/automation/events';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
-import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { logActivity } from '../utils/activity-logger';
-import { notifications } from '../db/tenant-schema';
-import { broadcastToTenant } from '../utils/realtime';
+import { tenantToday } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
+import { recordInvoicePayment } from '../services/payments/record';
 
 const paymentRoutes = new Hono<AppContext>();
 
@@ -15,13 +16,20 @@ const paymentRoutes = new Hono<AppContext>();
 // Zod Schemas
 // ============================================================
 
+/**
+ * The union of the methods an agency in any country can record (desktop/src/lib/payment-methods.ts decides which it is
+ * offered): cash, bank transfer, card, cheque, online everywhere; UPI for India; iDEAL and SEPA transfer for Europe.
+ * 'transfer' and 'check' are what older rows and the assistant wrote and stay valid.
+ */
+export const PAYMENT_METHODS = ['cash', 'bank_transfer', 'transfer', 'card', 'cheque', 'check', 'online', 'upi', 'ideal', 'sepa_transfer', 'other'] as const;
+
 const recordPaymentSchema = z.object({
   invoiceId: z.string().min(1),
   amount: z.number().positive(),
-  method: z.string().min(1),
+  method: z.enum(PAYMENT_METHODS),
   reference: z.string().optional(),
   notes: z.string().optional(),
-  date: z.string().default(() => new Date().toISOString().split('T')[0]),
+  date: z.string().optional(), // defaults to the tenant-local today in the handler
   receiptUrl: z.string().optional(),
 });
 
@@ -57,7 +65,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, total, paid_amount, balance_due, status
+        `SELECT id, contact_id, total, paid_amount, balance_due, status, currency
          FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
@@ -68,6 +76,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
         paid_amount: number;
         balance_due: number;
         status: string;
+        currency: string | null;
       }>();
 
     if (!invoice) {
@@ -80,107 +89,38 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
       return error(c, `Payment amount exceeds balance due (${invoice.balance_due})`, 400);
     }
 
-    // Create payment record
-    const paymentId = generateId();
-    const now = new Date().toISOString();
+    // A payment is in the currency of the invoice it settles; agency locale only drives how it is written.
+    const localeCtx = await loadLocaleContext(tenantDb);
+    const paymentCurrency = invoice.currency || localeCtx.currency;
 
-    await tenantDb
-      .prepare(
-        `INSERT INTO payments (
-          id, invoice_id, contact_id, amount, currency, method, reference,
-          type, date, notes, receipt_url, created_by, created_at
-        ) VALUES (
-          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
-        )`
-      )
-      .bind(
-        paymentId,
-        data.invoiceId,
-        invoice.contact_id,
-        data.amount,
-        'INR',
-        data.method,
-        data.reference || null,
-        'incoming',
-        data.date,
-        data.notes || null,
-        data.receiptUrl || null,
-        userId,
-        now
-      )
-      .run();
-
-    // Update invoice amounts
-    const newPaidAmount = invoice.paid_amount + data.amount;
-    const newBalanceDue = invoice.total - newPaidAmount;
-    const newStatus =
-      newBalanceDue <= 0.01
-        ? 'paid'
-        : newPaidAmount > 0
-          ? 'partially_paid'
-          : invoice.status;
-
-    await tenantDb
-      .prepare(
-        `UPDATE invoices SET
-         paid_amount = ?1, balance_due = ?2, status = ?3, updated_at = ?4
-         WHERE id = ?5`
-      )
-      .bind(newPaidAmount, Math.max(0, newBalanceDue), newStatus, now, data.invoiceId)
-      .run();
-
-    // Log activity
-    const db = drizzle(tenantDb);
-    await logActivity(db, {
+    // The shared domain function: the same one a paid payment link goes through (R207).
+    const recorded = await recordInvoicePayment(c.env, c.get('tenantId'), tenantDb, {
+      invoice,
+      amount: data.amount,
+      currency: paymentCurrency,
+      method: data.method,
+      reference: data.reference,
+      notes: data.notes,
+      date: data.date || (await tenantToday(c)).today,
+      receiptUrl: data.receiptUrl,
       userId,
-      action: 'payment_recorded',
+      source: 'manual',
+    });
+    const { paymentId, newStatus, paidAmount: newPaidAmount, balanceDue } = recorded;
+
+    await emitFromRequest(c, {
+      type: 'payment.recorded',
       entityType: 'payment',
       entityId: paymentId,
-      details: JSON.stringify({ invoiceId: data.invoiceId, amount: data.amount }),
+      payload: { invoiceId: data.invoiceId, leadId: recorded.leadId, contactId: invoice.contact_id, amount: data.amount },
     });
-
-    // Notify invoice creator (lead owner) of payment received (TICKET-166)
-    try {
-      const invoiceCreator = await tenantDb
-        .prepare('SELECT created_by FROM invoices WHERE id = ?')
-        .bind(data.invoiceId)
-        .first<{ created_by: string }>();
-      if (invoiceCreator?.created_by && invoiceCreator.created_by !== userId) {
-        await db.insert(notifications).values({
-          id: generateId(),
-          userId: invoiceCreator.created_by,
-          title: 'Payment received',
-          message: `₹${data.amount.toLocaleString('en-IN')} recorded against invoice`,
-          type: 'payment_received',
-          referenceType: 'payment',
-          referenceId: paymentId,
-        });
-      }
-    } catch (_) {
-      // Non-critical
-    }
-
-    // Broadcast real-time events
-    try {
-      const tenantId = c.get('tenantId');
-      await broadcastToTenant(c.env, tenantId, {
-        type: 'payment:received',
-        data: { paymentId, invoiceId: data.invoiceId, amount: data.amount, invoiceStatus: newStatus },
-      });
-      if (invoice.status !== newStatus) {
-        await broadcastToTenant(c.env, tenantId, {
-          type: 'invoice:status_changed',
-          data: { invoiceId: data.invoiceId, oldStatus: invoice.status, newStatus },
-        });
-      }
-    } catch {}
 
     return created(c, {
       id: paymentId,
       ...data,
       invoiceStatus: newStatus,
       paidAmount: newPaidAmount,
-      balanceDue: Math.max(0, newBalanceDue),
+      balanceDue,
     });
   } catch (err) {
     console.error('Error recording payment:', err);
@@ -208,39 +148,50 @@ paymentRoutes.get('/', async (c) => {
   const dateFrom = url.searchParams.get('dateFrom');
   const dateTo = url.searchParams.get('dateTo');
 
-  // Build WHERE clause
+  const search = url.searchParams.get('search')?.trim();
+
+  // Build WHERE clause (columns are qualified: contacts/invoices share names like type, contact_id)
   let whereClause = '1=1';
   const params: any[] = [];
 
   if (type) {
-    whereClause += ' AND type = ?';
+    whereClause += ' AND p.type = ?';
     params.push(type);
   }
   if (contactId) {
-    whereClause += ' AND contact_id = ?';
+    whereClause += ' AND p.contact_id = ?';
     params.push(contactId);
   }
   if (invoiceId) {
-    whereClause += ' AND invoice_id = ?';
+    whereClause += ' AND p.invoice_id = ?';
     params.push(invoiceId);
   }
   if (method) {
-    whereClause += ' AND method = ?';
+    whereClause += ' AND p.method = ?';
     params.push(method);
   }
   if (dateFrom) {
-    whereClause += ' AND DATE(date) >= DATE(?)';
+    whereClause += ' AND DATE(p.date) >= DATE(?)';
     params.push(dateFrom);
   }
   if (dateTo) {
-    whereClause += ' AND DATE(date) <= DATE(?)';
+    whereClause += ' AND DATE(p.date) <= DATE(?)';
     params.push(dateTo);
   }
+  if (search) {
+    whereClause += ' AND (p.reference LIKE ? OR c.name LIKE ? OR i.invoice_number LIKE ?)';
+    const like = `%${search}%`;
+    params.push(like, like, like);
+  }
+
+  const fromClause = `FROM payments p
+      LEFT JOIN contacts c ON p.contact_id = c.id
+      LEFT JOIN invoices i ON p.invoice_id = i.id`;
 
   try {
     // Get total count
     const countResult = await tenantDb
-      .prepare(`SELECT COUNT(*) as count FROM payments WHERE ${whereClause}`)
+      .prepare(`SELECT COUNT(*) as count ${fromClause} WHERE ${whereClause}`)
       .bind(...params)
       .first<{ count: number }>();
     const total = countResult?.count || 0;
@@ -251,11 +202,9 @@ paymentRoutes.get('/', async (c) => {
         p.id, p.invoice_id, p.contact_id, p.amount, p.currency, p.method,
         p.reference, p.type, p.date, p.notes, p.receipt_url, p.created_by, p.created_at,
         c.name as contact_name, i.invoice_number
-      FROM payments p
-      LEFT JOIN contacts c ON p.contact_id = c.id
-      LEFT JOIN invoices i ON p.invoice_id = i.id
+      ${fromClause}
       WHERE ${whereClause}
-      ORDER BY p.date DESC
+      ORDER BY p.date DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `;
 

@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "pass",
+    "durationMs": 14702,
+    "tail": "tsc: 0 errors - 0 in app src (must be 0), 0 in tests/e2e/other (baseline 0)"
+  },
+  "unit": {
+    "status": "pass",
+    "durationMs": 18048,
+    "tail": "vitest: 1232 passed / 0 failed tests; 0 failing files (baseline 0)"
+  },
+  "lint": {
+    "status": "fail",
+    "durationMs": 73841,
+    "tail": "lint-gate: 1494 errors in 168 files (baseline 1491), 5386 warnings, 35.7s\nREGRESSIONS (3):\n  - e2e/showcase/demo-data.ts: 1 error(s), file not in baseline\n  - e2e/showcase/demo-seed.ts: 1 error(s), file not in baseline\n  - e2e/showcase/finalize.ts: 1 error(s), file not in baseline\nlint-gate: FAIL\n\n--- --zero src/components/domain/{entity-form,relation-combobox}.tsx src/components/ui/{date-picker,combobox}.tsx src/lib/dates.ts ---\nlint-gate: 1494 errors in 168 files (baseline 1491), 5386 warnings, 37.6s\nREGRESSIONS (3):\n  - e2e/showcase/demo-data.ts: 1 error(s), file not in baseline\n  - e2e/showcase/demo-seed.ts: 1 error(s), file not in baseline\n  - e2e/showcase/finalize.ts: 1 error(s), file not in baseline\nlint-gate: FAIL"
+  },
+  "build": {
+    "status": "pass",
+    "durationMs": 55286,
+    "tail": "├ ○ /rate-cards/new\n├ ○ /reports\n├ ○ /reports/customer\n├ ○ /reports/financial\n├ ○ /reports/fleet\n├ ○ /reports/leads\n├ ○ /reports/marketing\n├ ○ /reports/pipeline\n├ ○ /reports/revenue\n├ ○ /reports/sales\n├ ○ /reports/supplier\n├ ○ /reports/team\n├ ○ /reports/visa\n├ ○ /reset-password\n├ ○ /settings\n├ ○ /settings/activity-log\n├ ○ /settings/ai\n├ ○ /settings/ai-usage\n├ ○ /settings/announcements\n├ ○ /settings/assignment-rules\n├ ○ /settings/chatbot\n├ ○ /settings/company\n├ ○ /settings/custom-fields\n├ ○ /settings/email-signature\n├ ○ /settings/export\n├ ○ /settings/followup-sequences\n├ ○ /settings/import\n├ ○ /settings/integrations\n├ ○ /settings/invoice-defaults\n├ ○ /settings/itinerary-defaults\n├ ○ /settings/login-history\n├ ○ /settings/notifications\n├ ○ /settings/numbering\n├ ○ /settings/phone-numbers\n├ ○ /settings/profile\n├ ○ /settings/routing-rules\n├ ○ /settings/sessions\n├ ○ /settings/team\n├ ○ /settings/voip\n├ ○ /setup-account\n├ ○ /super-admin\n├ ○ /super-admin/audit\n├ ○ /super-admin/billing\n├ ○ /super-admin/config\n├ ○ /super-admin/plans\n├ ○ /super-admin/system\n├ ○ /super-admin/tenants\n├ ƒ /super-admin/tenants/[id]\n├ ○ /super-admin/users\n├ ○ /suppliers\n├ ƒ /suppliers/[id]\n├ ƒ /suppliers/[id]/edit\n├ ○ /suppliers/compare\n├ ○ /suppliers/new\n├ ○ /tasks\n├ ƒ /tasks/[id]\n├ ○ /travellers\n├ ƒ /travellers/[id]\n├ ƒ /travellers/[id]/edit\n├ ○ /travellers/new\n├ ○ /visa\n├ ƒ /visa/[id]\n├ ƒ /visa/[id]/edit\n├ ○ /visa/dashboard\n├ ○ /visa/new\n├ ○ /vouchers\n├ ƒ /vouchers/[id]\n├ ƒ /vouchers/[id]/edit\n└ ○ /vouchers/new\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n\n--- stack restart (up --no-build) exit 0 ---\n[fix-stack slot 0] starting API on :8787\n[fix-stack slot 0] starting web on :3100\n[fix-stack slot 0] up - API pid 19940, web pid 17624\nE2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "fail",
+    "durationMs": 312317,
+    "tail": "playwright: 140 passed, 3 failed, 0 flaky, 7 skipped; 0 failure(s) tolerated\nUNEXPECTED failures:\n  - documents.spec.ts:27  full round trip: upload, view in list, view detail, rename, verify prefill, save, delete\n  - invoices.spec.ts:369  export surfaces an error toast when the bulk export job fails to queue\n  - whatsapp-campaigns.spec.ts:259  D1. search narrows rows and an unmatched search shows the empty state\n    > 58 |   expect(id, `campaign create failed: ${JSON.stringify(res)}`).toBeTruthy();\n         |                                                                ^\n      59 |   createdIds.push(id);\n      60 |   return id as string;\n      61 | }\n        at createCampaignApi (C:\\Users\\Admin\\Downloads\\pro\\CRM\\desktop\\e2e\\whatsapp-campaigns.spec.ts:58:64)\n        at C:\\Users\\Admin\\Downloads\\pro\\CRM\\desktop\\e2e\\whatsapp-campaigns.spec.ts:260:21\n\n    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────\n    test-results\\whatsapp-campaigns-WhatsAp-f1140-earch-shows-the-empty-state-chromium\\test-failed-1.png\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────\n    test-results\\whatsapp-campaigns-WhatsAp-f1140-earch-shows-the-empty-state-chromium\\video.webm\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n[144/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:277:7 › WhatsApp campaigns › D2. status filter narrows the list\n[145/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:294:7 › WhatsApp campaigns › E. send -> pause -> cancel from detail; analytics and recipients render; locked afterwards\n[146/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:334:7 › WhatsApp campaigns › F1. delete from the list row action requires confirmation and removes the row\n[147/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:356:7 › WhatsApp campaigns › F2. delete from the detail page returns to the list\n[148/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:370:7 › WhatsApp campaigns › G1. export downloads a non-empty CSV containing the campaigns\n[149/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:385:7 › WhatsApp campaigns › G2. infinite scroll loads more rows; no pagination buttons\n[150/150] [chromium] › e2e\\whatsapp-campaigns.spec.ts:403:7 › WhatsApp campaigns › H. list and form pages have no mailto:, wa.me or tel: anchors\n  3 failed\n    [chromium] › e2e\\documents.spec.ts:27:7 › Documents › full round trip: upload, view in list, view detail, rename, verify prefill, save, delete \n    [chromium] › e2e\\invoices.spec.ts:369:7 › Invoices › export surfaces an error toast when the bulk export job fails to queue \n    [chromium] › e2e\\whatsapp-campaigns.spec.ts:259:7 › WhatsApp campaigns › D1. search narrows rows and an unmatched search shows the empty state \n  7 did not run\n  140 passed (5.2m)"
+  },
+  "layoutProbe": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  }
+}

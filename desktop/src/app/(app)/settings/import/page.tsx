@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,18 +17,11 @@ import {
   ChevronRight,
   ArrowRight,
   Trash2,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -34,12 +29,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { useApiQuery } from '@/hooks/use-api';
+import { ListPage } from '@/components/domain';
+import type { ListFilter } from '@/components/domain/list-page';
+import type { LucideIcon } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { unwrapEntity } from '@/lib/api/envelope';
 import { importsApi, type ImportJob } from '@/lib/api/imports';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 type WizardStep = 'upload' | 'map' | 'configure';
 
@@ -58,7 +59,6 @@ const CRM_FIELDS: Record<string, Array<{ value: string; label: string; required?
     { value: 'email', label: 'Email', required: true },
     { value: 'phone', label: 'Phone' },
     { value: 'company', label: 'Company' },
-    { value: 'type', label: 'Type' },
     { value: 'tags', label: 'Tags' },
   ],
   leads: [
@@ -100,19 +100,44 @@ const CRM_FIELDS: Record<string, Array<{ value: string; label: string; required?
   ],
 };
 
-const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
-  pending: { label: 'Pending', icon: Clock, className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
-  validating: { label: 'Validating', icon: Loader2, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  importing: { label: 'Processing', icon: Loader2, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  processing: { label: 'Processing', icon: Loader2, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  completed: { label: 'Completed', icon: CheckCircle2, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  failed: { label: 'Failed', icon: XCircle, className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-  cancelled: { label: 'Cancelled', icon: AlertTriangle, className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+/** Shape of the upload response: the backend returns the job under either id key. */
+interface UploadedImport {
+  id?: string;
+  jobId?: string;
+  headers?: string[];
+  totalRows?: number;
+}
+
+/** Raw row from GET /imports (snake-ish column names, depends on backend version). */
+interface RawImportJob {
+  id: string;
+  importType?: string;
+  type?: string;
+  fileName: string;
+  totalRows?: number;
+  totalRecords?: number;
+  processedRows?: number;
+  processedRecords?: number;
+  errorCount?: number;
+  failedRecords?: number;
+  status: ImportJob['status'];
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+const statusConfig: Record<string, { label: string; icon: LucideIcon; tone: 'neutral' | 'info' | 'success' | 'danger' | 'warning' }> = {
+  pending: { label: 'Pending', icon: Clock, tone: 'neutral' },
+  validating: { label: 'Validating', icon: Loader2, tone: 'info' },
+  importing: { label: 'Processing', icon: Loader2, tone: 'info' },
+  processing: { label: 'Processing', icon: Loader2, tone: 'info' },
+  completed: { label: 'Completed', icon: CheckCircle2, tone: 'success' },
+  failed: { label: 'Failed', icon: XCircle, tone: 'danger' },
+  cancelled: { label: 'Cancelled', icon: AlertTriangle, tone: 'warning' },
 };
 
 function formatDate(iso?: string) {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { return formatLocaleDateTime(iso); } catch { return iso; }
 }
 
 function autoMap(headers: string[], importType: string): Record<string, string> {
@@ -149,41 +174,70 @@ function autoMap(headers: string[], importType: string): Record<string, string> 
   return result;
 }
 
-export default function ImportSettingsPage() {
+function ImportSettingsPageContent() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [step, setStep] = React.useState<WizardStep>('upload');
   const [importType, setImportType] = React.useState('contacts');
   const [file, setFile] = React.useState<File | null>(null);
   const [skipHeader, setSkipHeader] = React.useState(true);
   const [duplicateStrategy, setDuplicateStrategy] = React.useState<'skip' | 'merge' | 'create'>('skip');
-  const [uploadedJob, setUploadedJob] = React.useState<any>(null);
+  const [uploadedJob, setUploadedJob] = React.useState<UploadedImport | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const [executing, setExecuting] = React.useState(false);
   const [mappings, setMappings] = React.useState<Record<string, string>>({});
   const [filterType, setFilterType] = React.useState('all');
   const [filterStatus, setFilterStatus] = React.useState('all');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
-  const { data: jobsResponse, loading, refetch } = useApiQuery(
-    () => importsApi.list({ limit: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
-    [],
-  );
-
-  const allJobs: ImportJob[] = React.useMemo(() => {
-    if (!jobsResponse || !('data' in jobsResponse)) return [];
-    const d = (jobsResponse as any).data;
-    return (d?.data ?? d ?? []) as ImportJob[];
-  }, [jobsResponse]);
-
-  const filteredJobs = React.useMemo(() => {
-    return allJobs.filter(j => {
-      if (filterType !== 'all' && j.type !== filterType) return false;
-      if (filterStatus !== 'all' && j.status !== filterStatus) return false;
-      return true;
-    });
-  }, [allJobs, filterType, filterStatus]);
+  // The history list refetches when these change (ListPage only reloads on filters / refreshKey).
+  const activeFilters = React.useMemo<ListFilter[]>(() => {
+    const list: ListFilter[] = [];
+    if (filterType !== 'all') {
+      list.push({ id: 'type', label: 'Type', value: IMPORT_TYPES.find((t) => t.value === filterType)?.label ?? filterType });
+    }
+    if (filterStatus !== 'all') {
+      list.push({ id: 'status', label: 'Status', value: statusConfig[filterStatus]?.label ?? filterStatus });
+    }
+    return list;
+  }, [filterType, filterStatus]);
 
   const headers: string[] = uploadedJob?.headers ?? [];
   const availableFields = CRM_FIELDS[importType] ?? [];
+
+  // GET /imports returns the latest jobs as a flat array with raw column names
+  // (importType, totalRows, ...) and ignores page/type/status/search, so map,
+  // filter and paginate here.
+  const historyFetcher = React.useCallback(
+    async ({ page, limit, search }: { page: number; limit: number; search: string }) => {
+      const res = (await importsApi.list()) as unknown as { data?: unknown };
+      const raw = Array.isArray(res.data) ? (res.data as RawImportJob[]) : [];
+      const needle = search.trim().toLowerCase();
+      const jobs: ImportJob[] = raw
+        .map((j) => ({
+          id: j.id,
+          type: j.importType ?? j.type ?? '',
+          fileName: j.fileName,
+          totalRecords: j.totalRows ?? j.totalRecords ?? 0,
+          processedRecords: j.processedRows ?? j.processedRecords ?? 0,
+          failedRecords: j.errorCount ?? j.failedRecords ?? 0,
+          status: j.status,
+          createdAt: j.createdAt,
+          completedAt: j.completedAt ?? undefined,
+        }))
+        .filter((j) => filterType === 'all' || j.type === filterType)
+        .filter((j) => filterStatus === 'all' || j.status === filterStatus)
+        .filter((j) => !needle || j.fileName?.toLowerCase().includes(needle));
+      const start = (page - 1) * limit;
+      return {
+        data: {
+          data: jobs.slice(start, start + limit),
+          pagination: { page, limit, total: jobs.length, totalPages: Math.max(1, Math.ceil(jobs.length / limit)) },
+        },
+      };
+    },
+    [filterType, filterStatus],
+  );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.currentTarget.files?.[0];
@@ -197,8 +251,8 @@ export default function ImportSettingsPage() {
     if (!file) { toast.error('Please select a file'); return; }
     setUploading(true);
     try {
-      const result = await importsApi.upload({ file, type: importType, skipHeader }) as any;
-      const data = result?.data ?? result;
+      const result = await importsApi.upload({ file, type: importType, skipHeader });
+      const data = unwrapEntity<UploadedImport>(result);
       setUploadedJob(data);
       const hdrs: string[] = data?.headers ?? [];
       setMappings(autoMap(hdrs, importType));
@@ -214,6 +268,7 @@ export default function ImportSettingsPage() {
   const handleExecute = async () => {
     if (!uploadedJob) return;
     const jobId = uploadedJob.jobId ?? uploadedJob.id;
+    if (!jobId) return;
     setExecuting(true);
     try {
       const columnMapping: Record<string, string> = {};
@@ -229,7 +284,7 @@ export default function ImportSettingsPage() {
       setFile(null);
       setUploadedJob(null);
       setMappings({});
-      refetch();
+      setRefreshKey(k => k + 1);
     } catch {
       toast.error('Failed to start import');
     } finally {
@@ -268,43 +323,36 @@ export default function ImportSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const stepOrder: WizardStep[] = ['upload', 'map', 'configure'];
   const stepLabels: Record<WizardStep, string> = { upload: 'Upload', map: 'Map Columns', configure: 'Configure' };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Data Import</h1>
-          <p className="text-muted-foreground mt-1">Import contacts, leads, and other data from CSV/Excel files</p>
-        </div>
-      </div>
+    <div className="space-y-ds-6">
+      {confirmDialog}
+      <PageHeader
+        title="Data import"
+        description="Import contacts, leads, and other data from CSV/Excel files"
+        back={
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+            <ArrowLeft className="size-5" />
+          </Button>
+        }
+      />
 
       {/* Templates */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-ds-2">
+            <Download className="size-5" />
             Download Templates
           </CardTitle>
           <CardDescription>Get Excel templates with correct column formats and sample data</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-ds-2">
             {IMPORT_TYPES.map(type => (
-              <Button key={type.value} variant="outline" size="sm" className="gap-2" onClick={() => handleDownloadTemplate(type.value)}>
-                <FileSpreadsheet className="h-4 w-4" />
+              <Button key={type.value} variant="outline" size="sm" className="gap-ds-2" onClick={() => handleDownloadTemplate(type.value)}>
+                <FileSpreadsheet className="size-4" />
                 {type.label} Template
               </Button>
             ))}
@@ -315,31 +363,27 @@ export default function ImportSettingsPage() {
       {/* Import Wizard */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-ds-2">
+            <Upload className="size-5" />
             Import Wizard
           </CardTitle>
           <CardDescription>
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <div className="mt-ds-2 flex flex-wrap items-center gap-ds-2">
               {stepOrder.map((s, idx) => (
                 <React.Fragment key={s}>
-                  <span className={cn(
-                    'text-xs px-2 py-1 rounded',
-                    step === s ? 'bg-primary text-primary-foreground' :
-                    stepOrder.indexOf(step) > idx ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground',
-                  )}>
+                  <Tag tone={step === s ? 'primary' : stepOrder.indexOf(step) > idx ? 'success' : 'neutral'} size="sm">
                     {idx + 1}. {stepLabels[s]}
-                  </span>
-                  {idx < stepOrder.length - 1 && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                  </Tag>
+                  {idx < stepOrder.length - 1 && <ChevronRight className="size-3 text-ds-foreground-muted" />}
                 </React.Fragment>
               ))}
             </div>
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-ds-6">
           {step === 'upload' && (
             <>
-              <div className="space-y-2">
+              <div className="space-y-ds-2">
                 <Label>Import Type</Label>
                 <Select value={importType} onValueChange={setImportType}>
                   <SelectTrigger className="w-60">
@@ -353,31 +397,31 @@ export default function ImportSettingsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-ds-2">
                 <Label>File (CSV or XLSX, max 20MB)</Label>
-                <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                <div className="rounded-ds-lg border-2 border-dashed border-ds-border p-ds-8 text-center">
                   <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} className="hidden" id="import-file" />
                   <label htmlFor="import-file" className="cursor-pointer">
-                    <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <Upload className="mx-auto mb-ds-3 size-10 text-ds-foreground-muted" />
                     <p className="text-sm font-medium">
                       {file ? file.name : 'Click to select a CSV or Excel file'}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="mt-ds-1 text-xs text-ds-foreground-muted">
                       {file ? `${(file.size / 1024).toFixed(1)} KB` : 'CSV or XLSX, max 20MB'}
                     </p>
                   </label>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-ds-3">
                 <Switch checked={skipHeader} onCheckedChange={setSkipHeader} />
                 <Label>First row is header</Label>
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleUpload} disabled={!file || uploading} className="gap-2">
-                  {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <Upload className="h-4 w-4" />
+                <Button onClick={handleUpload} disabled={!file || uploading} className="gap-ds-2">
+                  {uploading && <Loader2 className="size-4 animate-spin" />}
+                  <Upload className="size-4" />
                   Upload & Continue
                 </Button>
               </div>
@@ -386,20 +430,20 @@ export default function ImportSettingsPage() {
 
           {step === 'map' && (
             <>
-              <div className="p-4 bg-muted rounded-lg">
+              <div className="rounded-ds-lg bg-ds-surface-sunken p-ds-4">
                 <p className="text-sm font-medium">Uploaded: {file?.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="mt-ds-1 text-xs text-ds-foreground-muted">
                   {uploadedJob?.totalRows ?? 0} records — {headers.length} columns detected
                 </p>
               </div>
 
               {headers.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">Map your file columns to CRM fields. Fields marked * are required.</p>
+                <div className="space-y-ds-3">
+                  <p className="text-sm text-ds-foreground-muted">Map your file columns to CRM fields. Fields marked * are required.</p>
                   {headers.map(header => (
-                    <div key={header} className="flex items-center gap-4">
-                      <span className="text-sm font-medium w-48 truncate">{header}</span>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={header} className="flex items-center gap-ds-4">
+                      <span className="w-48 truncate text-sm font-medium">{header}</span>
+                      <ArrowRight className="size-4 shrink-0 text-ds-foreground-muted" />
                       <Select
                         value={mappings[header] ?? '__skip'}
                         onValueChange={v => setMappings(prev => ({ ...prev, [header]: v }))}
@@ -420,13 +464,13 @@ export default function ImportSettingsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No column headers detected. Ensure your file has a header row.</p>
+                <p className="py-ds-4 text-center text-sm text-ds-foreground-muted">No column headers detected. Ensure your file has a header row.</p>
               )}
 
               <div className="flex justify-between">
                 <Button variant="outline" onClick={() => setStep('upload')}>Back</Button>
-                <Button onClick={() => setStep('configure')}>
-                  Next <ChevronRight className="h-4 w-4 ml-1" />
+                <Button onClick={() => setStep('configure')} className="gap-ds-2">
+                  Next <ChevronRight className="size-4" />
                 </Button>
               </div>
             </>
@@ -434,12 +478,12 @@ export default function ImportSettingsPage() {
 
           {step === 'configure' && (
             <>
-              <div className="space-y-4">
-                <div className="p-4 bg-muted rounded-lg">
+              <div className="space-y-ds-4">
+                <div className="rounded-ds-lg bg-ds-surface-sunken p-ds-4">
                   <p className="text-sm font-medium">Ready to import: {uploadedJob?.totalRows ?? 0} records as {IMPORT_TYPES.find(t => t.value === importType)?.label}</p>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-ds-3">
                   <Label>Duplicate Handling</Label>
                   {[
                     { value: 'skip', label: 'Skip duplicates', desc: 'Existing records stay unchanged' },
@@ -447,20 +491,20 @@ export default function ImportSettingsPage() {
                     { value: 'create', label: 'Create new', desc: 'Always create, even if duplicate' },
                   ].map(opt => (
                     <label key={opt.value} className={cn(
-                      'flex items-start gap-3 p-3 rounded-lg border cursor-pointer',
-                      duplicateStrategy === opt.value ? 'border-primary bg-primary/5' : '',
+                      'flex cursor-pointer items-start gap-ds-3 rounded-ds-lg border p-ds-3',
+                      duplicateStrategy === opt.value ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border',
                     )}>
                       <input
                         type="radio"
                         name="duplicateStrategy"
                         value={opt.value}
-                        checked={duplicateStrategy === opt.value as any}
-                        onChange={() => setDuplicateStrategy(opt.value as any)}
+                        checked={duplicateStrategy === opt.value}
+                        onChange={() => setDuplicateStrategy(opt.value as 'skip' | 'merge' | 'create')}
                         className="mt-0.5"
                       />
                       <div>
                         <p className="text-sm font-medium">{opt.label}</p>
-                        <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                        <p className="text-xs text-ds-foreground-muted">{opt.desc}</p>
                       </div>
                     </label>
                   ))}
@@ -469,8 +513,8 @@ export default function ImportSettingsPage() {
 
               <div className="flex justify-between">
                 <Button variant="outline" onClick={() => setStep('map')}>Back</Button>
-                <Button onClick={handleExecute} disabled={executing} className="gap-2">
-                  {executing && <Loader2 className="h-4 w-4 animate-spin" />}
+                <Button onClick={handleExecute} disabled={executing} className="gap-ds-2">
+                  {executing && <Loader2 className="size-4 animate-spin" />}
                   Start Import
                 </Button>
               </div>
@@ -481,16 +525,10 @@ export default function ImportSettingsPage() {
 
       {/* Import History */}
       <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <CardTitle>Import History</CardTitle>
-              <CardDescription>Recent import jobs and their status</CardDescription>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 mt-3 flex-wrap">
+        <CardContent className="pt-ds-6">
+          <div className="mb-ds-4 flex flex-wrap items-center gap-ds-3">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-40 h-8 text-xs">
+              <SelectTrigger className="h-8 w-40 text-xs">
                 <SelectValue placeholder="All types" />
               </SelectTrigger>
               <SelectContent>
@@ -501,7 +539,7 @@ export default function ImportSettingsPage() {
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-40 h-8 text-xs">
+              <SelectTrigger className="h-8 w-40 text-xs">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>
@@ -513,95 +551,103 @@ export default function ImportSettingsPage() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="ghost" size="sm" onClick={() => refetch()}>
-              <Loader2 className="h-3.5 w-3.5 mr-1.5" />Refresh
-            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          {filteredJobs.length === 0 ? (
-            <div className="text-center py-8">
-              <FileSpreadsheet className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No imports found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>File</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Records</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredJobs.map(job => {
-                  const config = statusConfig[job.status] ?? statusConfig['pending']!;
+
+          <ListPage<ImportJob>
+            className="p-0"
+            refreshKey={refreshKey}
+            title="Import History"
+            description="Recent import jobs and their status"
+            getRowId={(j) => j.id}
+            fetcher={historyFetcher}
+            filters={activeFilters}
+            onRemoveFilter={(id) => (id === 'type' ? setFilterType('all') : setFilterStatus('all'))}
+            onClearFilters={() => {
+              setFilterType('all');
+              setFilterStatus('all');
+            }}
+            columns={[
+              { key: 'fileName', header: 'File', sortable: false },
+              {
+                key: 'type', header: 'Type',
+                cell: (j) => <Tag tone="neutral" size="sm" className="capitalize">{j.type?.replace('_', ' ')}</Tag>,
+              },
+              {
+                key: 'records', header: 'Records',
+                cell: (j) => (
+                  <span className="text-sm">
+                    {j.processedRecords}/{j.totalRecords}
+                    {j.failedRecords > 0 && <span className="ml-1 text-ds-danger">({j.failedRecords} failed)</span>}
+                  </span>
+                ),
+              },
+              {
+                key: 'status', header: 'Status',
+                cell: (j) => {
+                  const config = statusConfig[j.status] ?? statusConfig.pending!;
                   const StatusIcon = config.icon;
-                  const isActive = ['processing', 'validating', 'importing'].includes(job.status as string);
+                  const isActive = ['processing', 'validating', 'importing'].includes(j.status as string);
                   return (
-                    <TableRow key={job.id}>
-                      <TableCell className="text-sm font-medium">{job.fileName}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="capitalize text-xs">
-                          {job.type?.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {job.processedRecords}/{job.totalRecords}
-                        {job.failedRecords > 0 && (
-                          <span className="text-red-500 ml-1">({job.failedRecords} failed)</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={cn('gap-1', config.className)}>
-                          <StatusIcon className={cn('h-3 w-3', isActive && 'animate-spin')} />
-                          {config.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">{formatDate(job.createdAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {job.failedRecords > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => handleDownloadErrors(job.id, job.type)}
-                            >
-                              <Download className="h-3 w-3 mr-1" />Errors
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                            title="Cancel/Delete"
-                            onClick={async () => {
-                              if (!confirm('Remove this import record?')) return;
-                              try {
-                                await importsApi.cancel(job.id);
-                                refetch();
-                                toast.success('Removed');
-                              } catch {
-                                toast.error('Failed to remove');
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    <Tag tone={config.tone} size="sm" className="gap-1">
+                      <StatusIcon className={cn('size-3', isActive && 'animate-spin')} />
+                      {config.label}
+                    </Tag>
                   );
-                })}
-              </TableBody>
-            </Table>
-          )}
+                },
+              },
+              { key: 'createdAt', header: 'Date', sortable: true, cell: (j) => formatDate(j.createdAt) },
+            ]}
+            rowActions={(j) => (
+              <>
+                {j.failedRecords > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Download errors"
+                    onClick={() => handleDownloadErrors(j.id, j.type)}
+                  >
+                    <Eye />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Cancel or remove"
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Remove import record?',
+                      description: 'The record is removed from your import history. Contacts already imported are not affected.',
+                      confirmLabel: 'Remove',
+                      tone: 'destructive',
+                    });
+                    if (!ok) return;
+                    try {
+                      await importsApi.cancel(j.id);
+                      setRefreshKey(k => k + 1);
+                      toast.success('Removed');
+                    } catch {
+                      toast.error('Failed to remove');
+                    }
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              </>
+            )}
+            emptyTitle="No imports found"
+            emptyDescription="Upload a file above to start your first import."
+            emptyIcon={<FileSpreadsheet className="size-8" />}
+          />
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ImportSettingsPage() {
+  return (
+    <PageContainer>
+      <ImportSettingsPageContent />
+    </PageContainer>
   );
 }

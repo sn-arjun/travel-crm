@@ -1,0 +1,48 @@
+{
+  "id": "B36",
+  "title": "Honest AI-unavailable handling end to end: backend 503 AI_UNAVAILABLE, accurate provider status, desktop notice on every AI surface",
+  "lane": "backend+desktop",
+  "backend": true,
+  "wave": "W6",
+  "dependsOn": ["B28", "B33"],
+  "parallelGroup": "W6-ai",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 14,
+  "goal": "When no AI provider is available, the product must say so plainly everywhere instead of returning stub text as if it were an AI answer.",
+  "context": "Added by the orchestrator 2026-10-06 from desktop/audit/fix/requests/B28.md. Today backend/src/services/ai-router.ts (around lines 190, 216, 249) returns HTTP 200 with a stub payload `{\"note\":\"Cloudflare AI not available in this environment. Configure Workers AI binding.\"}` when the Workers AI binding is missing or non-functional; `/ai/extract-lead`, `/ai/generate-itinerary`, `/ai/compose-message` pass that through, and `/ai/intelligence/nl-query` turns it into a misleading 'I couldn't generate a query' narrative. `GET /ai/settings` reports provider.cloudflare = true unconditionally. B28 (merged) worked around it on the desktop: `desktop/src/lib/api/ai.ts` detects the stub and throws `AiUnavailableError`; `components/domain/ai/AiUnavailableNotice` renders a friendly 'AI is not configured yet' state with Try again on the lead-creation, itinerary and compose pages. NL Search and the BI pages have no such handling. Baselines: backend vitest 41 files / 1087 passed, tsc 0; desktop tsc 0, unit 1232, lint ratchet (desktop/audit/fix/lint-baseline.json). The local/test backend has NO AI binding (the e2e wrangler config strips [ai]), so 'unavailable' is the state every local run and the demo recording will see unless a provider key is configured.",
+  "steps": [
+    "Backend: in ai-router.ts replace the stub returns with a typed error (e.g. class AiUnavailableError extends Error with code 'AI_UNAVAILABLE'). Every AI route that calls the router (grep callers under backend/src/routes: ai*.ts, chatbot, communications compose, extractions, intelligence incl. nl-query, business intelligence/briefings) must translate it into HTTP 503 with the standard envelope {success:false,error:{code:'AI_UNAVAILABLE',message:'AI is not configured for this workspace yet.'}}. Never return stub text as content. Usage/quota counters must not be incremented for an unavailable call.",
+    "Before changing statuses: grep packages/shared/lib and packages/crm_app/lib (Flutter CRM app) for these endpoints. If the Flutter app reads the stub/200, keep it working - a 503 with error.message is acceptable only if the app already shows error.message for non-2xx (verify in its ApiClient error handling); otherwise report precisely instead of breaking it.",
+    "Backend GET /ai/settings: provider.cloudflare (and any other provider flag) must reflect reality - true only when the binding/key exists (and, if cheaply detectable, is functional). Additive field `available: boolean` summarising whether any provider can serve requests.",
+    "Backend tests: with no AI binding (the vitest env) each affected endpoint returns 503 AI_UNAVAILABLE (update existing tests that asserted the 200 stub - list them); /ai/settings reports cloudflare false / available false; quota unchanged after a 503.",
+    "Desktop lib/api/ai.ts (and any other client that calls AI endpoints: chatbot.ts, communications.ts compose, extractions, intelligence): map HTTP 503 with code AI_UNAVAILABLE to the existing AiUnavailableError; keep the stub detection as a fallback for older backends. Unit-test it.",
+    "Desktop pages: show AiUnavailableNotice (existing component) on every AI surface that can hit the provider - NL Search, AI Business Intelligence / briefings, AI Intelligence widgets, AI Extractions actions, chatbot test/preview if any, compose-with-AI in SendMessageDialog - instead of an error toast or a fake answer. Use `available` from /ai/settings to show the notice up-front where sensible (no request needed).",
+    "Run gates; look at NL Search and one BI page in screenshots (light + dark)."
+  ],
+  "filesAllowlist": [
+    "backend/src/services/ai-router.ts",
+    "backend/src/services/ai/**",
+    "backend/src/routes/ai*.ts",
+    "backend/src/routes/chatbot*.ts",
+    "backend/src/routes/communications.ts",
+    "backend/src/utils/**",
+    "backend/test/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/src/lib/api/ai.test.ts",
+    "desktop/src/lib/api/{chatbot,communications}.ts",
+    "desktop/src/components/domain/ai/**",
+    "desktop/src/app/(app)/ai/**",
+    "desktop/src/components/communication/send-message-dialog.tsx (AI-compose error path only)",
+    "desktop/e2e/ai-*.spec.ts"
+  ],
+  "mustNotTouch": ["backend/drizzle/**", "backend/.dev.vars", "packages/**", "desktop/e2e/showcase/**"],
+  "acceptance": [
+    "No backend AI endpoint returns stub text; without a provider they return 503 AI_UNAVAILABLE and do not consume quota.",
+    "/ai/settings provider flags are truthful; `available` present.",
+    "Every desktop AI surface shows the friendly notice (no error toast, no fake answer) when AI is unavailable.",
+    "backend vitest 0 failed, passed >= 1087; backend tsc 0; desktop typecheck 0, unit pass, lint ratchet pass with 0 errors in files you touch; build pass; ai-*.spec.ts pass."
+  ],
+  "gates": {"typecheck": true, "unit": true, "lint": true, "build": true, "backendTests": true, "flutter": false, "specs": ["desktop/e2e/ai-assistant.spec.ts", "desktop/e2e/ai-business-intelligence.spec.ts", "desktop/e2e/ai-extractions.spec.ts", "desktop/e2e/ai-intelligence.spec.ts", "desktop/e2e/ai-settings.spec.ts"]},
+  "notes": "Demo implication (report it): unless a real AI key is configured for the recording, AI chapters in the walkthrough will show the 'not configured' state - say exactly which env vars / bindings make AI live locally (backend/.dev.vars key names only, never values)."
+}

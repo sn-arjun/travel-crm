@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { eq, desc } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
@@ -9,6 +9,8 @@ import { success, error } from '../utils/response';
 import * as XLSX from 'xlsx';
 import { FileParser } from '../services/imports/file-parser';
 import { TemplateGenerator } from '../services/imports/template-generator';
+import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 
 const importRoutes = new Hono<AppContext>();
 
@@ -66,7 +68,7 @@ importRoutes.post('/upload', async (c) => {
         });
 
         // Create tracking record
-        const jobId = crypto.randomUUID();
+        const jobId = generateId();
         const tenantId = c.get('tenantId') || '';
         await db.insert(schema.importJobs).values({
             id: jobId,
@@ -248,7 +250,7 @@ importRoutes.get('/templates/:type', async (c) => {
 
     try {
         const generator = new TemplateGenerator();
-        const buffer = generator.generateTemplate(type);
+        const buffer = generator.generateTemplate(type, (await loadLocaleContext(c.get('tenantDb'))).currency);
 
         c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         c.header('Content-Disposition', `attachment; filename="${type}_import_template.xlsx"`);

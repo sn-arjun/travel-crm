@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useNotifications } from './useNotifications';
+import { useNotifications } from './use-notifications';
 import { useNotificationStore } from '@/stores/notification-store';
 
 // Mock sonner toast
 vi.mock('sonner', () => {
-  const toast = vi.fn();
-  toast.success = vi.fn();
-  toast.error = vi.fn();
-  toast.warning = vi.fn();
+  const toast = Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+  });
   return { toast };
 });
 
@@ -43,10 +44,10 @@ describe('useNotifications', () => {
     });
 
     expect(result.current.notifications).toHaveLength(1);
-    expect(result.current.notifications[0].title).toBe('Test');
-    expect(result.current.notifications[0].message).toBe('Test message');
-    expect(result.current.notifications[0].type).toBe('info');
-    expect(result.current.notifications[0].read).toBe(false);
+    expect(result.current.notifications[0]?.title).toBe('Test');
+    expect(result.current.notifications[0]?.message).toBe('Test message');
+    expect(result.current.notifications[0]?.type).toBe('info');
+    expect(result.current.notifications[0]?.read).toBe(false);
     expect(result.current.unreadCount).toBe(1);
   });
 
@@ -61,13 +62,13 @@ describe('useNotifications', () => {
       });
     });
 
-    const id = result.current.notifications[0].id;
+    const id = result.current.notifications[0]!.id;
 
     act(() => {
       result.current.markAsRead(id);
     });
 
-    expect(result.current.notifications[0].read).toBe(true);
+    expect(result.current.notifications[0]?.read).toBe(true);
     expect(result.current.unreadCount).toBe(0);
   });
 
@@ -82,7 +83,7 @@ describe('useNotifications', () => {
       });
     });
 
-    const id = result.current.notifications[0].id;
+    const id = result.current.notifications[0]!.id;
 
     act(() => {
       result.current.markAsRead(id);
@@ -127,7 +128,7 @@ describe('useNotifications', () => {
       result.current.addNotification({ title: 'B', message: 'b', type: 'info' });
     });
 
-    const idToRemove = result.current.notifications[0].id;
+    const idToRemove = result.current.notifications[0]!.id;
 
     act(() => {
       result.current.removeNotification(idToRemove);
@@ -145,7 +146,7 @@ describe('useNotifications', () => {
     });
 
     expect(result.current.unreadCount).toBe(1);
-    const id = result.current.notifications[0].id;
+    const id = result.current.notifications[0]!.id;
 
     act(() => {
       result.current.removeNotification(id);
@@ -161,7 +162,7 @@ describe('useNotifications', () => {
       result.current.addNotification({ title: 'A', message: 'a', type: 'info' });
     });
 
-    const id = result.current.notifications[0].id;
+    const id = result.current.notifications[0]!.id;
 
     act(() => {
       result.current.markAsRead(id);
@@ -261,9 +262,9 @@ describe('useNotifications', () => {
       });
 
       expect(result.current.notifications).toHaveLength(1);
-      expect(result.current.notifications[0].title).toBe('Title');
-      expect(result.current.notifications[0].message).toBe('Message');
-      expect(result.current.notifications[0].type).toBe('success');
+      expect(result.current.notifications[0]?.title).toBe('Title');
+      expect(result.current.notifications[0]?.message).toBe('Message');
+      expect(result.current.notifications[0]?.type).toBe('success');
       expect(result.current.unreadCount).toBe(1);
     });
   });

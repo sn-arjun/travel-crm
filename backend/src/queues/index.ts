@@ -8,6 +8,7 @@ import { handleExportQueue } from './export-queue';
 import { handleCampaignQueue } from './campaign-queue';
 import { handleAIExtractionQueue } from './ai-extraction-queue';
 import { processWhatsAppCampaign } from './whatsapp-campaign-queue';
+import { handleTenantJobs } from './tenant-jobs-queue';
 
 export interface QueueMessage {
   type: 'email' | 'sms' | 'push' | 'wp-provision' | 'import' | 'export_invoices' | 'export_full' | 'whatsapp_campaign' | 'sms_campaign' | 'email_campaign';
@@ -22,6 +23,11 @@ export async function handleQueue(
   batch: MessageBatch<QueueMessage>,
   env: Env
 ): Promise<void> {
+
+  if (batch.queue === 'travelcrm-tenant-jobs') {
+    await handleTenantJobs(batch as any, env);
+    return;
+  }
 
   if (batch.queue === 'import-queue' || batch.queue.includes('import')) {
     await handleImportQueue(batch as any, env);
@@ -72,9 +78,15 @@ export async function handleQueue(
         case 'push':
           await handlePushJob(data as PushNotificationJob, env);
           break;
-        case 'wp-provision':
-          await handleWpProvisionJob(data as WpProvisionJob, env);
+        case 'wp-provision': {
+          // R309: the job decides its own retry timing (backoff, polling); an unexpected throw falls to msg.retry() below.
+          const outcome = await handleWpProvisionJob(data as WpProvisionJob, env);
+          if (outcome.retryInSeconds) {
+            msg.retry({ delaySeconds: outcome.retryInSeconds });
+            continue;
+          }
           break;
+        }
         default:
           console.error(`Unknown queue message type: ${type}`);
       }

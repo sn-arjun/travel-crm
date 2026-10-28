@@ -1,0 +1,35 @@
+{
+  "id": "B32",
+  "title": "Backend hardening: role-scoped report cache, 403 for forbidden reports, no 500-tolerant tests",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W4",
+  "dependsOn": ["B15"],
+  "parallelGroup": "W4",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 15,
+  "goal": "Close the follow-ups B12/B15 found: a report cached for an admin can be served to a salesperson; a forbidden report returns 400 instead of 403; ~10 backend test files accept HTTP 500 as success, which hid real breakage (e.g. contact insert on a fresh DB).",
+  "context": "Added by the orchestrator 2026-10-03 from B12/B15 hand-offs. backend/src/services/report-cache.ts getCacheKey(tenantId, reportId, params) has no user/role component; routes/reports.ts uses ReportCache and exposes DELETE /cache and /:id/cache. Report permission failure currently responds 400 'Insufficient permissions for this report'. Tests that accept 500: grep -rn 500 backend/test (ai-intelligence, ai-routes, api, auth-e2e, communications, crud-lifecycle, fleet-crud, imports-exports, infrastructure, marketing ...). Baseline: vitest 35 files / 1040 passed, tsc 0.",
+  "steps": [
+    "Report cache scoping: include the data-visibility scope in the cache key - for roles whose report results are filtered (salesperson, or any role the report engine filters by owner) include role AND userId; for unfiltered roles include role. Keep tenant-wide invalidation (DELETE /cache) working for all scoped keys (prefix-based). Add tests: admin result cached, then salesperson request for the same report/params does NOT receive the admin payload; invalidate clears both.",
+    "Forbidden report: respond 403 with the standard error envelope {success:false,error:{code:'FORBIDDEN',message}} instead of 400. Grep desktop/src/lib/api/reports* and packages/*/lib for handling of that 400 and keep them working (they should treat 403 as no-access). Update/add tests.",
+    "500-tolerant tests: for every assertion that accepts 500 (e.g. expect([201, 500]).toContain(res.status)), determine the real expected status now that the migration chain/schema is fixed. Replace with the exact expected status. If an endpoint genuinely still 500s, FIX the route (within backend/src/routes/**) and add a regression assertion; if it legitimately depends on an external binding absent in tests (AI, Twilio, SendGrid, R2), assert the documented graceful status (e.g. 503) instead of 500 - never accept 500. List every changed assertion in your report.",
+    "Run the full backend suite and tsc."
+  ],
+  "filesAllowlist": [
+    "backend/src/services/report-cache.ts",
+    "backend/src/services/report-engine.ts",
+    "backend/src/routes/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/drizzle/**", "backend/.dev.vars", "desktop/**", "packages/**"],
+  "acceptance": [
+    "A salesperson never receives an admin-cached report payload (test).",
+    "Forbidden report -> 403 FORBIDDEN (test).",
+    "`grep -rnw 500 backend/test` shows no assertion that accepts 500 as a success outcome.",
+    "`cd backend && npx vitest run` 0 failed files, passed >= 1040; `npx tsc --noEmit` 0 errors."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": []},
+  "notes": "Owner decision context: none needed. Do not change response shapes other than the forbidden-report status."
+}

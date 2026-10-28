@@ -1,19 +1,15 @@
 /**
  * Overdue Task Cron Job
- * Runs daily at 9 AM and 6 PM to detect and notify about overdue tasks.
+ * Runs hourly per agency (the job runner claims one run per tenant-local day) and notifies assignees of overdue tasks.
  */
 import type { Env } from '../types';
+import { generateId } from '../utils/uuid';
+import { getTenantTimeZone, localDateString } from '../utils/tz';
 
-export async function processOverdueTasks(env: Env) {
+export async function processOverdueTasks(_env: Env, _tenantId: string, db: D1Database, now: Date = new Date()) {
     try {
-        // For single-tenant setup, use the main DB
-        const db = (env as any).DB || (env as any).TENANT_DB;
-        if (!db) {
-            console.error('No database available for overdue task processing');
-            return;
-        }
-
-        const today = new Date().toISOString().split('T')[0];
+        // 'today' is the tenant's local calendar day, not the UTC date
+        const today = localDateString(await getTenantTimeZone(db), now);
 
         const overdueTasks = await db.prepare(`
       SELECT t.*, u.name as assignee_name, u.id as assignee_id
@@ -32,9 +28,9 @@ export async function processOverdueTasks(env: Env) {
             const t = task as any;
 
             // Create in-app notification for assignee
-            const notifId = crypto.randomUUID();
+            const notifId = generateId();
             await db.prepare(`
-        INSERT INTO notifications (id, user_id, title, body, type, entity_type, entity_id, is_read)
+        INSERT INTO notifications (id, user_id, title, message, type, reference_type, reference_id, is_read)
         VALUES (?, ?, ?, ?, ?, ?, ?, 0)
       `).bind(
                 notifId,
@@ -55,5 +51,6 @@ export async function processOverdueTasks(env: Env) {
         console.log(`Processed ${results.length} overdue task notifications`);
     } catch (err) {
         console.error('Error processing overdue tasks:', err);
+        throw err;
     }
 }

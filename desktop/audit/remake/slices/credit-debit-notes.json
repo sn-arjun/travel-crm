@@ -1,0 +1,65 @@
+{
+  "slice": "credit-debit-notes",
+  "title": "Credit & Debit Notes",
+  "status": "existing",
+  "showcaseOrder": 12,
+  "endpoints": [
+    "GET /api/v1/credit-notes",
+    "GET /api/v1/debit-notes",
+    "POST /api/v1/credit-notes",
+    "POST /api/v1/credit-notes/:id/apply",
+    "POST /api/v1/debit-notes",
+    "POST /api/v1/debit-notes/:id/apply"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/credit-notes.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/credit-notes/page.tsx",
+    "desktop/src/app/(app)/debit-notes/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/credit-notes/new/page.tsx",
+    "desktop/src/app/(app)/debit-notes/new/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/09-credit-debit-notes.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/credit-debit-notes.spec.ts",
+  "seedHelpers": [
+    "seedCreditNote",
+    "seedInvoice"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/credit-notes/**",
+    "desktop/src/app/(app)/debit-notes/**",
+    "desktop/src/lib/api/credit-notes.ts",
+    "desktop/e2e/credit-debit-notes.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Rebuilt both list pages onto the ListPage archetype (PageHeader+count, FilterBar, DataTable w/ hover Apply action, useInfiniteScroll, detail drawer, EmptyState with create CTA, skeleton, bulk-apply selection, full-dataset CSV export). Built new create pages for both (RelationCombobox for invoice, line items with qty/rate/tax, ?invoiceId= prefill). Debit-notes still imports the CreditNote type alias (pre-existing #79, not in scope). No PhoneInput/AddressAutocomplete/CurrencyInput/DatePicker/SendMessageDialog fields — the note entity has none of those field types. No detail *page* exists (only the drawer) since the manifest didn't list one and hover Eye action was replaced by row click to open the drawer.",
+  "showcaseScript": [
+    "Open Credit Notes and review outstanding balances",
+    "Issue a credit note against a paid invoice",
+    "Apply the credit note and watch the invoice balance drop",
+    "Switch to Debit Notes and issue one"
+  ]
+}

@@ -31,6 +31,22 @@ void main() {
       final id2 = generateId();
       expect(id1.compareTo(id2), lessThanOrEqualTo(0));
     });
+
+    test('generateId is strictly increasing, even within one millisecond', () {
+      final ids = List.generate(20000, (_) => generateId());
+      for (var i = 1; i < ids.length; i++) {
+        expect(ids[i].compareTo(ids[i - 1]), greaterThan(0),
+            reason: 'ids[$i] ${ids[i]} must sort after ids[${i - 1}] ${ids[i - 1]}');
+      }
+    });
+
+    test('generateId sets the UUIDv7 version and RFC variant bits', () {
+      final id = generateId();
+      expect(id[14], '7');
+      expect('89ab'.contains(id[19]), isTrue);
+      expect(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+          .hasMatch(id), isTrue);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════
@@ -384,25 +400,25 @@ void main() {
     });
 
     test('destinations from JSON string', () {
-      final json = {...baseJson, 'destination': '["Bali","Singapore"]'};
+      final json = {...baseJson, 'destinations': '["Bali","Singapore"]'};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, ['Bali', 'Singapore']);
     });
 
     test('destinations from list', () {
-      final json = {...baseJson, 'destination': ['Bali']};
+      final json = {...baseJson, 'destinations': ['Bali']};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, ['Bali']);
     });
 
     test('destinations null returns empty', () {
-      final json = {...baseJson, 'destination': null};
+      final json = {...baseJson, 'destinations': null};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, isEmpty);
     });
 
     test('destinations empty string returns empty', () {
-      final json = {...baseJson, 'destination': ''};
+      final json = {...baseJson, 'destinations': ''};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, isEmpty);
     });
@@ -412,7 +428,8 @@ void main() {
       expect(lead.paxAdults, 1);
       expect(lead.paxChildren, 0);
       expect(lead.paxInfants, 0);
-      expect(lead.currency, 'INR');
+      // R136: the currency is the server's; there is no hidden INR default
+      expect(lead.currency, isNull);
       expect(lead.status, 'new');
     });
   });

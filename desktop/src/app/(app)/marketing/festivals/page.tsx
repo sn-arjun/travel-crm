@@ -9,113 +9,45 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
 import { FilterBar } from '@/components/domain/filter-bar';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { useApiMutation } from '@/hooks/use-api';
+import { formatDisplayDate } from '@/lib/dates';
 import { marketingApi, type FestivalCampaign } from '@/lib/api/marketing';
 
 // ---------------------------------------------------------------------------
-// Predefined festivals with themed gradients
+// Predefined festival templates (accent colour comes from the chart tokens)
 // ---------------------------------------------------------------------------
 
 interface FestivalPreset {
   name: string;
-  icon: string;
   month: string;
-  gradient: string;
-  textColor: string;
+  accent: string;
   description: string;
 }
 
 const FESTIVAL_PRESETS: FestivalPreset[] = [
-  {
-    name: 'Diwali',
-    icon: '\u{1F386}',
-    month: 'Oct-Nov',
-    gradient: 'from-amber-500 via-orange-500 to-red-500',
-    textColor: 'text-white',
-    description: 'Festival of lights - promote holiday packages & special deals',
-  },
-  {
-    name: 'Christmas',
-    icon: '\u{1F384}',
-    month: 'December',
-    gradient: 'from-red-600 via-red-500 to-green-600',
-    textColor: 'text-white',
-    description: 'Year-end holiday travel deals & winter destinations',
-  },
-  {
-    name: 'New Year',
-    icon: '\u{1F389}',
-    month: 'January',
-    gradient: 'from-indigo-600 via-purple-500 to-pink-500',
-    textColor: 'text-white',
-    description: 'New Year getaways & early-bird bookings for the year',
-  },
-  {
-    name: 'Eid',
-    icon: '\u{1F319}',
-    month: 'Varies',
-    gradient: 'from-emerald-600 via-teal-500 to-cyan-500',
-    textColor: 'text-white',
-    description: 'Eid special packages for families & group travel',
-  },
-  {
-    name: 'Holi',
-    icon: '\u{1F308}',
-    month: 'March',
-    gradient: 'from-pink-500 via-yellow-400 to-green-400',
-    textColor: 'text-white',
-    description: 'Festival of colors - spring travel & cultural tours',
-  },
-  {
-    name: "Valentine's Day",
-    icon: '\u{2764}\u{FE0F}',
-    month: 'February',
-    gradient: 'from-rose-500 via-pink-500 to-red-400',
-    textColor: 'text-white',
-    description: 'Romantic getaways & couple holiday packages',
-  },
-  {
-    name: 'Summer Sale',
-    icon: '\u{2600}\u{FE0F}',
-    month: 'May-Jun',
-    gradient: 'from-yellow-400 via-orange-400 to-red-400',
-    textColor: 'text-white',
-    description: 'Summer vacation deals & hill station packages',
-  },
-  {
-    name: 'Republic Day',
-    icon: '\u{1F1EE}\u{1F1F3}',
-    month: 'January',
-    gradient: 'from-orange-500 via-white to-green-500',
-    textColor: 'text-gray-800',
-    description: 'Patriotic travel offers & heritage destination deals',
-  },
-  {
-    name: 'Independence Day',
-    icon: '\u{1F1EE}\u{1F1F3}',
-    month: 'August',
-    gradient: 'from-orange-400 via-orange-200 to-green-500',
-    textColor: 'text-gray-800',
-    description: 'Long weekend travel specials & freedom sale offers',
-  },
-  {
-    name: 'Navratri',
-    icon: '\u{1F4AB}',
-    month: 'Sep-Oct',
-    gradient: 'from-red-500 via-orange-500 to-yellow-400',
-    textColor: 'text-white',
-    description: 'Nine-night festival specials & Gujarat/Rajasthan tours',
-  },
+  { name: 'Diwali', month: 'Oct-Nov', accent: 'bg-ds-chart-1', description: 'Festival of lights - promote holiday packages & special deals' },
+  { name: 'Christmas', month: 'December', accent: 'bg-ds-chart-2', description: 'Year-end holiday travel deals & winter destinations' },
+  { name: 'New Year', month: 'January', accent: 'bg-ds-chart-3', description: 'New Year getaways & early-bird bookings for the year' },
+  { name: 'Eid', month: 'Varies', accent: 'bg-ds-chart-4', description: 'Eid special packages for families & group travel' },
+  { name: 'Holi', month: 'March', accent: 'bg-ds-chart-5', description: 'Festival of colors - spring travel & cultural tours' },
+  { name: "Valentine's Day", month: 'February', accent: 'bg-ds-chart-6', description: 'Romantic getaways & couple holiday packages' },
+  { name: 'Summer Sale', month: 'May-Jun', accent: 'bg-ds-chart-1', description: 'Summer vacation deals & hill station packages' },
+  { name: 'Republic Day', month: 'January', accent: 'bg-ds-chart-2', description: 'Patriotic travel offers & heritage destination deals' },
+  { name: 'Independence Day', month: 'August', accent: 'bg-ds-chart-3', description: 'Long weekend travel specials & freedom sale offers' },
+  { name: 'Navratri', month: 'Sep-Oct', accent: 'bg-ds-chart-4', description: 'Nine-night festival specials & Gujarat/Rajasthan tours' },
 ];
 
 function daysUntil(dateStr: string): number {
@@ -126,24 +58,20 @@ function daysUntil(dateStr: string): number {
 
 function campaignStatusBadge(isActive: boolean) {
   return isActive ? (
-    <Badge
-      variant="outline"
-      className="text-xs border-transparent bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-    >
-      Active
-    </Badge>
+    <Tag tone="success">Active</Tag>
   ) : (
-    <Badge
-      variant="outline"
-      className="text-xs border-transparent bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-    >
-      Inactive
-    </Badge>
+    <Tag tone="neutral">Inactive</Tag>
   );
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 export default function FestivalsPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [search, setSearch] = React.useState('');
 
   const fetcher = React.useCallback(
@@ -162,44 +90,40 @@ export default function FestivalsPage() {
     refetch,
   } = useInfiniteScroll<FestivalCampaign>({ fetcher, limit: 25 });
 
-  const { mutate: activate } = useApiMutation((id: string) =>
-    marketingApi.festivals.activate(id),
-  );
-  const { mutate: deactivate } = useApiMutation((id: string) =>
-    marketingApi.festivals.deactivate(id),
-  );
-  const { mutate: deleteFestival } = useApiMutation((id: string) =>
-    marketingApi.festivals.delete(id),
-  );
-
   async function handleToggle(festival: FestivalCampaign) {
-    if (festival.isActive) {
-      const result = await deactivate(festival.id);
-      if (result) {
+    try {
+      if (festival.isActive) {
+        await marketingApi.festivals.deactivate(festival.id);
         toast.success('Festival campaign deactivated');
-        refetch();
       } else {
-        toast.error('Failed to deactivate');
-      }
-    } else {
-      const result = await activate(festival.id);
-      if (result) {
+        await marketingApi.festivals.activate(festival.id);
         toast.success('Festival campaign activated');
-        refetch();
-      } else {
-        toast.error('Failed to activate');
       }
+      refetch();
+    } catch (err) {
+      toast.error(
+        errorMessage(
+          err,
+          festival.isActive ? 'Could not deactivate this campaign' : 'Could not activate this campaign',
+        ),
+      );
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this festival campaign?')) return;
-    const result = await deleteFestival(id);
-    if (result) {
+  async function handleDelete(festival: FestivalCampaign) {
+    const ok = await confirm({
+      title: 'Delete festival campaign?',
+      description: `"${festival.festivalName}" will be removed permanently. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await marketingApi.festivals.delete(festival.id);
       toast.success('Festival campaign deleted');
       refetch();
-    } else {
-      toast.error('Failed to delete');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Could not delete this campaign'));
     }
   }
 
@@ -226,40 +150,32 @@ export default function FestivalsPage() {
   ).length;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
+    <PageContainer>
+      <PageHeader
+        title="Festival Offers"
+        description="Create seasonal campaigns tied to holidays and festivals"
+        back={
+          <Button variant="ghost" size="icon" asChild aria-label="Back to marketing">
             <Link href="/marketing">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div>
-            <h1
-              className="text-xl font-bold tracking-tight"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Festival Offers
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Create seasonal campaigns tied to holidays and festivals
-            </p>
-          </div>
-        </div>
-        <Button
-          onClick={() =>
-            router.push(
-              '/campaigns/new?subject=Custom+Festival+Campaign&festivalName=Custom',
-            )
-          }
-        >
-          <Plus className="h-4 w-4 mr-1.5" /> Create Custom Festival
-        </Button>
-      </div>
+        }
+        actions={
+          <Button
+            onClick={() =>
+              router.push(
+                '/campaigns/new?subject=Custom+Festival+Campaign&festivalName=Custom',
+              )
+            }
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Create Custom Festival
+          </Button>
+        }
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 px-6 py-4 border-b">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
         {loading ? (
           <>
             <Skeleton className="h-16" />
@@ -270,34 +186,34 @@ export default function FestivalsPage() {
           <>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <Play className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="h-10 w-10 rounded-lg bg-ds-success-subtle flex items-center justify-center">
+                  <Play className="h-5 w-5 text-ds-success-on-subtle" />
                 </div>
                 <div>
                   <p className="text-lg font-bold">{activeFestivalsCount}</p>
-                  <p className="text-xs text-muted-foreground">Active Campaigns</p>
+                  <p className="text-xs text-ds-foreground-muted">Active Campaigns</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                  <CalendarClock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div className="h-10 w-10 rounded-lg bg-ds-warning-subtle flex items-center justify-center">
+                  <CalendarClock className="h-5 w-5 text-ds-warning-on-subtle" />
                 </div>
                 <div>
                   <p className="text-lg font-bold">{upcomingCount}</p>
-                  <p className="text-xs text-muted-foreground">Upcoming (30 days)</p>
+                  <p className="text-xs text-ds-foreground-muted">Upcoming (30 days)</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                  <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <div className="h-10 w-10 rounded-lg bg-ds-primary-subtle flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-ds-primary-on-subtle" />
                 </div>
                 <div>
                   <p className="text-lg font-bold">{FESTIVAL_PRESETS.length}</p>
-                  <p className="text-xs text-muted-foreground">Festival Templates</p>
+                  <p className="text-xs text-ds-foreground-muted">Festival Templates</p>
                 </div>
               </CardContent>
             </Card>
@@ -305,11 +221,14 @@ export default function FestivalsPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-8">
+      <div className="space-y-8">
         {/* Predefined Festival Cards Grid */}
-        <div>
-          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-500" />
+        <section aria-labelledby="festival-templates-heading">
+          <h2
+            id="festival-templates-heading"
+            className="text-base font-semibold mb-4 flex items-center gap-2"
+          >
+            <Sparkles className="h-4 w-4 text-ds-warning" aria-hidden="true" />
             Festival Templates
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
@@ -320,61 +239,31 @@ export default function FestivalsPage() {
               return (
                 <Card
                   key={preset.name}
-                  className="overflow-hidden hover:shadow-md transition-shadow group"
+                  role="article"
+                  aria-label={`${preset.name} festival template`}
+                  data-testid="festival-template-card"
+                  className="gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md"
                 >
-                  {/* Gradient header */}
-                  <div
-                    className={cn(
-                      'bg-gradient-to-r p-4 relative',
-                      preset.gradient,
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-2xl">{preset.icon}</span>
-                        <h3
-                          className={cn(
-                            'text-base font-bold mt-1',
-                            preset.textColor,
-                          )}
-                        >
-                          {preset.name}
-                        </h3>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px] border-white/30 backdrop-blur-sm',
-                          preset.textColor,
-                        )}
-                      >
+                  <div className={cn('h-1.5 w-full', preset.accent)} aria-hidden="true" />
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-base font-bold text-ds-foreground">
+                        {preset.name}
+                      </h3>
+                      <Badge variant="outline" className="text-xs shrink-0">
                         {preset.month}
                       </Badge>
                     </div>
-                    {hasActiveCampaign && (
-                      <div className="absolute top-2 right-2">
-                        <div className="h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-white/50 animate-pulse" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                    <p className="text-xs text-ds-foreground-muted line-clamp-2">
                       {preset.description}
                     </p>
                     <div className="flex items-center gap-2">
                       {hasActiveCampaign ? (
-                        <Badge
-                          variant="outline"
-                          className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400"
-                        >
-                          Campaign Active
-                        </Badge>
+                        <Tag tone="success">Campaign Active</Tag>
                       ) : (
                         <Button
                           size="sm"
-                          className="h-7 text-xs w-full"
+                          className="w-full"
                           onClick={() => handleCreateCampaign(preset.name)}
                         >
                           <Megaphone className="h-3 w-3 mr-1" />
@@ -387,13 +276,16 @@ export default function FestivalsPage() {
               );
             })}
           </div>
-        </div>
+        </section>
 
         {/* Existing Festival Campaigns Section */}
-        <div>
+        <section aria-labelledby="festival-campaigns-heading">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold flex items-center gap-2">
-              <CalendarClock className="h-4 w-4 text-indigo-500" />
+            <h2
+              id="festival-campaigns-heading"
+              className="text-base font-semibold flex items-center gap-2"
+            >
+              <CalendarClock className="h-4 w-4 text-ds-primary" aria-hidden="true" />
               Your Festival Campaigns
               {!loading && (
                 <Badge variant="secondary" className="text-xs">
@@ -423,7 +315,10 @@ export default function FestivalsPage() {
               ))}
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
+            <div
+              role="alert"
+              className="flex flex-col items-center justify-center h-40 gap-3 text-ds-foreground-muted"
+            >
               <AlertCircle className="h-8 w-8" />
               <p className="text-sm">Failed to load festival campaigns</p>
               <Button variant="outline" size="sm" onClick={refetch}>
@@ -431,11 +326,11 @@ export default function FestivalsPage() {
               </Button>
             </div>
           ) : festivals.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground rounded-lg border border-dashed p-8">
+            <div className="flex flex-col items-center justify-center min-h-40 gap-3 text-ds-foreground-muted rounded-lg border border-dashed border-ds-border p-8">
               <CalendarClock className="h-10 w-10 opacity-50" />
               <p className="text-sm font-medium">No festival campaigns yet</p>
               <p className="text-xs max-w-xs text-center">
-                Click "Create Campaign" on any festival template above, or
+                Click &quot;Create Campaign&quot; on any festival template above, or
                 create a custom festival campaign.
               </p>
             </div>
@@ -452,49 +347,28 @@ export default function FestivalsPage() {
                   return (
                     <Card
                       key={festival.id}
-                      className="overflow-hidden hover:shadow-md transition-shadow"
+                      role="article"
+                      aria-label={`Festival campaign ${festival.festivalName}`}
+                      data-testid="festival-card"
+                      data-festival-id={festival.id}
+                      className="gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md"
                     >
-                      {/* Card header with gradient if matching preset */}
                       <div
-                        className={cn(
-                          'px-4 py-3',
-                          matchingPreset
-                            ? `bg-gradient-to-r ${matchingPreset.gradient}`
-                            : 'bg-gradient-to-r from-slate-600 to-slate-700',
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {matchingPreset && (
-                              <span className="text-lg">
-                                {matchingPreset.icon}
-                              </span>
-                            )}
-                            <h3
-                              className={cn(
-                                'text-sm font-bold',
-                                matchingPreset?.textColor ?? 'text-white',
-                              )}
-                            >
-                              {festival.festivalName}
-                            </h3>
-                          </div>
+                        className={cn('h-1.5 w-full', matchingPreset?.accent ?? 'bg-ds-border-strong')}
+                        aria-hidden="true"
+                      />
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-bold text-ds-foreground">
+                            {festival.festivalName}
+                          </h3>
                           {campaignStatusBadge(festival.isActive)}
                         </div>
-                      </div>
 
-                      <CardContent className="p-4 space-y-3">
                         <div>
                           <p className="text-sm font-medium">{festival.name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {new Date(festival.festivalDate).toLocaleDateString(
-                              'en-IN',
-                              {
-                                day: 'numeric',
-                                month: 'long',
-                                year: 'numeric',
-                              },
-                            )}
+                          <p className="text-xs text-ds-foreground-muted mt-0.5">
+                            {formatDisplayDate(festival.festivalDate)}
                           </p>
                         </div>
 
@@ -506,26 +380,15 @@ export default function FestivalsPage() {
                             {festival.campaignType}
                           </Badge>
                           {days >= 0 && days <= 30 && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            >
+                            <Tag tone="warning">
                               {days === 0 ? 'Today!' : `${days}d away`}
-                            </Badge>
+                            </Tag>
                           )}
                         </div>
 
                         {festival.lastRunAt && (
-                          <p className="text-[11px] text-muted-foreground">
-                            Last run:{' '}
-                            {new Date(festival.lastRunAt).toLocaleDateString(
-                              'en-IN',
-                              {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                              },
-                            )}
+                          <p className="text-xs text-ds-foreground-muted">
+                            Last run: {formatDisplayDate(new Date(festival.lastRunAt))}
                           </p>
                         )}
 
@@ -534,7 +397,9 @@ export default function FestivalsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-xs flex-1"
+                            className="flex-1"
+                            data-testid="festival-toggle"
+                            aria-label={`${festival.isActive ? 'Deactivate' : 'Activate'} ${festival.festivalName}`}
                             onClick={() => handleToggle(festival)}
                           >
                             {festival.isActive ? (
@@ -549,7 +414,12 @@ export default function FestivalsPage() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon-sm">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                data-testid="festival-actions"
+                                aria-label={`More actions for ${festival.festivalName}`}
+                              >
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -580,7 +450,7 @@ export default function FestivalsPage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive"
-                                onClick={() => handleDelete(festival.id)}
+                                onClick={() => handleDelete(festival)}
                               >
                                 <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
                               </DropdownMenuItem>
@@ -597,13 +467,14 @@ export default function FestivalsPage() {
                 className="flex items-center justify-center py-4"
               >
                 {loadingMore && (
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <Loader2 className="h-5 w-5 animate-spin text-ds-foreground-muted" />
                 )}
               </div>
             </>
           )}
-        </div>
+        </section>
       </div>
-    </div>
+      {confirmDialog}
+    </PageContainer>
   );
 }

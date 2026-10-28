@@ -1,0 +1,13 @@
+{
+  "suppliers.supplierName": "اسم المورد",
+  "suppliers.contactPerson": "الشخص المسؤول",
+  "suppliers.email": "البريد الإلكتروني",
+  "suppliers.phone": "الهاتف",
+  "suppliers.category": "الفئة",
+  "suppliers.rating": "التقييم",
+  "suppliers.createSupplier": "إضافة مورد",
+  "suppliers.editSupplier": "تعديل المورد",
+  "suppliers.deleteSupplier": "حذف المورد",
+  "suppliers.viewDetails": "عرض التفاصيل",
+  "suppliers.noSuppliers": "لا يوجد موردون"
+}

@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 
-type EventHandler = (data: any) => void;
+export type RealtimeEventHandler = (data: unknown) => void;
+type EventHandler = RealtimeEventHandler;
 
 interface RealtimeState {
   ws: WebSocket | null;

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 const statCardVariants = cva(
@@ -11,10 +12,10 @@ const statCardVariants = cva(
     variants: {
       variant: {
         default: 'border-border',
-        primary: 'border-primary/20 bg-gradient-to-br from-primary/5 via-white to-white dark:from-primary/10 dark:via-card dark:to-card dark:border-primary/20',
-        success: 'border-emerald-200/50 bg-gradient-to-br from-emerald-50/80 via-white to-white dark:from-emerald-950/20 dark:via-card dark:to-card dark:border-emerald-900/30',
-        warning: 'border-amber-100 bg-gradient-to-br from-amber-50/80 via-white to-white dark:from-amber-950/20 dark:via-card dark:to-card dark:border-amber-900/30',
-        danger: 'border-red-100 bg-gradient-to-br from-red-50/80 via-white to-white dark:from-red-950/20 dark:via-card dark:to-card dark:border-red-900/30',
+        primary: 'border-ds-primary bg-ds-primary-subtle',
+        success: 'border-ds-success bg-ds-success-subtle',
+        warning: 'border-ds-warning bg-ds-warning-subtle',
+        danger: 'border-ds-danger bg-ds-danger-subtle',
       },
     },
     defaultVariants: { variant: 'default' },
@@ -38,7 +39,7 @@ export function StatCard({
   title,
   value,
   change,
-  changeLabel = 'vs last period',
+  changeLabel: changeLabelProp,
   icon,
   sparkline,
   className,
@@ -47,6 +48,8 @@ export function StatCard({
   suffix,
   loading,
 }: StatCardProps) {
+  const t = useT();
+  const changeLabel = changeLabelProp ?? t('ui.statCard.vsLastPeriod');
   const isPositive = change !== undefined && change > 0;
   const isNegative = change !== undefined && change < 0;
   const isNeutral = change !== undefined && change === 0;
@@ -68,7 +71,7 @@ export function StatCard({
       <div className="relative">
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{title}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{title}</p>
           {icon && (
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary dark:group-hover:bg-primary/10">
               {icon}
@@ -78,11 +81,11 @@ export function StatCard({
 
         {/* Value */}
         <div className="flex items-baseline gap-1.5 mb-2">
-          {prefix && <span className="text-[13px] font-medium text-muted-foreground">{prefix}</span>}
-          <span className="text-[28px] font-bold tracking-tight text-foreground tabular-nums leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+          {prefix && <span className="text-sm font-medium text-muted-foreground">{prefix}</span>}
+          <span className="text-3xl font-bold tracking-tight text-foreground tabular-nums leading-none" style={{ fontFamily: 'var(--font-display)' }}>
             {typeof value === 'number' ? value.toLocaleString() : value}
           </span>
-          {suffix && <span className="text-[13px] font-medium text-muted-foreground">{suffix}</span>}
+          {suffix && <span className="text-sm font-medium text-muted-foreground">{suffix}</span>}
         </div>
 
         {/* Change indicator */}
@@ -90,9 +93,9 @@ export function StatCard({
           <div className="flex items-center gap-1.5">
             <span
               className={cn(
-                'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                isPositive && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-                isNegative && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold',
+                isPositive && 'bg-ds-success-subtle text-ds-success-on-subtle',
+                isNegative && 'bg-ds-danger-subtle text-ds-danger-on-subtle',
                 isNeutral && 'bg-muted text-muted-foreground',
               )}
             >
@@ -102,7 +105,7 @@ export function StatCard({
               {isPositive && '+'}
               {change}%
             </span>
-            <span className="text-[11px] text-muted-foreground">{changeLabel}</span>
+            <span className="text-xs text-muted-foreground">{changeLabel}</span>
           </div>
         )}
 

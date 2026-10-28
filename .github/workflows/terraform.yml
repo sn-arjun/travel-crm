@@ -1,12 +1,9 @@
 name: Terraform Infrastructure
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'terraform/**'
+  workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'terraform/**'
 
@@ -41,10 +38,7 @@ jobs:
         run: terraform plan -var-file=environments/prod.tfvars -no-color
         continue-on-error: true
         env:
-          TF_VAR_oci_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid: ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
+          TF_VAR_domain: ${{ vars.TRAVELCRM_DOMAIN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
@@ -52,7 +46,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const output = `#### Terraform Plan 📖
+            const output = `#### Terraform Plan
             \`\`\`
             ${{ steps.plan.outputs.stdout }}
             \`\`\`
@@ -68,7 +62,7 @@ jobs:
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
     defaults:
       run:
         working-directory: terraform
@@ -89,9 +83,6 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -auto-approve -var-file=environments/prod.tfvars
         env:
-          TF_VAR_oci_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid: ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
+          TF_VAR_domain: ${{ vars.TRAVELCRM_DOMAIN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

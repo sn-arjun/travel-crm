@@ -1,0 +1,12 @@
+{
+  "messages.confirmDelete": "Are you sure you want to delete this?",
+  "messages.deleteSuccess": "Deleted successfully",
+  "messages.saveSuccess": "Saved successfully",
+  "messages.updateSuccess": "Updated successfully",
+  "messages.createSuccess": "Created successfully",
+  "messages.error": "Something went wrong",
+  "messages.errorMessage": "An error occurred. Please try again.",
+  "messages.noResults": "No results found",
+  "messages.loading": "Loading...",
+  "messages.retry": "Retry"
+}

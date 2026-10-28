@@ -5,6 +5,7 @@ import { StatCard } from '@/components/shared/stat-card';
 import { DashboardSkeleton } from '@/components/dashboard/dashboard-skeleton';
 import { RecentActivityFeed } from '@/components/dashboard/recent-activity-feed';
 import { TopTenantsTable } from '@/components/dashboard/top-tenants-table';
+import { CallingFlags } from '@/components/dashboard/calling-flags';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Building2,
@@ -94,6 +95,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+
+      <CallingFlags />
 
       {/* Tenant Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

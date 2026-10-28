@@ -1,0 +1,71 @@
+{
+  "id": "B17",
+  "title": "Update stale / brittle specs (templates now load, real user name, super-admin gating, AI mock, robust locators)",
+  "lane": "tests",
+  "backend": false,
+  "wave": "W5",
+  "dependsOn": [
+    "B07",
+    "B09",
+    "B14"
+  ],
+  "parallelGroup": "W5",
+  "bugIds": [
+    "BUG-086",
+    "BUG-087"
+  ],
+  "fixReqs": [],
+  "estFiles": 8,
+  "goal": "Specs assert the correct current behaviour so later page batches get clean gates.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. From the baseline run: campaigns.spec.ts:342 (C1) and communication-inbox.spec.ts:366 (C3-note), :461 (D3-note) assert that GET /templates 400s - fixed by commit d7e8f45 (z.coerce page/limit), so options now load; auth-shell.spec.ts:154 expects a user menu named \"Admin User\" (tenant user is \"Demo Admin\"; B07 shows the real user); super-admin.spec.ts:55 expects the Super Admin sidebar entry for a tenant admin - B07 now hides it unless GET /admin/whoami (B12) says isSuperAdmin; contacts.spec.ts:423 strict-mode violation: two \"New Field\" buttons (header + empty state on /settings/custom-fields); fleet-vehicles.spec.ts:498 counts `tbody tr[role=\"button\"]` (rows have no role); ai-business-intelligence.spec.ts:92 gets \"No briefing available\" because the e2e wrangler config strips the [ai] binding; notifications.spec.ts:378 (preferences heading) is an APP issue handled in B27 - do not edit it here. fleet-drivers.spec.ts:27 is handled by B16.",
+  "steps": [
+    "campaigns.spec.ts C1 and communication-inbox.spec.ts C3-note / D3-note: rename the tests and assert the template combobox lists options (GET /templates 200) and that choosing one fills the body.",
+    "auth-shell.spec.ts:154: open the user menu by the real user name (read it from the API login response or assert /Demo Admin/).",
+    "super-admin.spec.ts:55: a tenant admin does NOT see `aside` link \"Super Admin\"; navigating to /super-admin shows data-testid super-admin-no-access; keep the other tests' intent.",
+    "contacts.spec.ts:423: scope the \"New Field\" click to the page header region (or .first() with a comment) - one CTA per region is fine.",
+    "fleet-vehicles.spec.ts:498: count rows with `tbody tr` filtered by the seeded vehicle text instead of role=button.",
+    "ai-business-intelligence.spec.ts:92: mock `**/ai/bi/briefings**` with page.route returning a realistic briefing payload (match the client type in src/lib/api/ai.ts) so the spec tests rendering + type switching without an AI binding.",
+    "Run all touched specs against slot 0 (B12 must be merged for super-admin whoami; if not, note it).",
+    "RESOLVED BY ORCHESTRATOR (2026-10-04): the top-bar title is no longer a heading (<p data-slot=\"topbar-title\">), so getByRole(heading,{name}) is unique again; auth-shell:246, settings-team:292/:341 and visa:155 pass. No spec change needed for that.",
+    "From B11 merge: travellers.spec.ts:204 expects the phone exactly as typed ('98765 43210') on the detail/edit pages and from the API; PhoneInput now stores and shows E.164 ('+919876543210'). Update the spec to assert the normalised value (and keep the email assertions).",
+    "From B14 merge: invoices.spec.ts:369 expects an error toast when the bulk export job fails to queue, but migration 0032 fixed the export backend so the export now succeeds; rewrite the test to assert the success path (and, if valuable, force the failure with page.route to keep an error-path test).",
+    "From B14 merge: fleet-vehicles.spec.ts:499 (infinite scroll + bulk delete) still locates rows via tr[role=\"button\"]; B14 DataTable rows are plain <tr> inside [data-scroll-region=\"table\"] with a sticky actions cell. Update the row locator and scroll the table region (not <main>). Apply the same to any other spec using tr[role=\"button\"] or scrolling <main> for lists.",
+    "From B16 merge: whatsapp-campaigns.spec.ts:259 fails because the API reports whatsapp_campaigns is not available on the tenant plan (pro) of a freshly reset slot DB - decide from the spec intent: if it tests the enabled feature, make the spec enable the feature/plan via the existing test helper or /test endpoints in its beforeAll (do not weaken the gate); if it tests the gated state, assert the upgrade affordance. Also campaigns.spec.ts:374 fails - triage (stale vs real) and fix the spec or report the app bug precisely. Date picking in specs must use e2e/helpers/date-picker.ts pickDate(page, trigger, date) - day buttons are no longer addressable by day number."
+  ],
+  "filesAllowlist": [
+    "desktop/e2e/{campaigns,communication-inbox,auth-shell,super-admin,contacts,fleet-vehicles,ai-business-intelligence}.spec.ts"
+  ],
+  "mustNotTouch": [
+    "desktop/src/**",
+    "desktop/e2e/notifications.spec.ts",
+    "desktop/e2e/fleet-drivers.spec.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "All 7 spec files pass on slot 0."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": false,
+    "lint": true,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/campaigns.spec.ts",
+      "desktop/e2e/communication-inbox.spec.ts",
+      "desktop/e2e/auth-shell.spec.ts",
+      "desktop/e2e/super-admin.spec.ts",
+      "desktop/e2e/contacts.spec.ts",
+      "desktop/e2e/fleet-vehicles.spec.ts",
+      "desktop/e2e/ai-business-intelligence.spec.ts"
+    ]
+  },
+  "notes": "BUG-087 notifications item -> B27; fleet-drivers item -> B16."
+}

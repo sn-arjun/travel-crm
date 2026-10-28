@@ -1,3 +1,4 @@
+import type { DepartureSummary } from './departures';
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
@@ -32,6 +33,9 @@ export interface CalendarEvent {
   leadId?: string | null;
   lead_title?: string | null;
   related_task_id?: string | null;
+  /** Set on the calendar entry of a group departure (R146): the departure and its seats, from the API. */
+  related_departure_id?: string | null;
+  departure?: DepartureSummary;
   assigned_to?: string | null;
   assignee_name?: string | null;
   created_by: string;
@@ -44,6 +48,16 @@ export interface CalendarEvent {
   created_at?: string;
   updatedAt?: string;
   updated_at?: string;
+}
+
+/**
+ * The API stores flags as 0/1 (SQLite). Turn them into real booleans so JSX such as an
+ * all-day check can never print a stray "0".
+ */
+export function normalizeEventFlags<T extends object>(
+  e: T & { all_day?: unknown; is_recurring?: unknown },
+): Omit<T, 'all_day' | 'is_recurring'> & { all_day: boolean; is_recurring: boolean } {
+  return { ...e, all_day: Boolean(e.all_day), is_recurring: Boolean(e.is_recurring) };
 }
 
 export interface CreateEventRequest {
@@ -123,7 +137,7 @@ export const eventsApi = {
   update: (id: string, data: UpdateEventRequest) =>
     client.put<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.byId(id), data),
 
-  delete: (id: string, scope?: 'this' | 'all') =>
+  delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.events.byId(id)),
 
   reschedule: (id: string, data: RescheduleEventRequest) =>

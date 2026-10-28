@@ -1,0 +1,5 @@
+[
+  "src/app/(app)/leads/_components/lead-board.tsx",
+  "src/app/(app)/leads/_components/lead-card.tsx",
+  "src/app/(app)/leads/_components/move-to-menu.tsx"
+]

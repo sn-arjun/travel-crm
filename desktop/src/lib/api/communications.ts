@@ -45,11 +45,37 @@ export interface CommunicationLog {
   message?: string;
   content?: string;
   status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
-  direction?: 'inbound' | 'outbound';
-  sentAt: string;
+  /** The API stores 'incoming' / 'outgoing'; older callers used 'inbound' / 'outbound'. */
+  direction?: 'incoming' | 'outgoing' | 'inbound' | 'outbound';
+  /** Received messages: sender phone or email, present even when no contact matches. */
+  fromAddress?: string | null;
+  toAddress?: string | null;
+  /** JSON string; received messages carry the sender's profile name as from_name. */
+  metadata?: string | null;
+  leadId?: string | null;
+  sentAt?: string | null;
+  createdAt?: string;
   sentBy?: string;
   externalId?: string;
   errorMessage?: string;
+}
+
+/** True for a message the customer sent to us. */
+export function isIncomingMessage(log: Pick<CommunicationLog, 'direction'>): boolean {
+  return log.direction === 'incoming' || log.direction === 'inbound';
+}
+
+/** Who a received message is from when the sender is not a contact yet: profile name and address when both are known. */
+export function senderLabel(log: Pick<CommunicationLog, 'fromAddress' | 'metadata'>): string | null {
+  let name: string | null = null;
+  try {
+    const parsed = log.metadata ? (JSON.parse(log.metadata) as { from_name?: unknown }) : null;
+    name = typeof parsed?.from_name === 'string' && parsed.from_name.trim() ? parsed.from_name.trim() : null;
+  } catch {
+    name = null;
+  }
+  if (name && log.fromAddress) return `${name} · ${log.fromAddress}`;
+  return name ?? log.fromAddress ?? null;
 }
 
 export const communicationsApi = {

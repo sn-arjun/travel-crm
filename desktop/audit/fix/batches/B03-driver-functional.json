@@ -1,0 +1,75 @@
+{
+  "id": "B03",
+  "title": "Driver app: login, trips, vehicle display, Android permissions, document upload, widget keys",
+  "lane": "driver",
+  "backend": false,
+  "wave": "W1",
+  "dependsOn": [],
+  "parallelGroup": "W1",
+  "bugIds": [
+    "BUG-007",
+    "BUG-009",
+    "BUG-010",
+    "BUG-036",
+    "BUG-065"
+  ],
+  "fixReqs": [
+    "FR-2",
+    "FR-2b",
+    "FR-4"
+  ],
+  "estFiles": 18,
+  "goal": "The driver app can log in (given backend OTP bypass from B08), lists today's trips with correct pagination, shows vehicles, can check in with location permission, uploads documents, and exposes the widget Keys the demo integration test drives.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: lib/features/auth/data/driver_auth_repository.dart:9-23 posts {phone} / {phone, otp} without tenantId (backend driver.ts loginSchema requires tenantId -> 400). driver_auth_provider.dart:72-77 `_extractError` returns response.data['error'] which is a Map ({message, code}) -> TypeError, state stays sendingOtp, spinner forever. lib/core/constants/app_config.dart tenantId default 'dev-tenant' (invalid); Dio sends X-Tenant-Id header (api_client_provider.dart) but login reads the body. trip_repository.dart:9-17 sends offset; backend driver.ts:306-351 reads page/limit and returns paginated() {data, pagination:{page,limit,total,totalPages}}; trip_provider.dart:35 computes pagination['offset'] + limit -> null + int throws. trip_card.dart:17 reads flat vehicleRegistration; backend formatTripForDriver (driver.ts ~860-900) returns nested vehicle {registration,...} - read it to get exact keys. AndroidManifest has no location permissions (check_in_screen.dart:41-55 calls Geolocator.requestPermission) and the label is \"driver_app\"; cleartext HTTP works in debug today but must be explicit. documents_screen.dart:81 upload is a TODO; backend POST /driver/profile/documents exists (driver.ts:779-826 - read it for the multipart fields). STORYBOARD.md section D.6 lists the exact widget keys the recording test uses. Flutter only via x86 PowerShell: \"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd <abs path>/packages/driver_app; flutter analyze\". Desktop PhoneInput stores digits only; backend B08 normalises phones, but the app should still send E.164.",
+  "steps": [
+    "driver_auth_repository.dart: include `'tenantId': AppConfig.tenantId` in sendOtp and verifyOtp bodies; normalise the phone to E.164 before sending (strip spaces/dashes/parentheses, drop a leading 0, if 10 digits prefix the selected country code, default +91). Put the normaliser in lib/core/utils/phone.dart.",
+    "app_config.dart: tenantId defaultValue -> '01960000-0000-7000-8000-000000000001' (local demo tenant) with a comment that real builds pass --dart-define=TENANT_ID.",
+    "driver_auth_provider.dart: rewrite _extractError to handle response.data['error'] as Map (message) or String, top-level 'message', validation `errors`, DioExceptionType.connectionError/timeout -> \"Cannot reach the server. Check your connection.\"; never throw. Every catch path must set status to error with the message so the button stops spinning (check both sendOtp and verifyOtp, and the refresh path).",
+    "Trips: trip_repository.getTrips({tab, page=1, limit=20}) sends page & limit; trip_state.dart tracks page; trip_provider: hasMore = page*limit < total using null-safe num parsing of pagination (fallback trips.length >= limit); refresh resets to page 1; appends de-duplicate by id; cache stays per tab.",
+    "Add lib/features/trips/data/trip_view.dart: a small immutable view model / extension over the raw Map with getters for id, status, pickup/drop locations, pickupAt/dropAt (DateTime parsed and converted toLocal()), passenger name/phone, vehicleRegistration (nested vehicle.registration ?? flat vehicleRegistration ?? vehicle_registration), vehicle make/model/type, lead title, accepted/enRoute/started/completed timestamps. Use it in trip_card.dart, trip_detail_screen.dart, trip_history_screen.dart.",
+    "android/app/src/main/AndroidManifest.xml: add INTERNET, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION; android:label=\"TravelCRM Driver\". Create/extend android/app/src/debug/AndroidManifest.xml and src/profile/AndroidManifest.xml with `<application android:usesCleartextTraffic=\"true\"/>` (release stays HTTPS-only).",
+    "check_in_screen.dart / check_out_screen.dart: handle denied / deniedForever / location service off with a clear message and buttons calling Geolocator.openAppSettings / openLocationSettings; display the captured coordinates (lat, lng to 4 decimals) in a Text with Key('check-in-coords') before enabling Confirm.",
+    "documents_screen.dart: implement upload with image_picker (bottom sheet: camera / gallery) -> multipart POST ApiEndpoints.driverProfileDocuments using the field names the backend expects; show progress, success and error SnackBars; refresh the list. Add the method to profile_repository.dart.",
+    "Widget keys exactly as STORYBOARD D.6: Key('phone-field'), Key('send-otp'), Key('otp-0')..Key('otp-5') (if the OTP UI is one field, key it 'otp-0' and note it in your report), Key('verify-otp'), Key('tab-today'), Key('tab-upcoming'), Key('trip-card-<id>'), Key('action-accept'), Key('confirm-accept'), Key('action-en-route'), Key('action-check-in'), Key('confirm-check-in'), Key('action-complete'), Key('nav-history').",
+    "pubspec.yaml: add `integration_test:\\n    sdk: flutter` under dev_dependencies (FR-4); run flutter pub get.",
+    "Replace the placeholder test/widget_test.dart with a smoke test: pump PhoneInputScreen inside ProviderScope + MaterialApp (with the app's localization delegates) and assert Key('phone-field') and Key('send-otp') exist; plus a unit test for _extractError with a Map error and a String error, and for the phone normaliser.",
+    "Run flutter analyze (0 issues) and flutter test (all pass) via x86 PowerShell."
+  ],
+  "filesAllowlist": [
+    "packages/driver_app/lib/**",
+    "packages/driver_app/test/**",
+    "packages/driver_app/pubspec.yaml",
+    "packages/driver_app/pubspec.lock",
+    "packages/driver_app/android/app/src/main/AndroidManifest.xml",
+    "packages/driver_app/android/app/src/debug/AndroidManifest.xml",
+    "packages/driver_app/android/app/src/profile/AndroidManifest.xml"
+  ],
+  "mustNotTouch": [
+    "packages/shared/**",
+    "packages/crm_app/**",
+    "backend/**",
+    "desktop/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "flutter analyze: No issues found; flutter test: all tests pass.",
+    "`grep -r \"Key('send-otp')\" packages/driver_app/lib` finds the key (FR-2b) and every D.6 key is present.",
+    "pubspec.yaml has integration_test under dev_dependencies (FR-4).",
+    "Manifest declares fine+coarse location; debug/profile manifests allow cleartext; app label is \"TravelCRM Driver\".",
+    "Unit tests prove _extractError never throws on Map/String errors and hasMore uses page/limit/total."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": true,
+    "specs": []
+  },
+  "notes": "Runtime login is verified in B13 after B08 adds the TEST_MODE OTP bypass. Do not edit packages/shared (ApiEndpoints) - everything needed already exists there."
+}

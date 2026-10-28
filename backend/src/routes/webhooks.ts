@@ -2,8 +2,12 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and } from 'drizzle-orm';
 import type { AppContext } from '../types';
-import { messageLog, emailMessageLog, contacts } from '../db/tenant-schema';
+import { messageLog } from '../db/tenant-schema';
+import { applyEmailEvent, providerMessageIds, type ProviderEvent } from '../services/mail/delivery-events';
+import { applyPlatformEmailEvent } from '../services/mail/platform-log';
 import { error, success } from '../utils/response';
+import { candidateTenantDbs } from '../services/tenant-db';
+import { formParams, publicRequestUrl, unsignedAllowed, verifySendgrid, verifyTwilio } from '../middleware/provider-signature';
 
 const webhookRoutes = new Hono<AppContext>();
 
@@ -12,8 +16,16 @@ const webhookRoutes = new Hono<AppContext>();
 // ============================================================
 
 webhookRoutes.post('/twilio/status', async (c) => {
-  // This endpoint is public (no auth required)
-  // Twilio sends status updates here
+  // Public endpoint: Twilio sends status updates here, so it must be genuinely signed (platform token;
+  // messages are sent from the platform account). Test mode accepts a callback with no signature only.
+  const signature = c.req.header('X-Twilio-Signature');
+  if (!unsignedAllowed(c.env, signature)) {
+    const params = await formParams(c);
+    const token = c.env.TWILIO_AUTH_TOKEN;
+    if (!signature || !token || !(await verifyTwilio(publicRequestUrl(c), params, token, signature))) {
+      return error(c, 'Invalid webhook signature', 403);
+    }
+  }
 
   try {
     // Get form data from Twilio
@@ -31,9 +43,9 @@ webhookRoutes.post('/twilio/status', async (c) => {
     // In a real implementation, you'd store tenant ID in Redis or lookup via SID
     // For now, we'll attempt to find and update across the request
 
-    const tenantDb = c.get('tenantDb');
-
-    if (tenantDb) {
+    // A public callback has no session: the receipt names the message, so the workspace is found from it
+    // (or from ?tenant=<id> when the status callback URL carries one).
+    for (const tenantDb of await candidateTenantDbs(c.env, c.req.query('tenant'))) {
       const db = drizzle(tenantDb);
 
       // Find message by external_id (Twilio SID)
@@ -68,6 +80,7 @@ webhookRoutes.post('/twilio/status', async (c) => {
           .update(messageLog)
           .set(updateData)
           .where(eq(messageLog.id, message.id));
+        break;
       }
     }
 
@@ -85,108 +98,46 @@ webhookRoutes.post('/twilio/status', async (c) => {
 // ============================================================
 
 webhookRoutes.post('/sendgrid/events', async (c) => {
-  // This endpoint is public (no auth required)
-  // SendGrid sends event notifications here
+  // Public endpoint: SendGrid's Signed Event Webhook (ECDSA over timestamp + raw body). Without
+  // SENDGRID_WEBHOOK_PUBLIC_KEY nothing is accepted, except in test mode.
+  const rawBody = await c.req.text();
+  const signature = c.req.header('X-Twilio-Email-Event-Webhook-Signature');
+  const timestamp = c.req.header('X-Twilio-Email-Event-Webhook-Timestamp');
+  const publicKey = c.env.SENDGRID_WEBHOOK_PUBLIC_KEY;
+  if (!publicKey) {
+    if (!unsignedAllowed(c.env, signature)) return error(c, 'SendGrid webhook is not configured', 403);
+    console.warn('[SENDGRID WEBHOOK] SENDGRID_WEBHOOK_PUBLIC_KEY is not set; accepting an unsigned event in test mode');
+  } else if (!(unsignedAllowed(c.env, signature) || (await verifySendgrid(publicKey, signature, timestamp, rawBody)))) {
+    return error(c, 'Invalid webhook signature', 403);
+  }
 
   try {
-    const body = await c.req.json();
-    const tenantDb = c.get('tenantDb');
+    let body: unknown;
+    try { body = JSON.parse(rawBody); } catch { return error(c, 'Expected array of events', 400); }
 
     if (!Array.isArray(body)) {
       return error(c, 'Expected array of events', 400);
     }
 
-    if (!tenantDb) {
-      // Can't process without tenantDb, but acknowledge receipt
-      return success(c, { acknowledged: true, processed: 0 });
-    }
-
-    const db = drizzle(tenantDb);
+    const tenantDbs = await candidateTenantDbs(c.env, c.req.query('tenant'));
     let processedCount = 0;
 
-    for (const event of body) {
+    for (const event of body as ProviderEvent[]) {
       try {
-        const eventType = event.event as string;
-        const messageId = event.message_id as string;
-        const email = event.email as string;
+        const ids = providerMessageIds(event);
+        if (ids.length === 0 || !event.email) continue;
 
-        if (!messageId || !email) {
-          continue;
+        // The workspace that sent the message is the one whose rows hold its provider message id (R128).
+        let matched = false;
+        for (const tenantDb of tenantDbs) {
+          if (await applyEmailEvent(tenantDb, event, ids)) {
+            processedCount++;
+            matched = true;
+            break;
+          }
         }
-
-        // Find the email message log by message ID
-        const message = await db
-          .select()
-          .from(emailMessageLog)
-          .where(eq(emailMessageLog.messageId, messageId))
-          .get();
-
-        if (!message) {
-          continue;
-        }
-
-        const now = new Date().toISOString();
-        const updateData: Record<string, any> = {};
-
-        switch (eventType) {
-          case 'processed':
-            updateData.status = 'sent';
-            break;
-
-          case 'delivered':
-            updateData.status = 'delivered';
-            break;
-
-          case 'open':
-            updateData.status = 'opened';
-            updateData.openedAt = now;
-            break;
-
-          case 'click':
-            updateData.status = 'clicked';
-            updateData.clickedAt = now;
-            break;
-
-          case 'bounce':
-            updateData.status = 'bounced';
-            updateData.bounceReason = event.reason || 'Unknown';
-            // Mark contact email as invalid for hard bounces
-            if (event.type === 'permanent') {
-              await db
-                .update(contacts)
-                .set({ email: null, updatedAt: now })
-                .where(eq(contacts.id, message.contactId))
-                .run();
-            }
-            break;
-
-          case 'dropped':
-            updateData.status = 'dropped';
-            updateData.failureReason = event.reason || 'Unknown';
-            break;
-
-          case 'spam_report':
-            updateData.status = 'spam_report';
-            break;
-
-          case 'unsubscribe':
-            updateData.status = 'unsubscribed';
-            break;
-
-          default:
-            continue;
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          updateData.updatedAt = now;
-          await db
-            .update(emailMessageLog)
-            .set(updateData)
-            .where(eq(emailMessageLog.id, message.id))
-            .run();
-
-          processedCount++;
-        }
+        // R132: not an agency's message -> it may be the platform's own mail (platform_email_log, matched by message id).
+        if (!matched && (await applyPlatformEmailEvent(c.env, event, ids))) processedCount++;
       } catch (eventErr: any) {
         console.error('[SENDGRID WEBHOOK] Error processing event:', eventErr.message);
         // Continue processing other events

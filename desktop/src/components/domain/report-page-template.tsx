@@ -2,287 +2,307 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
+
+import { PageContainer } from '@/components/layout/page-container';
 import {
-  ArrowLeft, Download, AlertCircle, RefreshCw,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
+  Button,
+  DatePicker,
+  Label,
+  PageHeader,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+} from '@/components/ui';
+import { reportsApi, type ReportExecuteParams } from '@/lib/api/reports';
+import { toLocalDateString } from '@/lib/dates';
 
 // ---------------------------------------------------------------------------
-// Default period options shared across all report pages
+// Date range model shared by every report page
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PERIOD_OPTIONS: { label: string; value: string }[] = [
-  { label: 'Last 7 Days', value: '7days' },
-  { label: 'Last 30 Days', value: '30days' },
-  { label: 'Last 90 Days', value: '90days' },
+export type ReportPeriod =
+  | 'last7'
+  | 'last30'
+  | 'last90'
+  | 'thisMonth'
+  | 'lastMonth'
+  | 'thisQuarter'
+  | 'thisYear'
+  | 'lastYear'
+  | 'custom';
+
+export const REPORT_PERIOD_OPTIONS: { label: string; value: ReportPeriod }[] = [
+  { label: 'Last 7 Days', value: 'last7' },
+  { label: 'Last 30 Days', value: 'last30' },
+  { label: 'Last 90 Days', value: 'last90' },
   { label: 'This Month', value: 'thisMonth' },
   { label: 'Last Month', value: 'lastMonth' },
   { label: 'This Quarter', value: 'thisQuarter' },
   { label: 'This Year', value: 'thisYear' },
+  { label: 'Last Year', value: 'lastYear' },
+  { label: 'Custom range', value: 'custom' },
 ];
 
-export const PRESET_MAP: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
+/** Presets the report engine resolves itself (calendar periods). */
+const SERVER_PRESETS: Partial<Record<ReportPeriod, string>> = {
+  thisMonth: 'this_month',
+  lastMonth: 'last_month',
+  thisQuarter: 'this_quarter',
+  thisYear: 'this_year',
+  lastYear: 'last_year',
 };
 
+const ROLLING_DAYS: Partial<Record<ReportPeriod, number>> = { last7: 7, last30: 30, last90: 90 };
+
+export interface ReportRange {
+  period: ReportPeriod;
+  from: Date;
+  to: Date;
+}
+
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function daysAgo(n: number): Date {
+  const t = startOfToday();
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate() - n);
+}
+
+export function defaultRange(period: ReportPeriod = 'last30'): ReportRange {
+  return { period, from: daysAgo(29), to: startOfToday() };
+}
+
+function endOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+/** Query params for a range: `date_preset` for calendar periods, `date_from`/`date_to` otherwise. */
+export function rangeToParams(range: ReportRange): ReportExecuteParams {
+  const preset = SERVER_PRESETS[range.period];
+  if (preset) return { date_preset: preset };
+  const days = ROLLING_DAYS[range.period];
+  if (days) {
+    return { date_from: daysAgo(days - 1).toISOString(), date_to: endOfDay(startOfToday()).toISOString() };
+  }
+  return { date_from: range.from.toISOString(), date_to: endOfDay(range.to).toISOString() };
+}
+
+/** Concrete calendar window a range covers (local time). Used to build the previous-period window. */
+export function rangeWindow(range: ReportRange): { from: Date; to: Date } {
+  const t = startOfToday();
+  const y = t.getFullYear();
+  const m = t.getMonth();
+  switch (range.period) {
+    case 'last7':
+      return { from: daysAgo(6), to: endOfDay(t) };
+    case 'last30':
+      return { from: daysAgo(29), to: endOfDay(t) };
+    case 'last90':
+      return { from: daysAgo(89), to: endOfDay(t) };
+    case 'thisMonth':
+      return { from: new Date(y, m, 1), to: endOfDay(new Date(y, m + 1, 0)) };
+    case 'lastMonth':
+      return { from: new Date(y, m - 1, 1), to: endOfDay(new Date(y, m, 0)) };
+    case 'thisQuarter': {
+      const q = Math.floor(m / 3) * 3;
+      return { from: new Date(y, q, 1), to: endOfDay(new Date(y, q + 3, 0)) };
+    }
+    case 'thisYear':
+      return { from: new Date(y, 0, 1), to: endOfDay(new Date(y, 12, 0)) };
+    case 'lastYear':
+      return { from: new Date(y - 1, 0, 1), to: endOfDay(new Date(y - 1, 12, 0)) };
+    default:
+      return { from: range.from, to: endOfDay(range.to) };
+  }
+}
+
+/** Params for the window of equal length that ends right before `range` starts. */
+export function previousRangeParams(range: ReportRange): ReportExecuteParams {
+  const { from, to } = rangeWindow(range);
+  const length = to.getTime() - from.getTime();
+  const prevTo = new Date(from.getTime() - 1);
+  const prevFrom = new Date(prevTo.getTime() - length);
+  return { date_from: prevFrom.toISOString(), date_to: prevTo.toISOString() };
+}
+
+/** Short token for download filenames, e.g. `last30` or `2026-01-01_to_2026-03-31`. */
+export function rangeLabel(range: ReportRange): string {
+  return range.period === 'custom'
+    ? `${toLocalDateString(range.from)}_to_${toLocalDateString(range.to)}`
+    : range.period;
+}
+
 // ---------------------------------------------------------------------------
-// Sub-components that were duplicated across every report page
+// Context: sections read the page-level range / compare / refresh state
 // ---------------------------------------------------------------------------
 
-export function SummaryCard({
-  label,
-  value,
-  subtext,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
-  return (
-    <div className="rounded-lg border bg-card p-4">
-      <p className="text-sm text-muted-foreground mb-1">{label}</p>
-      <p className="text-2xl font-bold mb-1">{value}</p>
-      {subtext && <p className="text-xs text-muted-foreground">{subtext}</p>}
-    </div>
-  );
+export interface ReportContextValue {
+  /** Date range (+ `compare: true` when the toggle is on) merged into every report request. */
+  params: ReportExecuteParams;
+  /** Stable string form of `params`, for effect dependencies. */
+  paramsKey: string;
+  rangeLabel: string;
+  compare: boolean;
+  /** Bumped by Refresh; sections refetch when it changes. */
+  refreshKey: number;
 }
 
-export function KPISkeleton() {
-  return (
-    <div className="rounded-lg border bg-card p-4 space-y-2">
-      <Skeleton className="h-4 w-24" />
-      <Skeleton className="h-8 w-32" />
-      <Skeleton className="h-3 w-20" />
-    </div>
-  );
-}
+const ReportContext = React.createContext<ReportContextValue | null>(null);
 
-export function ReportErrorState({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry?: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
-      <AlertCircle className="h-10 w-10 text-destructive" />
-      <p className="text-sm font-medium text-destructive">{message}</p>
-      {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="h-4 w-4 mr-1.5" />
-          Retry
-        </Button>
-      )}
-    </div>
-  );
-}
-
-export function ReportEmptyState({ message }: { message?: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
-      <p className="text-sm">{message ?? 'No data for selected period.'}</p>
-    </div>
-  );
-}
-
-export function ChartSkeleton({ height = 300 }: { height?: number }) {
-  return <Skeleton className="w-full rounded-md" style={{ height }} />;
+export function useReportContext(): ReportContextValue {
+  const ctx = React.useContext(ReportContext);
+  if (!ctx) throw new Error('useReportContext must be used inside <ReportPageTemplate>');
+  return ctx;
 }
 
 // ---------------------------------------------------------------------------
-// Props for the shared layout template
+// ReportPageTemplate
 // ---------------------------------------------------------------------------
 
 export interface ReportPageTemplateProps {
-  /** Report page title, e.g. "Sales Reports" */
+  /** Report page title, e.g. "Sales Reports". */
   title: string;
-  /** Subtitle shown beneath the title */
+  /** Subtitle shown beneath the title. */
   description: string;
-  /** Period filter options — defaults to DEFAULT_PERIOD_OPTIONS */
-  periods?: { label: string; value: string }[];
-  /** Currently selected period value */
-  selectedPeriod: string;
-  /** Called when the user picks a different period */
-  onPeriodChange: (value: string) => void;
-  /** Optional custom date range (from / to) */
-  dateRange?: { from: string; to: string };
-  /** Called when custom date range changes */
-  onDateRangeChange?: (range: { from: string; to: string }) => void;
-  /** Whether the report data is loading */
-  isLoading: boolean;
-  /** Error message to display instead of children */
-  error?: string;
-  /** Retry callback when an error is displayed */
-  onRetry?: () => void;
-  /** Export button handler. If omitted the Export button is hidden. */
-  exportFn?: () => void;
-  /** Whether the export is in progress */
-  isExporting?: boolean;
-  /** Optional compare-with-previous-period toggle */
-  compareEnabled?: boolean;
-  /** Called when compare toggle changes */
-  onCompareChange?: (enabled: boolean) => void;
-  /** The charts/tables/tab content */
+  /** Offer the compare-with-previous-period toggle. */
+  showCompare?: boolean;
+  /** Hide the date range control (for reports that ignore the range). */
+  hideRange?: boolean;
+  defaultPeriod?: ReportPeriod;
+  /** Page-level export control; receives the active range params. */
+  renderExport?: (ctx: ReportContextValue) => React.ReactNode;
   children: React.ReactNode;
-  /** Optional KPI summary cards rendered in the header area */
-  headerCards?: React.ReactNode;
-  /** Breadcrumb parent label — defaults to "Reports" */
-  parentLabel?: string;
-  /** Breadcrumb parent href — defaults to "/reports" */
-  parentHref?: string;
 }
-
-// ---------------------------------------------------------------------------
-// ReportPageTemplate component
-// ---------------------------------------------------------------------------
 
 export function ReportPageTemplate({
   title,
   description,
-  periods = DEFAULT_PERIOD_OPTIONS,
-  selectedPeriod,
-  onPeriodChange,
-  dateRange,
-  onDateRangeChange,
-  isLoading,
-  error,
-  onRetry,
-  exportFn,
-  isExporting,
-  compareEnabled,
-  onCompareChange,
+  showCompare = false,
+  hideRange = false,
+  defaultPeriod = 'last30',
+  renderExport,
   children,
-  headerCards,
-  parentLabel = 'Reports',
-  parentHref = '/reports',
 }: ReportPageTemplateProps) {
+  const [range, setRange] = React.useState<ReportRange>(() => defaultRange(defaultPeriod));
+  const [compare, setCompare] = React.useState(false);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const ctx = React.useMemo<ReportContextValue>(() => {
+    const params: ReportExecuteParams = { ...rangeToParams(range) };
+    if (showCompare && compare) params.compare = true;
+    return {
+      params,
+      paramsKey: JSON.stringify(params),
+      rangeLabel: rangeLabel(range),
+      compare: showCompare && compare,
+      refreshKey,
+    };
+  }, [range, compare, showCompare, refreshKey]);
+
+  const handlePeriodChange = (value: string) => {
+    setRange((prev) => ({ ...prev, period: value as ReportPeriod }));
+  };
+
+  // Server-side report results are cached for a few minutes; Refresh clears the tenant cache first.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await reportsApi.invalidateCache();
+    } catch {
+      // Cache clear is best-effort; refetching still works.
+    }
+    setRefreshKey((k) => k + 1);
+    setRefreshing(false);
+  };
+
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="px-6 py-4 border-b">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-          <Link href={parentHref} className="hover:text-foreground transition-colors">
-            {parentLabel}
-          </Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">{title}</span>
-        </div>
-
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Link href={parentHref}>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <ArrowLeft className="h-4 w-4" />
+    <ReportContext.Provider value={ctx}>
+      <PageContainer>
+        <PageHeader
+          title={title}
+          description={description}
+          back={
+            <Button asChild variant="ghost" size="icon" aria-label="Back to reports">
+              <Link href="/reports">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          }
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={refreshing}>
+                <RefreshCw className={refreshing ? 'me-1.5 h-4 w-4 animate-spin' : 'me-1.5 h-4 w-4'} aria-hidden="true" />
+                Refresh
               </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">{title}</h1>
-              <p className="text-sm text-muted-foreground">{description}</p>
-            </div>
-          </div>
-          {exportFn && (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportFn}
-                disabled={isExporting}
-              >
-                {isExporting ? (
-                  <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4 mr-1.5" />
+              {renderExport?.(ctx)}
+            </>
+          }
+        />
+
+        {(!hideRange || showCompare) && (
+          <div className="flex flex-wrap items-center justify-between gap-ds-3 rounded-ds-lg border border-ds-border bg-ds-surface-sunken px-ds-4 py-ds-3">
+            {!hideRange ? (
+              <div className="flex flex-wrap items-center gap-ds-3">
+                <span className="text-sm font-medium text-ds-foreground">Date Range:</span>
+                <Select value={range.period} onValueChange={handlePeriodChange}>
+                  <SelectTrigger className="w-48" aria-label="Date range">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REPORT_PERIOD_OPTIONS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {range.period === 'custom' && (
+                  <div className="flex flex-wrap items-center gap-ds-2">
+                    <DatePicker
+                      value={range.from}
+                      maxDate={range.to}
+                      onChange={(d) => d && setRange((prev) => ({ ...prev, from: d }))}
+                      placeholder="From"
+                      fromYear={2020}
+                      className="w-40"
+                    />
+                    <span className="text-sm text-ds-foreground-muted">to</span>
+                    <DatePicker
+                      value={range.to}
+                      minDate={range.from}
+                      onChange={(d) => d && setRange((prev) => ({ ...prev, to: d }))}
+                      placeholder="To"
+                      fromYear={2020}
+                      className="w-40"
+                    />
+                  </div>
                 )}
-                Export
-              </Button>
-            </div>
-          )}
-        </div>
+              </div>
+            ) : (
+              <p className="text-sm text-ds-foreground-muted">This report shows current data and ignores the date range.</p>
+            )}
 
-        {/* Optional KPI / summary cards in header */}
-        {headerCards}
-      </div>
-
-      {/* ── Filters bar ──────────────────────────────────────────────────── */}
-      <div className="px-6 py-3 border-b bg-muted/50 flex flex-wrap justify-between items-center gap-3">
-        <div className="flex items-center gap-4">
-          {/* Period selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Date Range:</span>
-            <Select value={selectedPeriod} onValueChange={onPeriodChange}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {periods.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Custom date range (from / to) */}
-          {dateRange && onDateRangeChange && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">From:</span>
-              <input
-                type="date"
-                value={dateRange.from}
-                onChange={(e) =>
-                  onDateRangeChange({ ...dateRange, from: e.target.value })
-                }
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-              />
-              <span className="text-sm font-medium">To:</span>
-              <input
-                type="date"
-                value={dateRange.to}
-                onChange={(e) =>
-                  onDateRangeChange({ ...dateRange, to: e.target.value })
-                }
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Compare toggle */}
-        {onCompareChange !== undefined && (
-          <div className="flex items-center gap-2">
-            <Switch
-              id="compare-toggle"
-              checked={compareEnabled ?? false}
-              onCheckedChange={onCompareChange}
-            />
-            <Label htmlFor="compare-toggle" className="text-sm cursor-pointer">
-              Compare with previous period
-            </Label>
+            {showCompare && (
+              <div className="flex items-center gap-ds-2">
+                <Switch id="compare-toggle" checked={compare} onCheckedChange={setCompare} />
+                <Label htmlFor="compare-toggle" className="cursor-pointer text-sm">
+                  Compare with previous period
+                </Label>
+              </div>
+            )}
           </div>
         )}
-      </div>
 
-      {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div className="flex-1 p-6 overflow-auto">
-        {error ? (
-          <ReportErrorState message={error} onRetry={onRetry} />
-        ) : (
-          children
-        )}
-      </div>
-    </div>
+        {children}
+      </PageContainer>
+    </ReportContext.Provider>
   );
 }

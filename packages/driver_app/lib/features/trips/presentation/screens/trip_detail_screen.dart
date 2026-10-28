@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
+import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/call_launcher.dart';
 import '../../../../core/utils/map_launcher.dart';
+import '../../../../core/utils/money.dart';
+import '../../../../core/utils/phone.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../data/trip_provider.dart';
+import '../../data/trip_view.dart';
+import '../widgets/headcount_bar.dart';
+import '../widgets/stop_timeline.dart';
+import '../widgets/trip_card.dart';
 import '../widgets/trip_status_badge.dart';
+import '../widgets/trip_timeline.dart';
 
 class TripDetailScreen extends ConsumerWidget {
   final String tripId;
@@ -20,32 +30,29 @@ class TripDetailScreen extends ConsumerWidget {
     if (state.isLoading && state.trip == null) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.tripDetail)),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const _DetailSkeleton(),
       );
     }
 
     if (state.trip == null) {
       return Scaffold(
         appBar: AppBar(title: Text(l10n.tripDetail)),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(state.error ?? l10n.error),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () =>
-                    ref.read(tripDetailProvider(tripId).notifier).loadDetail(),
-                child: Text(l10n.retry),
-              ),
-            ],
-          ),
+        body: StateMessage(
+          key: const Key('trip-error'),
+          icon: Icons.cloud_off_outlined,
+          isError: true,
+          title: l10n.tripLoadError,
+          message: state.error,
+          actionLabel: l10n.retry,
+          onAction: () =>
+              ref.read(tripDetailProvider(tripId).notifier).loadDetail(),
         ),
       );
     }
 
     final trip = state.trip!;
-    final status = trip['status'] as String? ?? 'assigned';
+    final view = TripView(trip);
+    final status = view.status;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,6 +60,7 @@ class TripDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: l10n.refresh,
             onPressed: () =>
                 ref.read(tripDetailProvider(tripId).notifier).loadDetail(),
           ),
@@ -62,213 +70,115 @@ class TripDetailScreen extends ConsumerWidget {
         onRefresh: () =>
             ref.read(tripDetailProvider(tripId).notifier).loadDetail(),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          // Keep the last card clear of the sticky action bar (12 + 48 + 12
+          // plus a small gap) or of the system inset when there is no bar.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            24 +
+                (_hasActionBar(status)
+                    ? 72 + MediaQuery.of(context).padding.bottom
+                    : MediaQuery.of(context).padding.bottom),
+          ),
           children: [
-            // Status header
-            _StatusHeader(status: status),
-            const SizedBox(height: 16),
+            _HeaderCard(view: view, status: status),
+            const SizedBox(height: 12),
 
-            // Passenger info
-            if (trip['passengerName'] != null) ...[
-              _SectionCard(
-                icon: Icons.person,
-                title: l10n.passenger,
-                children: [
-                  Text(
-                    trip['passengerName'] ?? '',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (trip['passengerPhone'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        trip['passengerPhone'],
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ),
-                ],
+            // Coach trip: head count and the stops in order
+            if (view.isCoach)
+              _CoachSection(
+                tripId: tripId,
+                view: view,
+                fromCache: state.fromCache,
               ),
-              const SizedBox(height: 12),
-            ],
 
-            // Locations
-            _SectionCard(
-              icon: Icons.location_on,
-              title: '${l10n.pickupLocation} & ${l10n.dropLocation}',
+            // Route with "Open in Maps"
+            SectionCard(
+              icon: Icons.route_outlined,
+              title: l10n.route,
               children: [
-                _LocationTile(
+                _RoutePoint(
+                  mapsKey: const Key('open-maps-pickup'),
                   label: l10n.pickupLocation,
-                  address: trip['pickupLocation'] ?? '—',
-                  color: AppColors.success,
-                  onNavigate: trip['pickupLat'] != null
-                      ? () => MapLauncher.navigate(
-                            lat: (trip['pickupLat'] as num).toDouble(),
-                            lng: (trip['pickupLng'] as num).toDouble(),
-                          )
-                      : null,
+                  address: view.pickupLocation,
+                  dotColor: AppSemantic.of(context).success.color,
+                  isLast: false,
+                  onOpenMaps: _mapsAction(
+                      view.pickupLocation, view.pickupLat, view.pickupLng),
                 ),
-                const Divider(height: 24),
-                _LocationTile(
+                _RoutePoint(
+                  mapsKey: const Key('open-maps-drop'),
                   label: l10n.dropLocation,
-                  address: trip['dropLocation'] ?? '—',
-                  color: AppColors.error,
-                  onNavigate: trip['dropLat'] != null
-                      ? () => MapLauncher.navigate(
-                            lat: (trip['dropLat'] as num).toDouble(),
-                            lng: (trip['dropLng'] as num).toDouble(),
-                          )
-                      : null,
+                  address: view.dropLocation,
+                  dotColor: AppSemantic.of(context).danger.color,
+                  isLast: true,
+                  onOpenMaps: _mapsAction(
+                      view.dropLocation, view.dropLat, view.dropLng),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
             // Vehicle
-            if (trip['vehicleRegistration'] != null) ...[
-              _SectionCard(
-                icon: Icons.directions_car,
+            if (view.vehicleRegistration != null) ...[
+              SectionCard(
+                icon: Icons.directions_car_outlined,
                 title: l10n.vehicle,
                 children: [
-                  Text(
-                    trip['vehicleRegistration'] ?? '',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  if (trip['vehicleType'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        trip['vehicleType'],
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Trip type & cost info
-            if (trip['tripType'] != null ||
-                trip['estimatedCost'] != null) ...[
-              _SectionCard(
-                icon: Icons.price_change,
-                title: 'Trip Info',
-                children: [
-                  if (trip['tripType'] != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                  Row(
+                    children: [
+                      VehicleChip(registration: view.vehicleRegistration!),
+                      const SizedBox(width: 12),
+                      if (view.vehicleName != null || view.vehicleType != null)
+                        Expanded(
                           child: Text(
-                            _tripTypeLabel(trip['tripType'] as String),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            [view.vehicleName, view.vehicleType]
+                                .whereType<String>()
+                                .join(' · '),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
                           ),
                         ),
-                      ]),
-                    ),
-                  if (trip['estimatedCost'] != null)
-                    _InfoRow(
-                      label: 'Estimated Cost',
-                      value:
-                          '\u20B9${(trip['estimatedCost'] as num).toStringAsFixed(0)}',
-                    ),
-                  if (trip['actualCost'] != null)
-                    _InfoRow(
-                      label: 'Actual Cost',
-                      value:
-                          '\u20B9${(trip['actualCost'] as num).toStringAsFixed(0)}',
-                    ),
-                  if (trip['estimatedDistanceKm'] != null)
-                    _InfoRow(
-                      label: 'Distance',
-                      value:
-                          '${(trip['estimatedDistanceKm'] as num).toStringAsFixed(1)} km',
-                    ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
             ],
 
             // Special instructions
-            if (trip['specialInstructions'] != null &&
-                (trip['specialInstructions'] as String).isNotEmpty) ...[
-              _SectionCard(
+            if (view.specialInstructions != null) ...[
+              SectionCard(
                 icon: Icons.info_outline,
                 title: l10n.specialInstructions,
                 children: [
-                  Text(trip['specialInstructions']),
+                  Text(
+                    view.specialInstructions!,
+                    key: const Key('special-instructions'),
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
             ],
+
+            // Schedule, trip type and cost
+            ..._detailsSection(context, l10n, trip, view),
 
             // Timeline
-            if (trip['timeline'] is List &&
-                (trip['timeline'] as List).isNotEmpty) ...[
-              _SectionCard(
-                icon: Icons.timeline,
-                title: l10n.timeline,
-                children: [
-                  ...(trip['timeline'] as List).map((entry) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: AppColors.statusColor(
-                                  entry['status'] ?? ''),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  entry['status'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600),
-                                ),
-                                if (entry['createdAt'] != null)
-                                  Text(
-                                    _formatTimestamp(
-                                        entry['createdAt'] as String),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Spacer for bottom bar
-            const SizedBox(height: 80),
+            SectionCard(
+              icon: Icons.timeline,
+              title: l10n.timeline,
+              children: [TripTimeline(steps: buildTimelineSteps(trip))],
+            ),
           ],
         ),
       ),
@@ -280,13 +190,65 @@ class TripDetailScreen extends ConsumerWidget {
     );
   }
 
-  String _formatTimestamp(String iso) {
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return iso;
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    final min = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day}/${dt.month}/${dt.year} $hour:$min $amPm';
+  static bool _hasActionBar(String status) =>
+      const {'assigned', 'accepted', 'en_route', 'started'}.contains(status);
+
+  /// "Open in Maps" handler: coordinates when known, else the address.
+  VoidCallback? _mapsAction(String address, double? lat, double? lng) {
+    if (lat != null && lng != null) {
+      return () => MapLauncher.navigate(
+            lat: lat,
+            lng: lng,
+            address: address.isEmpty ? null : address,
+          );
+    }
+    if (address.trim().isNotEmpty) {
+      return () => MapLauncher.openAddress(address);
+    }
+    return null;
+  }
+
+  List<Widget> _detailsSection(BuildContext context, AppLocalizations l10n,
+      Map<String, dynamic> trip, TripView view) {
+    final rows = <Widget>[
+      if (view.dropAt != null)
+        _InfoRow(
+          label: l10n.dropTime,
+          value: TripView.formatDateTime(view.dropAt!),
+        ),
+      if (view.leadTitle != null)
+        _InfoRow(label: l10n.booking, value: view.leadTitle!),
+      if (trip['tripType'] is String)
+        _InfoRow(
+          label: l10n.tripType,
+          value: _tripTypeLabel(trip['tripType'] as String),
+        ),
+      if (trip['estimatedCost'] is num)
+        _InfoRow(
+          label: l10n.estimatedCost,
+          value: formatAgencyMoney(trip['estimatedCost'] as num),
+        ),
+      if (trip['actualCost'] is num)
+        _InfoRow(
+          label: l10n.actualCost,
+          value: formatAgencyMoney(trip['actualCost'] as num),
+        ),
+      if (trip['estimatedDistanceKm'] is num)
+        _InfoRow(
+          label: l10n.distance,
+          value:
+              '${(trip['estimatedDistanceKm'] as num).toStringAsFixed(1)} km',
+        ),
+    ];
+    if (rows.isEmpty) return const [];
+    return [
+      SectionCard(
+        icon: Icons.receipt_long_outlined,
+        title: l10n.tripDetails,
+        children: rows,
+      ),
+      const SizedBox(height: 12),
+    ];
   }
 
   static String _tripTypeLabel(String type) {
@@ -303,69 +265,202 @@ class TripDetailScreen extends ConsumerWidget {
   }
 }
 
-class _StatusHeader extends StatelessWidget {
-  final String status;
+/// Head count and ordered stops of a coach trip, with Arrived / Depart.
+class _CoachSection extends ConsumerWidget {
+  final String tripId;
+  final TripView view;
+  final bool fromCache;
 
-  const _StatusHeader({required this.status});
+  const _CoachSection({
+    required this.tripId,
+    required this.view,
+    required this.fromCache,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.statusColor(status).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.statusColor(status).withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TripStatusBadge(status: status),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final pending = ref.watch(pendingCheckinsProvider(tripId));
+    final notifier = ref.read(tripDetailProvider(tripId).notifier);
+    final stops = view.stops;
+    final headcount = view.headcount;
+    final open = !const {'completed', 'cancelled'}.contains(view.status);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (fromCache) ...[
+          InfoBanner(
+            key: const Key('offline-banner'),
+            icon: Icons.cloud_off_outlined,
+            message: l10n.savedTripNoSignal,
+          ),
+          const SizedBox(height: 8),
         ],
-      ),
+        if (pending > 0) ...[
+          InfoBanner(
+            key: const Key('pending-banner'),
+            icon: Icons.sync,
+            message: l10n.changesWaiting(pending),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (view.myRole == 'tour_leader') ...[
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Chip(
+              key: const Key('crew-badge'),
+              avatar: const Icon(Icons.flag_outlined, size: 18),
+              label: Text(l10n.crewTourLeader),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (headcount != null) ...[
+          HeadcountBar(overall: headcount),
+          const SizedBox(height: 12),
+        ],
+        if (stops.isNotEmpty) ...[
+          SectionCard(
+            icon: Icons.alt_route,
+            title: l10n.stopsTitle,
+            children: [
+              StopTimeline(
+                stops: stops,
+                headcount: view.hasPassengers ? headcount : null,
+                actionsEnabled: open,
+                onOpen: view.hasPassengers
+                    ? (s) => context.push('/trips/$tripId/stops/${s.id}')
+                    : null,
+                onArrive: (s) => notifier.arriveStop(s.id),
+                onDepart: (s) => notifier.departStop(s.id),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+      ],
     );
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final List<Widget> children;
-
-  const _SectionCard({
-    required this.icon,
-    required this.title,
-    required this.children,
-  });
+class _DetailSkeleton extends StatelessWidget {
+  const _DetailSkeleton();
 
   @override
   Widget build(BuildContext context) {
+    return ListView(
+      key: const Key('trip-detail-loading'),
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: const [
+        TripCardSkeleton(),
+        SizedBox(height: 12),
+        TripCardSkeleton(),
+        SizedBox(height: 12),
+        TripCardSkeleton(),
+      ],
+    );
+  }
+}
+
+/// Status chip, pickup time and passenger (with call button).
+class _HeaderCard extends StatelessWidget {
+  final TripView view;
+  final String status;
+
+  const _HeaderCard({required this.view, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final style = TripStatusStyle.of(context, status);
+    final pickupAt = view.pickupAt;
+    final phone = view.passengerPhone;
+
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: style.container.withValues(alpha: 0.5),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        side: BorderSide(color: style.color.withValues(alpha: 0.3)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(icon, size: 20, color: AppColors.primary),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                TripStatusBadge(status: status, large: true),
+                const Spacer(),
+                if (pickupAt != null)
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(TripView.formatTime(pickupAt),
+                              style: text.headlineSmall),
+                          Text(
+                            TripView.relativeDate(pickupAt, DateTime.now()),
+                            style: text.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            ...children,
+            if (view.passengerName != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.input),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline, color: scheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.passenger,
+                            style: text.labelSmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                          Text(view.passengerName!, style: text.titleMedium),
+                          if (phone != null)
+                            Text(
+                              formatPhoneDisplay(phone),
+                              key: const Key('passenger-phone'),
+                              style: text.bodySmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (phone != null)
+                      IconButton.filledTonal(
+                        key: const Key('call-passenger'),
+                        tooltip: l10n.callPassenger,
+                        icon: const Icon(Icons.call),
+                        onPressed: () => callPhone(phone),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -373,49 +468,96 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _LocationTile extends StatelessWidget {
+/// A stop on the route with its address and an "Open in Maps" button.
+class _RoutePoint extends StatelessWidget {
+  final Key mapsKey;
   final String label;
   final String address;
-  final Color color;
-  final VoidCallback? onNavigate;
+  final Color dotColor;
+  final bool isLast;
+  final VoidCallback? onOpenMaps;
 
-  const _LocationTile({
+  const _RoutePoint({
+    required this.mapsKey,
     required this.label,
     required this.address,
-    required this.color,
-    this.onNavigate,
+    required this.dotColor,
+    required this.isLast,
+    required this.onOpenMaps,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(Icons.circle, size: 10, color: color),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 20,
+            child: Column(
+              children: [
+                const SizedBox(height: 3),
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: dotColor, width: 3.5),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(width: 2, color: scheme.outlineVariant),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: text.labelMedium
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    address.isEmpty ? '—' : address,
+                    style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  if (onOpenMaps != null) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      key: mapsKey,
+                      onPressed: onOpenMaps,
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: Text(l10n.openInMaps),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(64, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        textStyle: text.labelLarge,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(address, style: const TextStyle(fontSize: 14)),
-            ],
+            ),
           ),
-        ),
-        if (onNavigate != null)
-          IconButton(
-            icon: const Icon(Icons.navigation_outlined),
-            onPressed: onNavigate,
-            tooltip: 'Navigate',
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
 
+/// Sticky bottom bar with the primary action for the current status.
 class _ActionBar extends ConsumerWidget {
   final String tripId;
   final String status;
@@ -430,34 +572,42 @@ class _ActionBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
     final state = ref.watch(tripDetailProvider(tripId));
 
     if (status == 'completed' || status == 'cancelled') {
       return const SizedBox.shrink();
     }
 
+    final actions = _buildActions(context, ref, l10n, state.isActionLoading);
+    if (actions.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      key: const Key('trip-action-bar'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: scheme.surface,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
       child: SafeArea(
-        child: Row(
-          children: _buildActions(context, ref, l10n, state.isActionLoading),
-        ),
+        top: false,
+        child: Row(children: actions),
       ),
     );
   }
 
   List<Widget> _buildActions(BuildContext context, WidgetRef ref,
       AppLocalizations l10n, bool loading) {
+    final danger = AppSemantic.of(context).danger.color;
+    final success = AppSemantic.of(context).success.color;
+
     switch (status) {
       case 'assigned':
         return [
@@ -467,9 +617,8 @@ class _ActionBar extends ConsumerWidget {
                   ? null
                   : () => _showRejectSheet(context, ref, l10n),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.error),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                foregroundColor: danger,
+                side: BorderSide(color: danger.withValues(alpha: 0.6)),
               ),
               child: Text(l10n.reject),
             ),
@@ -478,30 +627,21 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-accept'),
               onPressed: loading
                   ? null
                   : () => _showAcceptDialog(context, ref, l10n),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              child: loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(l10n.accept),
+              child: loading ? const ButtonSpinner() : Text(l10n.accept),
             ),
           ),
         ];
       case 'accepted':
         return [
           _NavButton(trip: trip),
-          const SizedBox(width: 12),
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-en-route'),
               onPressed: loading
                   ? null
                   : () async {
@@ -512,28 +652,20 @@ class _ActionBar extends ConsumerWidget {
                         ref.invalidate(tripListProvider('today'));
                       }
                     },
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.enRoute,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              child: Text(l10n.enRoute),
+              child: loading ? const ButtonSpinner() : Text(l10n.enRoute),
             ),
           ),
         ];
       case 'en_route':
         return [
           _NavButton(trip: trip),
-          const SizedBox(width: 12),
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-check-in'),
               onPressed: loading
                   ? null
                   : () => context.push('/trips/$tripId/check-in'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.started,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
               child: Text(l10n.checkIn),
             ),
           ),
@@ -545,9 +677,6 @@ class _ActionBar extends ConsumerWidget {
               onPressed: loading
                   ? null
                   : () => context.push('/trips/$tripId/check-out'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
               child: Text(l10n.checkOut),
             ),
           ),
@@ -555,6 +684,7 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-complete'),
               onPressed: loading
                   ? null
                   : () async {
@@ -573,14 +703,18 @@ class _ActionBar extends ConsumerWidget {
                       }
                     },
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.completed,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: success,
+                foregroundColor: onSolid(success),
               ),
-              child: Text(l10n.markCompleted),
+              child: loading
+                  ? ButtonSpinner(color: onSolid(success))
+                  : Text(l10n.markCompleted),
             ),
           ),
         ];
       default:
+        // Unknown status: keep the bar quiet rather than offering a wrong
+        // action.
         return [];
     }
   }
@@ -598,6 +732,7 @@ class _ActionBar extends ConsumerWidget {
             child: Text(l10n.cancel),
           ),
           FilledButton(
+            key: const Key('confirm-accept'),
             onPressed: () async {
               Navigator.pop(ctx);
               final ok = await ref
@@ -614,6 +749,7 @@ class _ActionBar extends ConsumerWidget {
                 ref.invalidate(tripListProvider('upcoming'));
               }
             },
+            style: FilledButton.styleFrom(minimumSize: const Size(96, 44)),
             child: Text(l10n.confirm),
           ),
         ],
@@ -636,14 +772,11 @@ class _ActionBar extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) => Padding(
           padding: EdgeInsets.fromLTRB(
             24,
-            24,
+            0,
             24,
             24 + MediaQuery.of(ctx).viewInsets.bottom,
           ),
@@ -653,10 +786,9 @@ class _ActionBar extends ConsumerWidget {
             children: [
               Text(
                 l10n.rejectTrip,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: Theme.of(ctx).textTheme.titleLarge,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               RadioGroup<String>(
                 groupValue: selectedReason ?? '',
                 onChanged: (v) =>
@@ -675,12 +807,7 @@ class _ActionBar extends ConsumerWidget {
                 TextField(
                   controller: customController,
                   maxLines: 2,
-                  decoration: InputDecoration(
-                    hintText: l10n.enterReason,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+                  decoration: InputDecoration(hintText: l10n.enterReason),
                 ),
               ],
               const SizedBox(height: 16),
@@ -712,8 +839,8 @@ class _ActionBar extends ConsumerWidget {
                   });
                 },
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.error,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: AppSemantic.of(ctx).danger.color,
+                  foregroundColor: onSolid(AppSemantic.of(ctx).danger.color),
                 ),
                 child: Text(l10n.confirmReject),
               ),
@@ -733,19 +860,44 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final hasPickup = trip['pickupLat'] != null;
-    if (!hasPickup) return const SizedBox.shrink();
+    final view = TripView(trip);
+    final lat = view.pickupLat;
+    final lng = view.pickupLng;
+    final address = view.pickupLocation;
+
+    VoidCallback? onPressed;
+    if (lat != null && lng != null) {
+      onPressed = () => MapLauncher.navigate(
+            lat: lat,
+            lng: lng,
+            address: address.isEmpty ? null : address,
+          );
+    } else if (address.trim().isNotEmpty) {
+      onPressed = () => MapLauncher.openAddress(address);
+    }
+    if (onPressed == null) return const SizedBox.shrink();
 
     return Expanded(
-      child: OutlinedButton.icon(
-        onPressed: () => MapLauncher.navigate(
-          lat: (trip['pickupLat'] as num).toDouble(),
-          lng: (trip['pickupLng'] as num).toDouble(),
-        ),
-        icon: const Icon(Icons.navigation_outlined),
-        label: Text(l10n.navigate),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 12),
+        child: OutlinedButton(
+          key: const Key('action-navigate'),
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          // Icon + label scale down together so the label never wraps.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.navigation_outlined, size: 18),
+                const SizedBox(width: 6),
+                Text(l10n.navigate, maxLines: 1, softWrap: false),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -760,15 +912,23 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-          Text(value,
-              style:
-                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
     );

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, lt, gte, lte, desc } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import { requirePermission } from '../middleware/rbac';
 import { logLeadActivity } from '../utils/lead-activity-logger';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { tenantTimeZone, localDayWindowUtc } from '../utils/tz';
 
 const followUpRoutes = new Hono<AppContext>();
 
@@ -40,14 +41,16 @@ function buildFollowUpQuery(
   role: string,
   teamView: boolean,
   now: string,
+  timeZone: string,
+  contactId?: string,
+  status: string = 'pending',
 ): { sql: string; params: unknown[] } {
-  const today = now.split('T')[0];
-  const todayStart = `${today}T00:00:00.000Z`;
-  const todayEnd = `${today}T23:59:59.999Z`;
-  const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  // 'today' is the tenant's local calendar day, expressed as the UTC window [todayStart, todayEnd)
+  const { startIso: todayStart, endIso: todayEnd } = localDayWindowUtc(timeZone, new Date(now));
+  const in7Days = new Date(new Date(now).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  let whereClause = `f.status = 'pending'`;
-  const params: unknown[] = [];
+  let whereClause = status === 'all' ? '1 = 1' : 'f.status = ?';
+  const params: unknown[] = status === 'all' ? [] : [status];
 
   // RBAC: salesperson only sees own follow-ups unless team view by manager/admin
   const canSeeTeam = (role === 'admin' || role === 'sales_manager') && teamView;
@@ -56,14 +59,20 @@ function buildFollowUpQuery(
     params.push(userId);
   }
 
+  // Follow-ups belong to a lead; a contact's follow-ups are those of its leads
+  if (contactId) {
+    whereClause += ` AND l.contact_id = ?`;
+    params.push(contactId);
+  }
+
   if (filter === 'today') {
-    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at <= ?`;
+    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at < ?`;
     params.push(todayStart, todayEnd);
   } else if (filter === 'overdue') {
     whereClause += ` AND f.scheduled_at < ?`;
     params.push(todayStart);
   } else if (filter === 'upcoming') {
-    whereClause += ` AND f.scheduled_at > ? AND f.scheduled_at <= ?`;
+    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at <= ?`;
     params.push(todayEnd, in7Days);
   }
 
@@ -78,7 +87,7 @@ function buildFollowUpQuery(
     JOIN contacts c ON c.id = l.contact_id
     LEFT JOIN users u ON u.id = f.created_by
     WHERE ${whereClause}
-    ORDER BY f.scheduled_at ASC
+    ORDER BY f.scheduled_at ${status === 'pending' ? 'ASC' : 'DESC'}
   `;
 
   return { sql, params };
@@ -96,7 +105,15 @@ followUpRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const teamView = c.req.query('team') === 'true';
   const now = new Date().toISOString();
 
-  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now);
+  const contactId = c.req.query('contactId') || undefined;
+
+  // status: pending (default) | completed | cancelled | all
+  const status = (c.req.query('status') || 'pending').toLowerCase();
+  if (!['pending', 'completed', 'cancelled', 'missed', 'all'].includes(status)) {
+    return error(c, 'status must be one of pending, completed, cancelled, missed, all', 400);
+  }
+
+  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, await tenantTimeZone(c), contactId, status);
 
   const result = await tenantDb.prepare(sql).bind(...params).all();
 

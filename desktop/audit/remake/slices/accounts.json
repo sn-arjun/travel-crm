@@ -1,0 +1,50 @@
+{
+  "slice": "accounts",
+  "title": "Accounts",
+  "status": "existing",
+  "showcaseOrder": 5,
+  "endpoints": [
+    "GET /api/v1/suppliers/categories/summary"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/suppliers.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/accounts/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/accounts.spec.ts",
+  "seedHelpers": [
+    "seedSupplier"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/accounts/**",
+    "desktop/e2e/accounts.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Rebuilt on ListPage archetype. Honest Suppliers-view framing: inline Alert banner states plainly this is a filtered view of Suppliers; row click/View/Edit route to /suppliers/:id and /suppliers/:id/edit (no fake /accounts/:id); sidebar entry now reads 'Accounts (Suppliers view)' nested in Operations next to Suppliers. Reads/writes exclusively through suppliersApi. FilterBar (search + category select), useInfiniteScroll via ListPage, hover row actions (Eye/Pencil/Phone/Mail/Trash2), bulk delete, skeleton + empty state, and SendMessageDialog for outbound email all present. detailDrawer/relationCombobox not applicable — clicking a row deliberately navigates to the real Supplier detail page rather than opening an in-page drawer, per the owner decision to avoid a fake accounts entity. Export is a client-side themed CSV covering the full filtered dataset (paginates suppliersApi.list to completion) since there is no exportsApi.suppliers endpoint. relationCombobox/phoneInput/addressAutocomplete/currencyInput/datePicker/urlPrefill are not applicable — this slice has no form page (accounts has no create/edit form of its own; supplier forms are out of scope).",
+  "showcaseScript": [
+    "Open Accounts from the sidebar and note it is a Suppliers view",
+    "Filter by category to narrow the corporate accounts",
+    "Open a row and land on the full Supplier detail"
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "id": "R161",
+  "tier": 4,
+  "step": 13,
+  "title": "Interface sweep F (English and Dutch): AI pages, assistant, chatbot conversations, reports",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Every user-visible string on these pages comes from the catalogue with complete English and Dutch, and i18n-check enforces it.",
+  "why": "About 1,100 hard-coded strings remain in these folders (scanFile count 2026-10-21). Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R158", "R159"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R160"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": [
+    "desktop/src/app/(app)/ai",
+    "desktop/src/app/(app)/assistant",
+    "desktop/src/app/(app)/chatbot",
+    "desktop/src/app/(app)/reports"
+  ],
+  "namespaces": ["ai", "assistant", "chatbot", "reports"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under the scope folders (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/{ai,assistant,chatbot,reports}.json"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R161.md",
+      "desktop/scripts/i18n-scope/ai-reports.json",
+      "desktop/e2e/i18n-nl-ai-reports.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "desktop/src/messages/*/settings.json",
+      "desktop/src/app/(app)/settings/**",
+      "desktop/src/components/**",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R161-1", "what": "Convert every i18n-check finding in the scope folders to t() in the page's namespace, keeping English identical. AI-generated content and report data are not interface text; report column headers and filter labels are." },
+    { "id": "R161-2", "what": "Complete nl for every new key; list the files in docs/i18n/nl-review/R161.md." },
+    { "id": "R161-3", "what": "Add desktop/scripts/i18n-scope/ai-reports.json." },
+    { "id": "R161-4", "what": "e2e/i18n-nl-ai-reports.spec.ts: Nederlands, open every page in scope with AI not configured (no AI requests: pages that generate on open are opened only where the dry-run notice shows, as the existing AI specs do), no missing-key warnings, no overflow." }
+  ],
+  "tests": [
+    "i18n-check passes with zero findings in the scope folders.",
+    "Existing e2e (ai-assistant, ai-business-intelligence, ai-extractions, ai-intelligence, assistant-rules, assistant-transfer-draft, chatbot, reports) pass unchanged in English, with no live AI.",
+    "e2e/i18n-nl-ai-reports.spec.ts."
+  ],
+  "acceptance": ["No hard-coded English remains in the scope folders; Dutch is complete; English text unchanged; no AI request is made by the tests."],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/i18n-nl-ai-reports.spec.ts e2e/ai-assistant.spec.ts e2e/ai-business-intelligence.spec.ts e2e/ai-extractions.spec.ts e2e/ai-intelligence.spec.ts e2e/assistant-rules.spec.ts e2e/assistant-transfer-draft.spec.ts e2e/chatbot.spec.ts e2e/reports.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/i18n-nl-ai-reports.spec.ts", "e2e/ai-assistant.spec.ts", "e2e/ai-business-intelligence.spec.ts", "e2e/ai-extractions.spec.ts", "e2e/ai-intelligence.spec.ts", "e2e/assistant-rules.spec.ts", "e2e/assistant-transfer-draft.spec.ts", "e2e/chatbot.spec.ts", "e2e/reports.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Cost discipline: the fix-stack runs without --ai; no live AI request in tests.",
+    "Keys only in this batch's namespace files; never edit messages/index.ts.",
+    "RTL-safe classes in any layout fix.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": ["Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs."],
+  "goLiveVerify": ["Native review of the Dutch files listed in docs/i18n/nl-review/R161.md."]
+}

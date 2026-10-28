@@ -7,7 +7,8 @@ export interface LeadActivityParams {
   type: string;          // note | call | email | whatsapp | sms | status_change | assignment | follow_up | etc.
   content?: string;
   metadata?: Record<string, unknown>;
-  userId: string;
+  /** null for entries written by a public channel or an automation. */
+  userId: string | null;
 }
 
 /**

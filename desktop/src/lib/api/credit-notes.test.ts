@@ -20,27 +20,43 @@ describe('creditNotesApi', () => {
 
   describe('list', () => {
     it('should call GET /credit-notes', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await creditNotesApi.list();
       expect(client.get).toHaveBeenCalledWith('/credit-notes', { params: undefined });
     });
 
     it('should pass pagination params', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await creditNotesApi.list({ page: 1, limit: 20 });
       expect(client.get).toHaveBeenCalledWith('/credit-notes', { params: { page: 1, limit: 20 } });
     });
 
     it('should pass contactId filter', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await creditNotesApi.list({ contactId: 'c1' });
       expect(client.get).toHaveBeenCalledWith('/credit-notes', { params: { contactId: 'c1' } });
     });
 
     it('should return credit notes list', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 'cn1', type: 'credit_note', total: 5000 }], pagination: { total: 1 } } });
+      vi.mocked(client.get).mockResolvedValue({ data: [{ id: 'cn1', type: 'credit_note', total: 5000 }], pagination: { total: 1 } });
       const result = await creditNotesApi.list();
-      expect(result.data.data).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('should normalise snake_case columns into camelCase', async () => {
+      vi.mocked(client.get).mockResolvedValue({
+        data: [{ id: 'cn1', invoice_number: 'CN-0001', contact_id: 'c1', contact_name: 'Asha Rao', total_tax: 90, created_by: 'u1', created_at: '2026-03-01T10:00:00Z' }],
+        pagination: { total: 1 },
+      });
+      const result = await creditNotesApi.list();
+      expect(result.data[0]).toMatchObject({
+        invoiceNumber: 'CN-0001',
+        contactId: 'c1',
+        contactName: 'Asha Rao',
+        totalTax: 90,
+        createdBy: 'u1',
+        createdAt: '2026-03-01T10:00:00Z',
+      });
     });
   });
 
@@ -110,27 +126,27 @@ describe('debitNotesApi', () => {
 
   describe('list', () => {
     it('should call GET /debit-notes', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await debitNotesApi.list();
       expect(client.get).toHaveBeenCalledWith('/debit-notes', { params: undefined });
     });
 
     it('should pass pagination params', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await debitNotesApi.list({ page: 2, limit: 15 });
       expect(client.get).toHaveBeenCalledWith('/debit-notes', { params: { page: 2, limit: 15 } });
     });
 
     it('should pass contactId filter', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
+      vi.mocked(client.get).mockResolvedValue({ data: [], pagination: {} });
       await debitNotesApi.list({ contactId: 'c2' });
       expect(client.get).toHaveBeenCalledWith('/debit-notes', { params: { contactId: 'c2' } });
     });
 
     it('should return debit notes list', async () => {
-      vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 'dn1', type: 'debit_note', total: 7500 }], pagination: { total: 1 } } });
+      vi.mocked(client.get).mockResolvedValue({ data: [{ id: 'dn1', type: 'debit_note', total: 7500 }], pagination: { total: 1 } });
       const result = await debitNotesApi.list();
-      expect(result.data.data).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
   });
 

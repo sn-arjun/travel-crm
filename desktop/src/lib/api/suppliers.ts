@@ -1,5 +1,6 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import { camelizeKeys, toApiResponse, unwrapEntity, unwrapList } from './envelope';
 import type { Supplier } from '@travelcrm/shared';
 
 export interface CreateSupplierRequest {
@@ -94,18 +95,74 @@ export interface RateComparison {
   currency?: string;
 }
 
+/** A supplier row in camelCase, whatever casing the endpoint answered with. */
+export interface SupplierRecord {
+  id: string;
+  companyName: string;
+  category?: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  gstNumber?: string;
+  taxId?: string;
+  notes?: string;
+  rating?: number | null;
+  status?: string;
+  isPreferred: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function toSupplierRecord(raw: unknown): SupplierRecord {
+  const s = camelizeKeys<(Partial<SupplierRecord> & { name?: string; isPreferred?: unknown }) | null>(raw) ?? {};
+  return {
+    ...s,
+    id: s.id as string,
+    companyName: s.companyName ?? s.name ?? '',
+    isPreferred: Boolean(s.isPreferred),
+  };
+}
+
+export interface SupplierListParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  category?: string;
+  status?: string;
+  isPreferred?: boolean;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 export const suppliersApi = {
-  list: (params?: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    category?: string;
-    status?: string;
-    isPreferred?: boolean;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, { params }),
+  /** Same endpoint as `list`, resolved to a flat page of camelCase SupplierRecord rows. */
+  listRecords: async (params?: SupplierListParams): Promise<PaginatedResponse<SupplierRecord>> => {
+    const list = unwrapList<unknown>(await suppliersApi.list(params), { page: params?.page, limit: params?.limit });
+    return { ...list, data: list.data.map(toSupplierRecord) };
+  },
+
+  /** Same endpoint as `getById`, resolved to a camelCase SupplierRecord. */
+  getRecord: async (id: string): Promise<ApiResponse<SupplierRecord>> =>
+    toApiResponse(toSupplierRecord(unwrapEntity<unknown>(await suppliersApi.getById(id)))),
+
+  list: (params?: SupplierListParams) => {
+    // The backend list endpoint reads snake_case `is_preferred`.
+    if (params?.isPreferred === undefined) {
+      return client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, {
+        params: params as Record<string, string | number | boolean | undefined> | undefined,
+      });
+    }
+    const { isPreferred, ...rest } = params;
+    return client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, {
+      params: { ...rest, is_preferred: isPreferred },
+    });
+  },
 
   getById: (id: string) =>
     client.get<ApiResponse<Supplier>>(API_ENDPOINTS.suppliers.byId(id)),
@@ -138,7 +195,7 @@ export const suppliersApi = {
     client.get<ApiResponse<CategorySummary[]>>(API_ENDPOINTS.suppliers.categorySummary),
 
   compareRates: (params: CompareRatesRequest) =>
-    client.get<ApiResponse<RateComparison[]>>(API_ENDPOINTS.suppliers.compareRates, { params: params as any }),
+    client.get<ApiResponse<RateComparison[]>>(API_ENDPOINTS.suppliers.compareRates, { params: { ...params } }),
 
   recordPayment: (id: string, data: { amount: number; method: string; reference_number?: string; payment_date: string; notes?: string }) =>
     client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.suppliers.payments(id), data),

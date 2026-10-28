@@ -1,0 +1,95 @@
+{
+  "note": "Request/response pairs for submitting a regulatory bundle (Regulatory Compliance v2), in call order. Written from Twilio's documentation, not recorded from the live API: every request shape is marked 'verify at go-live' (docs/GO-LIVE.md phase 9). A request with a `form` is application/x-www-form-urlencoded; one with `multipart` is a document upload.",
+  "account": "ACsub0000000000000000000000000000",
+  "calls": [
+    {
+      "request": { "method": "GET", "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Regulations?IsoCountry=NL&NumberType=local&EndUserType=business" },
+      "response": { "status": 200, "body": { "results": [{ "sid": "RN00000000000000000000000000000001", "iso_country": "NL", "number_type": "local", "end_user_type": "business" }], "meta": { "page": 0, "page_size": 50 } } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/EndUsers",
+        "form": {
+          "FriendlyName": "Voorbeeld Reizen B.V.",
+          "Type": "business",
+          "Attributes": "{\"business_name\":\"Voorbeeld Reizen B.V.\",\"business_registration_number\":\"12345678\",\"first_name\":\"Jan\",\"last_name\":\"de Vries\"}"
+        }
+      },
+      "response": { "status": 201, "body": { "sid": "IT00000000000000000000000000000001", "type": "business", "friendly_name": "Voorbeeld Reizen B.V." } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/ACsub0000000000000000000000000000/Addresses.json",
+        "form": {
+          "CustomerName": "Voorbeeld Reizen B.V.",
+          "Street": "Voorbeeldstraat 1",
+          "City": "Amsterdam",
+          "Region": "Noord-Holland",
+          "PostalCode": "1011 AB",
+          "IsoCountry": "NL",
+          "FriendlyName": "Voorbeeld Reizen B.V."
+        }
+      },
+      "response": { "status": 201, "body": { "sid": "AD00000000000000000000000000000001", "iso_country": "NL" } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers-upload.twilio.com/v2/RegulatoryCompliance/SupportingDocuments",
+        "multipart": {
+          "fields": {
+            "FriendlyName": "kvk-extract.pdf",
+            "Type": "commercial_registrar_excerpt",
+            "MimeType": "application/pdf",
+            "Attributes": "{\"business_name\":\"Voorbeeld Reizen B.V.\",\"address_sids\":[\"AD00000000000000000000000000000001\"]}"
+          },
+          "file": { "field": "File", "name": "kvk-extract.pdf", "type": "application/pdf", "size": 9 }
+        }
+      },
+      "response": { "status": 201, "body": { "sid": "RD00000000000000000000000000000001", "type": "commercial_registrar_excerpt" } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles",
+        "form": {
+          "FriendlyName": "Voorbeeld Reizen B.V. NL local",
+          "Email": "owner@voorbeeld.test",
+          "RegulationSid": "RN00000000000000000000000000000001",
+          "IsoCountry": "NL",
+          "NumberType": "local",
+          "EndUserType": "business",
+          "StatusCallback": "https://api.example.test/api/v1/voip/regulatory-callback/vr_0123456789abcdef"
+        }
+      },
+      "response": { "status": 201, "body": { "sid": "BU00000000000000000000000000000001", "status": "draft" } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001/ItemAssignments",
+        "form": { "ObjectSid": "IT00000000000000000000000000000001" }
+      },
+      "response": { "status": 201, "body": { "sid": "BV00000000000000000000000000000001" } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001/ItemAssignments",
+        "form": { "ObjectSid": "RD00000000000000000000000000000001" }
+      },
+      "response": { "status": 201, "body": { "sid": "BV00000000000000000000000000000002" } }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001",
+        "form": { "Status": "pending-review" }
+      },
+      "response": { "status": 200, "body": { "sid": "BU00000000000000000000000000000001", "status": "pending-review" } }
+    }
+  ],
+  "result": { "bundleSid": "BU00000000000000000000000000000001", "addressSid": "AD00000000000000000000000000000001", "status": "pending-review" }
+}

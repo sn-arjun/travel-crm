@@ -1,0 +1,27 @@
+---
+import Base from '../../layouts/Base.astro';
+import { COMPARISONS } from '../../data/compare';
+import { CRUMBS_LD } from '../../data/seo';
+const site = Astro.site!;
+---
+<Base title="Compare TravelCRM Pro" description="How TravelCRM Pro compares with spreadsheets and WhatsApp, a generic CRM, and travel back-office software, job by job." jsonLd={[CRUMBS_LD(site, [['Home', '/'], ['Compare', '/compare/']])]}>
+  <section class="dark">
+    <div class="wrap section">
+      <p class="eyebrow">CONNECTIONS</p>
+      <h1 class="h1">Coming from somewhere else?</h1>
+      <p class="lede" style="margin-top:20px">Pick what your agency uses today. Each page compares the jobs you do every week.</p>
+      <ul class="list">
+        {COMPARISONS.map((c, i) => <li><a href={`/compare/${c.slug}/`}><span class="mono gate">GATE C{i + 1}</span><span class="t">From {c.name}</span><span class="d">{c.description}</span><span class="go" aria-hidden="true">→</span></a></li>)}
+      </ul>
+    </div>
+  </section>
+</Base>
+<style>
+  .list { list-style: none; margin: 40px 0 0; padding: 0; display: grid; gap: 12px; }
+  .list a { display: grid; grid-template-columns: 90px minmax(0,1fr) 24px; gap: 4px 18px; align-items: center; padding: 18px 20px; border: 1px solid var(--flapline); border-radius: 12px; background: var(--flap); color: var(--boardtext); text-decoration: none; }
+  .list a:hover { border-color: var(--amber); }
+  .gate { grid-row: span 2; color: var(--amber); font-size: 12px; }
+  .t { font-family: var(--display); font-weight: 800; font-size: 28px; text-transform: uppercase; line-height: 1; }
+  .d { grid-column: 2; color: var(--boardmute); font-size: 15px; }
+  .go { grid-row: 1 / span 2; grid-column: 3; color: var(--amber); font-size: 22px; }
+</style>

@@ -1,0 +1,22 @@
+{
+  "usage.title": "الاستخدام والحدود",
+  "usage.description.plan": "الباقة {plan}. تتجدد الحصص في {date}.",
+  "usage.description.default": "حصصك الشهرية",
+  "usage.error": "تعذّر تحميل الاستخدام. يمكن للمسؤولين فقط الاطلاع عليه.",
+  "usage.note.warning": "تم استخدام 80%. فكّر في طلب المزيد قبل نفاده.",
+  "usage.note.exhausted": "نفدت الحصة. سيتم رفض الإرسال الجديد حتى تتجدد.",
+  "usage.renews": "تتجدد في {date}",
+  "usage.buyMore": "شراء المزيد",
+  "usage.requestTopUp": "طلب رصيد إضافي",
+  "usage.requestUpgrade": "طلب ترقية",
+  "usage.requestSent": "تم إرسال الطلب. سنعود إليك قريبًا.",
+  "usage.requestFailed": "تعذّر إرسال الطلب. حاول مرة أخرى.",
+  "usage.progress": "المستخدم من {label}",
+  "usage.channel.ai_credits": "أرصدة الذكاء الاصطناعي",
+  "usage.channel.sms": "الرسائل النصية",
+  "usage.channel.whatsapp": "رسائل واتساب الخدمية",
+  "usage.channel.whatsapp_marketing": "رسائل واتساب التسويقية",
+  "usage.channel.otp": "رموز تسجيل الدخول",
+  "usage.channel.call_minute": "دقائق المكالمات",
+  "usage.channel.email": "رسائل البريد الإلكتروني"
+}

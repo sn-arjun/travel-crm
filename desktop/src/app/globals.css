@@ -2,56 +2,163 @@
 @import "tw-animate-css";
 
 /*
- * TravelCRM Pro — shadcn/ui v4 Theme
- * Coral primary (#FF5C38), warm stone neutrals
+ * TravelCRM Pro — Design System
+ *
+ * Two layers live here:
+ *   1. The SEMANTIC token layer (--ds-*) — the source of truth for all new
+ *      work. Mirrors src/design-system/tokens/semantic.ts exactly. Every
+ *      token has a light and a dark value; every fg/bg pair is >= 4.5:1.
+ *   2. The legacy shadcn/ui variable layer, retained so existing pages keep
+ *      rendering. New code should use the `ds-` Tailwind utilities.
  */
 
-/* ─── shadcn/ui v4 Theme ─────────────────────────────────── */
+/* ─── Semantic tokens → Tailwind utilities ───────────────── */
 @theme inline {
-  /* Core semantic colors — mapped from CSS vars below */
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
+  /* Surfaces */
+  --color-ds-background: var(--ds-background);
+  --color-ds-surface: var(--ds-surface);
+  --color-ds-surface-raised: var(--ds-surface-raised);
+  --color-ds-surface-sunken: var(--ds-surface-sunken);
 
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
+  /* Borders */
+  --color-ds-border: var(--ds-border);
+  --color-ds-border-strong: var(--ds-border-strong);
 
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
+  /* Foregrounds */
+  --color-ds-foreground: var(--ds-foreground);
+  --color-ds-foreground-muted: var(--ds-foreground-muted);
+  --color-ds-foreground-subtle: var(--ds-foreground-subtle);
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
+  /* Primary */
+  --color-ds-primary: var(--ds-primary);
+  --color-ds-primary-hover: var(--ds-primary-hover);
+  --color-ds-primary-active: var(--ds-primary-active);
+  --color-ds-primary-subtle: var(--ds-primary-subtle);
+  --color-ds-primary-foreground: var(--ds-primary-foreground);
+  --color-ds-primary-on-subtle: var(--ds-primary-on-subtle);
 
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  /* Success */
+  --color-ds-success: var(--ds-success);
+  --color-ds-success-hover: var(--ds-success-hover);
+  --color-ds-success-active: var(--ds-success-active);
+  --color-ds-success-subtle: var(--ds-success-subtle);
+  --color-ds-success-foreground: var(--ds-success-foreground);
+  --color-ds-success-on-subtle: var(--ds-success-on-subtle);
 
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
+  /* Warning */
+  --color-ds-warning: var(--ds-warning);
+  --color-ds-warning-hover: var(--ds-warning-hover);
+  --color-ds-warning-active: var(--ds-warning-active);
+  --color-ds-warning-subtle: var(--ds-warning-subtle);
+  --color-ds-warning-foreground: var(--ds-warning-foreground);
+  --color-ds-warning-on-subtle: var(--ds-warning-on-subtle);
 
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
+  /* Danger */
+  --color-ds-danger: var(--ds-danger);
+  --color-ds-danger-hover: var(--ds-danger-hover);
+  --color-ds-danger-active: var(--ds-danger-active);
+  --color-ds-danger-subtle: var(--ds-danger-subtle);
+  --color-ds-danger-foreground: var(--ds-danger-foreground);
+  --color-ds-danger-on-subtle: var(--ds-danger-on-subtle);
 
-  --color-destructive: hsl(var(--destructive));
+  /* Info */
+  --color-ds-info: var(--ds-info);
+  --color-ds-info-hover: var(--ds-info-hover);
+  --color-ds-info-active: var(--ds-info-active);
+  --color-ds-info-subtle: var(--ds-info-subtle);
+  --color-ds-info-foreground: var(--ds-info-foreground);
+  --color-ds-info-on-subtle: var(--ds-info-on-subtle);
 
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  /* Focus ring */
+  --color-ds-ring: var(--ds-ring);
+
+  /* Chart series */
+  --color-ds-chart-1: var(--ds-chart-1);
+  --color-ds-chart-2: var(--ds-chart-2);
+  --color-ds-chart-3: var(--ds-chart-3);
+  --color-ds-chart-4: var(--ds-chart-4);
+  --color-ds-chart-5: var(--ds-chart-5);
+  --color-ds-chart-6: var(--ds-chart-6);
+
+  /* Spacing — 8pt scale */
+  --spacing-ds-0: 0px;
+  --spacing-ds-1: 4px;
+  --spacing-ds-2: 8px;
+  --spacing-ds-3: 12px;
+  --spacing-ds-4: 16px;
+  --spacing-ds-5: 24px;
+  --spacing-ds-6: 32px;
+  --spacing-ds-7: 40px;
+  --spacing-ds-8: 48px;
+  --spacing-ds-9: 64px;
+  --spacing-ds-10: 80px;
+
+  /* Radius */
+  --radius-ds-none: 0px;
+  --radius-ds-sm: 6px;
+  --radius-ds-md: 10px;
+  --radius-ds-lg: 14px;
+  --radius-ds-xl: 16px;
+  --radius-ds-2xl: 20px;
+  --radius-ds-full: 9999px;
+
+  /* Elevation */
+  --shadow-ds-1: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-ds-2: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-ds-3: 0 4px 8px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04);
+  --shadow-ds-4: 0 8px 24px rgb(0 0 0 / 0.08), 0 4px 8px rgb(0 0 0 / 0.04);
+  --shadow-ds-5: 0 16px 48px rgb(0 0 0 / 0.1), 0 8px 16px rgb(0 0 0 / 0.04);
+}
+
+/* ─── shadcn/ui v4 Theme (legacy layer) ──────────────────── */
+@theme inline {
+  /* Legacy shadcn colour names, mapped ONTO the ds tokens so there is one
+     palette in light and dark (indigo --ds-primary). The ds vars are redefined
+     under .dark, so nothing below needs a dark override. */
+  --color-background: var(--ds-background);
+  --color-foreground: var(--ds-foreground);
+
+  --color-card: var(--ds-surface);
+  --color-card-foreground: var(--ds-foreground);
+
+  --color-popover: var(--ds-surface-raised);
+  --color-popover-foreground: var(--ds-foreground);
+
+  --color-primary: var(--ds-primary);
+  --color-primary-foreground: var(--ds-primary-foreground);
+
+  --color-secondary: var(--ds-surface-sunken);
+  --color-secondary-foreground: var(--ds-foreground);
+
+  --color-muted: var(--ds-surface-sunken);
+  --color-muted-foreground: var(--ds-foreground-muted);
+
+  --color-accent: var(--ds-surface-sunken);
+  --color-accent-foreground: var(--ds-foreground);
+
+  --color-destructive: var(--ds-danger);
+  --color-destructive-foreground: var(--ds-danger-foreground);
+
+  --color-border: var(--ds-border);
+  --color-input: var(--ds-border);
+  --color-ring: var(--ds-ring);
 
   /* Sidebar */
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-sidebar: var(--ds-surface);
+  --color-sidebar-foreground: var(--ds-foreground);
+  --color-sidebar-primary: var(--ds-primary);
+  --color-sidebar-primary-foreground: var(--ds-primary-foreground);
+  --color-sidebar-accent: var(--ds-surface-sunken);
+  --color-sidebar-accent-foreground: var(--ds-foreground);
+  --color-sidebar-border: var(--ds-border);
+  --color-sidebar-ring: var(--ds-ring);
 
   /* Chart colors */
-  --color-chart-1: hsl(var(--chart-1));
-  --color-chart-2: hsl(var(--chart-2));
-  --color-chart-3: hsl(var(--chart-3));
-  --color-chart-4: hsl(var(--chart-4));
-  --color-chart-5: hsl(var(--chart-5));
+  --color-chart-1: var(--ds-chart-1);
+  --color-chart-2: var(--ds-chart-2);
+  --color-chart-3: var(--ds-chart-3);
+  --color-chart-4: var(--ds-chart-4);
+  --color-chart-5: var(--ds-chart-5);
 
   /* Radius — computed from single --radius base */
   --radius-sm: calc(var(--radius) - 4px);
@@ -66,109 +173,195 @@
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-/* ─── Light Theme ────────────────────────────────────────── */
+/* ─── Semantic tokens: shared (theme-independent) ────────── */
 :root {
-  --background: 30 20% 98%;
-  --foreground: 20 14% 10%;
+  /* Motion — durations */
+  --ds-duration-instant: 50ms;
+  --ds-duration-fast: 100ms;
+  --ds-duration-base: 150ms;
+  --ds-duration-slow: 200ms;
+  --ds-duration-slower: 300ms;
+  --ds-duration-slowest: 500ms;
 
-  --card: 0 0% 100%;
-  --card-foreground: 20 14% 10%;
+  /* Motion — easings */
+  --ds-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ds-ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ds-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 20 14% 10%;
+  /* Z-index ladder */
+  --ds-z-base: 0;
+  --ds-z-sticky: 20;
+  --ds-z-dropdown: 30;
+  --ds-z-overlay: 40;
+  --ds-z-modal: 50;
+  --ds-z-popover: 60;
+  --ds-z-toast: 70;
+  --ds-z-command: 80;
+  --ds-z-tooltip: 90;
+}
 
-  --primary: 14 100% 61%;
-  --primary-foreground: 0 0% 100%;
+/* ─── Semantic tokens: LIGHT ─────────────────────────────── */
+:root {
+  --ds-background: #FAFAFB;
+  --ds-surface: #FFFFFF;
+  --ds-surface-raised: #FFFFFF;
+  --ds-surface-sunken: #F4F4F6;
 
-  --secondary: 24 10% 91%;
-  --secondary-foreground: 20 14% 18%;
+  --ds-border: #E4E4E9;
+  --ds-border-strong: #C7C7D1;
 
-  --muted: 24 10% 93%;
-  --muted-foreground: 20 8% 38%;
+  --ds-foreground: #111117;
+  --ds-foreground-muted: #55555F;
+  --ds-foreground-subtle: #6E6E7A;
 
-  --accent: 24 10% 91%;
-  --accent-foreground: 20 14% 10%;
+  --ds-primary: #4F46E5;
+  --ds-primary-hover: #4338CA;
+  --ds-primary-active: #3730A3;
+  --ds-primary-subtle: #EEF0FE;
+  --ds-primary-foreground: #FFFFFF;
+  --ds-primary-on-subtle: #3730A3;
 
-  --destructive: 0 84% 60%;
+  --ds-success: #047857;
+  --ds-success-hover: #036049;
+  --ds-success-active: #024C3A;
+  --ds-success-subtle: #ECFDF5;
+  --ds-success-foreground: #FFFFFF;
+  --ds-success-on-subtle: #04563F;
 
-  --border: 24 8% 85%;
-  --input: 24 8% 85%;
-  --ring: 14 100% 61%;
+  --ds-warning: #B45309;
+  --ds-warning-hover: #92400E;
+  --ds-warning-active: #78350F;
+  --ds-warning-subtle: #FFFBEB;
+  --ds-warning-foreground: #FFFFFF;
+  --ds-warning-on-subtle: #78350F;
 
-  /* Sidebar */
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 20 14% 10%;
-  --sidebar-primary: 14 100% 61%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 24 10% 95%;
-  --sidebar-accent-foreground: 20 14% 10%;
-  --sidebar-border: 24 6% 92%;
-  --sidebar-ring: 14 100% 61%;
+  --ds-danger: #DC2626;
+  --ds-danger-hover: #B91C1C;
+  --ds-danger-active: #991B1B;
+  --ds-danger-subtle: #FEF2F2;
+  --ds-danger-foreground: #FFFFFF;
+  --ds-danger-on-subtle: #991B1B;
 
-  /* Charts */
-  --chart-1: 14 100% 61%;
-  --chart-2: 262 83% 58%;
-  --chart-3: 142 72% 29%;
-  --chart-4: 38 92% 50%;
-  --chart-5: 217 91% 60%;
+  --ds-info: #1D4ED8;
+  --ds-info-hover: #1E40AF;
+  --ds-info-active: #1E3A8A;
+  --ds-info-subtle: #EFF6FF;
+  --ds-info-foreground: #FFFFFF;
+  --ds-info-on-subtle: #1E3A8A;
 
+  --ds-ring: #4F46E5;
+
+  --ds-chart-1: #4F46E5;
+  --ds-chart-2: #0891B2;
+  --ds-chart-3: #047857;
+  --ds-chart-4: #B45309;
+  --ds-chart-5: #BE185D;
+  --ds-chart-6: #7C3AED;
+}
+
+/* ─── Semantic tokens: DARK ──────────────────────────────── */
+.dark {
+  --ds-background: #0A0A0F;
+  --ds-surface: #14141B;
+  --ds-surface-raised: #1C1C26;
+  --ds-surface-sunken: #08080C;
+
+  --ds-border: #26262F;
+  --ds-border-strong: #3A3A47;
+
+  --ds-foreground: #EDEDF2;
+  --ds-foreground-muted: #A0A0AE;
+  --ds-foreground-subtle: #83838F;
+
+  --ds-primary: #818CF8;
+  --ds-primary-hover: #A5B4FC;
+  --ds-primary-active: #C7D2FE;
+  --ds-primary-subtle: #1E1B4B;
+  --ds-primary-foreground: #0A0A0F;
+  --ds-primary-on-subtle: #C7D2FE;
+
+  --ds-success: #34D399;
+  --ds-success-hover: #6EE7B7;
+  --ds-success-active: #A7F3D0;
+  --ds-success-subtle: #022C22;
+  --ds-success-foreground: #0A0A0F;
+  --ds-success-on-subtle: #6EE7B7;
+
+  --ds-warning: #FBBF24;
+  --ds-warning-hover: #FCD34D;
+  --ds-warning-active: #FDE68A;
+  --ds-warning-subtle: #2A1D05;
+  --ds-warning-foreground: #0A0A0F;
+  --ds-warning-on-subtle: #FCD34D;
+
+  --ds-danger: #F87171;
+  --ds-danger-hover: #FCA5A5;
+  --ds-danger-active: #FECACA;
+  --ds-danger-subtle: #300B0B;
+  --ds-danger-foreground: #0A0A0F;
+  --ds-danger-on-subtle: #FCA5A5;
+
+  --ds-info: #60A5FA;
+  --ds-info-hover: #93C5FD;
+  --ds-info-active: #BFDBFE;
+  --ds-info-subtle: #0C1F3D;
+  --ds-info-foreground: #0A0A0F;
+  --ds-info-on-subtle: #93C5FD;
+
+  --ds-ring: #818CF8;
+
+  --ds-chart-1: #818CF8;
+  --ds-chart-2: #22D3EE;
+  --ds-chart-3: #34D399;
+  --ds-chart-4: #FBBF24;
+  --ds-chart-5: #F472B6;
+  --ds-chart-6: #A78BFA;
+}
+
+/* ─── Legacy vars: radius + colour-scheme only ───────────── */
+/* The old orange HSL triplets (--primary, --muted, ...) are gone: the legacy
+   Tailwind colour names above resolve to the ds tokens instead. */
+:root {
   --radius: 0.625rem;
 
   color-scheme: light;
 }
 
-/* ─── Dark Theme ─────────────────────────────────────────── */
 .dark {
-  --background: 20 14% 4%;
-  --foreground: 30 20% 98%;
-
-  --card: 20 14% 8%;
-  --card-foreground: 30 20% 98%;
-
-  --popover: 20 14% 8%;
-  --popover-foreground: 30 20% 98%;
-
-  --primary: 14 100% 65%;
-  --primary-foreground: 0 0% 100%;
-
-  --secondary: 20 10% 16%;
-  --secondary-foreground: 30 20% 90%;
-
-  --muted: 20 10% 16%;
-  --muted-foreground: 20 5% 56%;
-
-  --accent: 20 10% 16%;
-  --accent-foreground: 30 20% 98%;
-
-  --destructive: 0 72% 51%;
-
-  --border: 20 10% 16%;
-  --input: 20 10% 16%;
-  --ring: 14 100% 65%;
-
-  /* Sidebar */
-  --sidebar: 20 14% 6%;
-  --sidebar-foreground: 30 20% 98%;
-  --sidebar-primary: 14 100% 65%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 20 10% 12%;
-  --sidebar-accent-foreground: 30 20% 98%;
-  --sidebar-border: 20 10% 14%;
-  --sidebar-ring: 14 100% 65%;
-
-  /* Charts */
-  --chart-1: 14 100% 65%;
-  --chart-2: 262 83% 65%;
-  --chart-3: 142 72% 45%;
-  --chart-4: 38 92% 60%;
-  --chart-5: 217 91% 65%;
-
   color-scheme: dark;
+}
+
+/* ─── Aliases for names referenced by components ─────────── */
+/* Plain custom properties (not @theme) so they inherit the .dark values of the
+   ds vars they point at. Prefer the ds-* Tailwind classes in new code. */
+:root {
+  --color-text-primary: var(--ds-foreground);
+  --color-text-secondary: var(--ds-foreground-muted);
+  --color-text-muted: var(--ds-foreground-muted);
+
+  --color-bg-muted: var(--ds-surface-sunken);
+  --color-bg-card: var(--ds-surface);
+  --color-bg-sidebar: var(--ds-surface);
+
+  --color-border-default: var(--ds-border);
+  --color-divider: var(--ds-border);
+
+  --color-success-bg: var(--ds-success-subtle);
+  --color-success-text: var(--ds-success-on-subtle);
+  --color-error-bg: var(--ds-danger-subtle);
+  --color-error-text: var(--ds-danger-on-subtle);
+
+  --radius-button: var(--radius-ds-md, 10px);
+  --radius-card: var(--radius-ds-lg, 14px);
+
+  --sidebar-collapsed: 4rem;
+  --z-popover: var(--ds-z-popover);
 }
 
 /* ─── Base Styles ────────────────────────────────────────── */
 * {
-  border-color: hsl(var(--border));
+  border-color: var(--ds-border);
 }
 
 html {
@@ -182,8 +375,8 @@ html {
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: var(--ds-background);
+  color: var(--ds-foreground);
   font-size: 14px;
 }
 
@@ -204,8 +397,8 @@ h1, h2, h3, h4, h5, h6 {
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+::-webkit-scrollbar-thumb { background: var(--ds-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ds-foreground-subtle); }
 
 /* Reduce motion */
 @media (prefers-reduced-motion: reduce) {
@@ -265,15 +458,15 @@ h1, h2, h3, h4, h5, h6 {
 
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  float: left;
-  color: hsl(var(--muted-foreground));
+  float: inline-start;
+  color: var(--ds-foreground-subtle);
   pointer-events: none;
   height: 0;
 }
 
 .tiptap ul,
 .tiptap ol {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 
 .tiptap ul {
@@ -294,3 +487,65 @@ h1, h2, h3, h4, h5, h6 {
 .tiptap h1 { font-size: 1.5rem; }
 .tiptap h2 { font-size: 1.25rem; }
 .tiptap h3 { font-size: 1.125rem; }
+
+/* ─── Auth backdrop pattern ──────────────────────────────── */
+/* Inline SVG so no /grid.svg request is made (BUG-078). The stroke is the
+   --ds-border value of each theme (light #E4E4E9 / dark #26262F) at low alpha,
+   which contrasts with the brand panel (indigo) in both. */
+.bg-grid-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M0 .5H32M.5 0V32' stroke='%23E4E4E9' stroke-opacity='.6'/%3E%3C/svg%3E");
+  background-size: 32px 32px;
+}
+
+.dark .bg-grid-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M0 .5H32M.5 0V32' stroke='%2326262F' stroke-opacity='.6'/%3E%3C/svg%3E");
+}
+
+/* ─── Right-to-left (Arabic, R211) ───────────────────────────
+ * Layout mirrors through logical utilities (ms-/me-/ps-/pe-/start-/end-/text-start/text-end/border-s/e/rounded-s/e)
+ * and the rtl: variant; the rules below cover what a utility class cannot. Unlayered, so they win over utilities. */
+html[dir='rtl'] {
+  font-family: var(--font-sans), 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Noto Naskh Arabic', 'Arial', sans-serif;
+}
+
+/* Letter-spacing breaks the joining of Arabic letters. */
+[dir='rtl'] :where(*) {
+  letter-spacing: normal;
+}
+
+/* Directional icons (previous/next, back/forward, undo/redo, panel toggles) face the other way. Icons that are
+ * already turned with a rotate-* class (an expander chevron, say) keep their own rotation. */
+[dir='rtl'] :is(
+  .lucide-chevron-left, .lucide-chevron-right,
+  .lucide-chevrons-left, .lucide-chevrons-right,
+  .lucide-arrow-left, .lucide-arrow-right,
+  .lucide-arrow-big-left, .lucide-arrow-big-right,
+  .lucide-move-left, .lucide-move-right,
+  .lucide-arrow-left-to-line, .lucide-arrow-right-to-line,
+  .lucide-corner-down-left, .lucide-corner-down-right,
+  .lucide-corner-left-down, .lucide-corner-right-down,
+  .lucide-panel-left, .lucide-panel-right,
+  .lucide-panel-left-close, .lucide-panel-left-open, .lucide-panel-right-close, .lucide-panel-right-open,
+  .lucide-skip-back, .lucide-skip-forward,
+  .lucide-undo, .lucide-undo-2, .lucide-redo, .lucide-redo-2,
+  .lucide-reply, .lucide-forward,
+  .lucide-log-in, .lucide-log-out,
+  .lucide-list-indent-increase, .lucide-list-indent-decrease,
+  .rtl-flip
+):not([class*='rotate-']) {
+  transform: scaleX(-1);
+}
+
+/* Values that are always written left to right stay in order inside right-to-left text. */
+[dir='rtl'] :is(input[type='email'], input[type='tel'], input[type='url'], input[type='number']) {
+  direction: ltr;
+  text-align: right;
+}
+[dir='rtl'] :is(code, kbd, samp, .font-mono, [dir='ltr']) {
+  unicode-bidi: isolate;
+}
+/* A value that must keep its left-to-right order (phone number, e-mail, code, reference) inside right-to-left text. */
+.bidi-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}

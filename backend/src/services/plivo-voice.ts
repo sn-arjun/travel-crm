@@ -16,7 +16,11 @@ import type {
   VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow,
   VoipProviderCredentials,
 } from './voip-provider';
-import { VoipProviderError, escapeXml } from './voip-provider';
+import type {
+  VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
+  VoipRecordingRef, VoipRecordingFile,
+} from './voip/contract';
+import { VoipProviderError, NotImplementedForProvider, escapeXml, voipClientIdentity } from './voip-base';
 
 export class PlivoVoipProvider implements VoipProvider {
   readonly providerName = 'plivo' as const;
@@ -37,6 +41,18 @@ export class PlivoVoipProvider implements VoipProvider {
   private get authHeader(): string {
     return 'Basic ' + btoa(`${this.authId}:${this.authToken}`);
   }
+
+  // ── Reselling contract: not supported on Plivo (owner decision 2026-10-14) ──
+
+  async createSubAccount(_input: VoipSubAccountInput): Promise<VoipSubAccount> { throw new NotImplementedForProvider('plivo', 'createSubAccount'); }
+  async closeSubAccount(_subAccountId: string): Promise<void> { throw new NotImplementedForProvider('plivo', 'closeSubAccount'); }
+  async setSubAccountStatus(_subAccountId: string, _status: 'active' | 'suspended'): Promise<void> { throw new NotImplementedForProvider('plivo', 'setSubAccountStatus'); }
+  async placeCall(_options: VoipPlaceCallOptions): Promise<VoipCallResult> { throw new NotImplementedForProvider('plivo', 'placeCall'); }
+  async fetchUsage(_input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> { throw new NotImplementedForProvider('plivo', 'fetchUsage'); }
+  async fetchRecording(_ref: VoipRecordingRef): Promise<VoipRecordingFile> { throw new NotImplementedForProvider('plivo', 'fetchRecording'); }
+  async deleteRecording(_ref: VoipRecordingRef): Promise<void> { throw new NotImplementedForProvider('plivo', 'deleteRecording'); }
+  async startRecording(_providerCallId: string, _callbackBaseUrl: string): Promise<void> { throw new NotImplementedForProvider('plivo', 'startRecording'); }
+  clientIdentity(userId: string): string { return voipClientIdentity(userId); }
 
   // ── VoipProvider: Call Management ─────────────────────────
 
@@ -198,11 +214,13 @@ export class PlivoVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false): string {
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number } = {}): string {
     const recordAttr = record ? ' record="true" recordFileFormat="mp3"' : '';
+    const actionAttr = opts.actionUrl ? ` action="${escapeXml(opts.actionUrl)}" method="POST"` : '';
+    const timeoutAttr = opts.timeout ? ` timeout="${Math.floor(opts.timeout)}"` : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${escapeXml(callerId)}"${recordAttr}>
+  <Dial callerId="${escapeXml(callerId)}"${recordAttr}${actionAttr}${timeoutAttr}>
     <User>${escapeXml(clientIdentity)}</User>
   </Dial>
 </Response>`;

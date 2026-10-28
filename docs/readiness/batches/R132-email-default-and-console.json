@@ -1,0 +1,72 @@
+{
+  "id": "R132",
+  "tier": 1,
+  "size": "M",
+  "title": "Email: Cloudflare + SendGrid by default, settings in the super admin console, the R131 gaps closed",
+  "goal": "Platform system mail goes through Cloudflare with SendGrid as the automatic fallback by default; the super admin changes the email routing from the console without a deploy; every send path uses the EmailProvider interface; platform mail has a delivery log the console shows.",
+  "why": "Owner, 2026-10-21: \"fix the gaps and keep cloudflare and sendgrid as default instead of keeping sendgrid only as default, later in super admin panel I can update the settings.\"",
+  "dependsOn": [
+    "R131",
+    "R111"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R129"
+  ],
+  "files": {
+    "edit": [
+      "backend/src/services/mail/**",
+      "backend/src/services/email.ts",
+      "backend/src/queues/campaign-queue.ts",
+      "backend/src/queues/email-queue.ts",
+      "backend/src/routes/admin*.ts",
+      "backend/scripts/gen-wrangler.mjs",
+      "backend/src/db/master-schema.ts",
+      "super-admin/src/app/(authenticated)/**",
+      "super-admin/src/components/**",
+      "super-admin/src/app/api/[...path]/route.ts",
+      "docs/GO-LIVE.md",
+      "docs/KEYS-AND-ACCOUNTS.md",
+      "docs/INFRA.md"
+    ],
+    "create": [
+      "backend/drizzle/master/0027_email_settings.sql",
+      "backend/test/email-settings.test.ts",
+      "super-admin/src/app/(authenticated)/email/page.tsx"
+    ],
+    "mustNotTouch": []
+  },
+  "steps": [
+    "Default: platform system mail -> Cloudflare (send_email binding) with automatic SendGrid fallback. gen-wrangler default EMAIL_SYSTEM_PROVIDER becomes \"cloudflare\"; when the binding is missing or Cloudflare refuses, the mail goes through SendGrid and the reason is recorded. Agency mail stays SendGrid (Cloudflare sending is transactional-only).",
+    "Runtime settings (master platform_settings, R304 table): system mail provider (cloudflare | sendgrid), fallback on/off, and the inbound reply domain switch; resolution order = console setting, then env default; cached briefly (<= 60 s) and invalidated on write; every change audited with actor and reason.",
+    "Super admin console: an Email page showing the current routing per mail kind (system / agency transactional / agency marketing and why marketing cannot use Cloudflare), the provider status (binding present, SendGrid key present, inbound domain), the switches above, a \"send test email\" action (local stacks: outbox), and the delivery log.",
+    "Gap 1, delivery log for platform mail: master table platform_email_log (id, kind/template, to (hashed or masked), provider, fallback_from, message_id, status sent|failed|fallback, error, created_at) written by sendMail for platform_system mail; SendGrid events update rows by message id (reuse R128 delivery-events); Cloudflare has no event webhook, so its rows show \"accepted by provider\" plus a link note to the Cloudflare dashboard; retention 90 days via the platform cron; add to the privacy registry if it holds addresses.",
+    "Gap 2: campaign-queue inline SendGrid fetch and the email-queue template-send path go through EmailProvider (sendMail with kind agency_marketing / agency_transactional), keeping message-id capture, unsubscribe headers and reply-to exactly as today (existing campaign and opt-out tests must pass unchanged).",
+    "Docs: GO-LIVE 9.1a and KEYS-AND-ACCOUNTS updated for the new default (Cloudflare sending onboarding needed for it to take effect; until then the fallback sends through SendGrid) and the console switch; rollback = set the console switch to SendGrid."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0027_email_settings.sql"
+  ],
+  "tests": [
+    "default routes system mail to Cloudflare and falls back to SendGrid without a binding",
+    "console setting overrides env and is audited",
+    "marketing never on Cloudflare whatever the setting",
+    "campaign and template sends go through sendMail with message ids and headers unchanged",
+    "platform_email_log rows for sent, failed and fallback; SendGrid events update them; retention"
+  ],
+  "acceptance": [
+    "Owner can switch system mail between Cloudflare and SendGrid in the console and see the delivery log"
+  ],
+  "gate": [
+    "backend tsc + vitest",
+    "gen-wrangler self-test",
+    "super-admin tsc + lint + build",
+    "e2e communication-inbox + campaigns + marketing-opt-out + first-login on a local stack"
+  ],
+  "goLiveVerify": [
+    "Cloudflare sending onboarding for the platform domain so the default takes effect"
+  ],
+  "notes": [
+    "Master migration 0027 is taken by this batch; R130 moves to 0028."
+  ]
+}

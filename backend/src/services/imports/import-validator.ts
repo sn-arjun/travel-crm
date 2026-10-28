@@ -1,15 +1,35 @@
 import { z } from 'zod';
 
 // We map each import type to a Zod schema representing its intended structure
-export const ImportSchemas = {
-    contacts: z.object({
-        firstName: z.string().min(1, 'First name is required'),
+/**
+ * Accepted contact name inputs: a single `name` column, or `firstName` (+ optional `lastName`).
+ * `name` wins when present; at least one of them is required.
+ */
+export function resolveContactName(d: { name?: string; firstName?: string; lastName?: string }): string {
+    const single = (d.name ?? '').trim();
+    if (single) return single;
+    return [d.firstName, d.lastName].map((p) => (p ?? '').trim()).filter(Boolean).join(' ');
+}
+
+const contactImportSchema = z
+    .object({
+        name: z.string().optional(),
+        firstName: z.string().optional(),
         lastName: z.string().optional(),
         email: z.string().email('Invalid email address').optional().or(z.literal('')),
         phone: z.string().optional(),
         company: z.string().optional(),
         tags: z.string().optional(), // Comma separated tags
-    }),
+    })
+    .superRefine((d, ctx) => {
+        if (!resolveContactName(d)) {
+            ctx.addIssue({ code: 'custom', path: ['name'], message: 'Name is required (a Name column, or a First name)' });
+        }
+    })
+    .transform((d) => ({ ...d, name: resolveContactName(d) }));
+
+export const ImportSchemas = {
+    contacts: contactImportSchema,
     leads: z.object({
         title: z.string().min(1, 'Lead title/subject is required'),
         firstName: z.string().min(1, 'First name is required'),
@@ -34,7 +54,7 @@ export const ImportSchemas = {
         costPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')),
         sellPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
         sellingPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
-        currency: z.string().min(3, 'Currency code requires 3 chars').max(3).optional().default('INR'),
+        currency: z.string().min(3, 'Currency code requires 3 chars').max(3).optional(),
         seasonStart: z.string().optional(),
         seasonEnd: z.string().optional(),
         validFrom: z.string().optional(),

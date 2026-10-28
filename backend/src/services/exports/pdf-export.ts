@@ -1,5 +1,6 @@
 import { PDFDocument, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import type { ReportDefinition } from '../../types/report';
+import { DEFAULT_TIMEZONE, localDateString } from '../../utils/tz';
 
 /**
  * PDF generator for Cloudflare Workers using pdf-lib.
@@ -14,7 +15,7 @@ const HEADER_ROW_HEIGHT = 18;
 const MARGIN = 40;
 
 export const pdfExportService = {
-    async generatePdf(reportDef: ReportDefinition, data: any[]): Promise<ArrayBuffer> {
+    async generatePdf(reportDef: ReportDefinition, data: any[], timeZone: string = DEFAULT_TIMEZONE): Promise<ArrayBuffer> {
         const pdfDoc = await PDFDocument.create();
         const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
         const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -67,7 +68,7 @@ export const pdfExportService = {
         y -= 20;
 
         // Subtitle
-        page.drawText(`Generated: ${new Date().toISOString().split('T')[0]}  |  ${data.length} rows`, {
+        page.drawText(`Generated: ${localDateString(timeZone)}  |  ${data.length} rows`, {
             x: MARGIN,
             y,
             size: SUB_FONT_SIZE,

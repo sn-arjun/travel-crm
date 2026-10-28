@@ -1,0 +1,1445 @@
+{
+ "failed": 179,
+ "passed": 560,
+ "skipped": 10,
+ "flaky": 0,
+ "didNotRun": 46,
+ "interrupted": 0,
+ "duration": "56.0m",
+ "total": 795,
+ "failures": [
+  {
+   "idx": 1,
+   "test": "ai-business-intelligence.spec.ts:92:7 › Daily Briefings › generates a briefing, switches type, and refreshes",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('text=Weekly briefing').first() Expected: visible",
+   "run": 18,
+   "bug": "@Brittle/stale specs",
+   "kind": "TEST-STALE (AI binding stripped)"
+  },
+  {
+   "idx": 2,
+   "test": "auth-shell.spec.ts:154:7 › Auth shell — authenticated session › logs in, uses the app shell, then logs out via the user menu",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('button', { name: /Admin User/i }) Expected: visible",
+   "run": 59,
+   "bug": "@Brittle/stale specs",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 3,
+   "test": "calls.spec.ts:30:7 › Calls › full round trip: dial via UI, view in list, view detail, edit outcome, delete",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('text=CallContact-1791014746709').first() Expected: visible",
+   "run": 72,
+   "bug": "@Combobox:",
+   "kind": "real"
+  },
+  {
+   "idx": 4,
+   "test": "calls.spec.ts:271:7 › Calls › dial pad uses PhoneInput and a searchable contact combobox, no raw ID input",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('text=DialSearch-1791014785974').first() Expected: visible",
+   "run": 80,
+   "bug": "@Combobox:",
+   "kind": "real"
+  },
+  {
+   "idx": 5,
+   "test": "campaigns.spec.ts:342:7 › C. Template relation combobox › C1: template combobox is a real combobox with no raw ID input; loading options 400s (backend query-param validation bug)",
+   "error": "Error: expect(received).toBe(expected) // Object.is equality Expected: true Received: false",
+   "run": 97,
+   "bug": "@Specs that assert the old GET /templates",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 6,
+   "test": "communication-inbox.spec.ts:366:7 › C. Compose page › C3-note: template dropdown never lists options — GET /templates 400s on every call (backend query-param validation bug, same defect documented in campaigns.spec.ts)",
+   "error": "Error: expect(received).toBe(expected) // Object.is equality Expected: true Received: false",
+   "run": 131,
+   "bug": "@Specs that assert the old GET /templates",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 7,
+   "test": "communication-inbox.spec.ts:461:7 › D. Bulk send page › D3-note: template dropdown never lists options — GET /templates 400s on every call (backend query-param validation bug, same defect documented in campaigns.spec.ts)",
+   "error": "Error: expect(received).toBe(expected) // Object.is equality Expected: true Received: false",
+   "run": 137,
+   "bug": "@Specs that assert the old GET /templates",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 8,
+   "test": "contacts.spec.ts:423:7 › Contacts › custom field can be created in settings, saved with a contact, and deleted",
+   "error": "Error: locator.click: Error: strict mode violation: getByRole('button', { name: /New Field/i }) resolved to 2 elements: Call log: - waiting for getByRole('button', { name: /New Field/i })",
+   "run": 160,
+   "bug": "@Brittle/stale specs",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 9,
+   "test": "documents.spec.ts:27:7 › Documents › full round trip: upload, view in list, view detail, rename, verify prefill, save, delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: 'DocItinerary-1791014977535' })",
+   "run": 206,
+   "bug": "@Combobox:",
+   "kind": "real"
+  },
+  {
+   "idx": 10,
+   "test": "documents.spec.ts:295:7 › Documents › linked lead/itinerary fields are searchable comboboxes with no raw ID input",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('option', { name: 'ComboLead-1791015011527' }) Expected: visible",
+   "run": 212,
+   "bug": "@Combobox:",
+   "kind": "real"
+  },
+  {
+   "idx": 11,
+   "test": "fleet-drivers.spec.ts:27:7 › Fleet Drivers › full round trip: create, view in list, view detail, edit, verify prefill, save, delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('.w-\\\\[280px\\\\]').last().locator('.grid').getByRole('button', { name: '15', exact: true }) - locator resolved to <button disabled type=\"button\" class=\"h-8 w-8 mx-auto rounded-md text-sm transition-colors opacity-30 cursor-not-allowed",
+   "run": 240,
+   "bug": "@Brittle/stale specs",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 12,
+   "test": "fleet-vehicles.spec.ts:498:7 › Fleet vehicles › infinite scroll loads more rows; bulk delete removes them",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr[role=\"button\"]') Expected: 20 Received: 0",
+   "run": 306,
+   "bug": "@Brittle/stale specs",
+   "kind": "TEST-STALE"
+  },
+  {
+   "idx": 13,
+   "test": "invoices.spec.ts:369:7 › Invoices › export surfaces an error toast when the bulk export job fails to queue",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Failed to export invoices') Expected: visible",
+   "run": 358,
+   "bug": "@Invoice bulk export failure",
+   "kind": "real"
+  },
+  {
+   "idx": 14,
+   "test": "leads.spec.ts:413:7 › Leads › unassigned leads page lists leads with no owner and bulk-assigns them",
+   "error": "Error: expect(received).toBeFalsy() Received: \"01a0fba9-165f-7402-8755-fa6e94f0e5ef\"",
+   "run": 406,
+   "bug": "@Leads are auto-assigned",
+   "kind": "real"
+  },
+  {
+   "idx": 15,
+   "test": "notifications.spec.ts:378:7 › Notification preferences › lists all 8 types with Email/Push/In-App columns and a mute-all switch",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: /notification preferences/i }) Expected: visible",
+   "run": 500,
+   "bug": "@Brittle/stale specs",
+   "kind": "triage"
+  },
+  {
+   "idx": 16,
+   "test": "payments.spec.ts:309:7 › Payments — list › method filter narrows results, shows an active-filter chip, and clears",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('table tbody tr') Expected: 2 Received: 0",
+   "run": 517,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 17,
+   "test": "payments.spec.ts:338:7 › Payments — list › empty state renders when search matches nothing",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No payments yet') Expected: visible",
+   "run": 518,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 18,
+   "test": "payments.spec.ts:346:7 › Payments — list › hover actions: view opens detail, receipt opens receipt, delete removes the row and reverses the invoice",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"HOV-1791015555034\")').first() Expected: visible",
+   "run": 519,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 19,
+   "test": "payments.spec.ts:390:7 › Payments — list › bulk delete removes every selected payment",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('table tbody tr') Expected: 2 Received: 0",
+   "run": 520,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 20,
+   "test": "payments.spec.ts:410:7 › Payments — list › export downloads a non-empty CSV containing the listed payment",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"EXP-1791015580806\")').first() Expected: visible",
+   "run": 521,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 21,
+   "test": "payments.spec.ts:436:7 › Payments — list › infinite scroll loads more rows as the list is scrolled",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('table tbody tr') Expected: 20 Received: 0",
+   "run": 522,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 22,
+   "test": "payments.spec.ts:464:7 › Payments — detail › messaging goes through SendMessageDialog, not raw links; unknown id shows not-found state",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Against invoice INV-2026-27-0088') Expected: visible",
+   "run": 524,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 23,
+   "test": "rate-cards.spec.ts:70:7 › Rate Cards › full round trip: create via form, list, drawer, edit prefill, edit, delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: 'Transport', exact: true }) - locator resolved to <div role=\"option\" tabindex=\"-1\" aria-selected=\"false\" data-state=\"unchecked\" data-slot=\"select-item\" data-radix-collection-item=\"\" aria-labelledby=\"radix-_r_1c_\" ",
+   "run": 525,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 24,
+   "test": "rate-cards.spec.ts:232:7 › Rate Cards › supplier is a searchable combobox that filters options; no raw ID input; URL param pre-fills it",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('option', { name: /Alpha1791015638037 Hotels/ }) Expected: visible",
+   "run": 528,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 25,
+   "test": "rate-cards.spec.ts:264:7 › Rate Cards › valid-to date cannot precede valid-from; currency input rejects letters",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('.w-\\\\[280px\\\\]').last().locator('> div').first().getByRole('button').last() - locator resolved to <button data-slot=\"button\" data-size=\"icon-sm\" data-variant=\"ghost\" class=\"inline-flex shrink-0 items-center justify-center gap-2 roun",
+   "run": 529,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 26,
+   "test": "rate-cards.spec.ts:277:7 › Rate Cards › list shows seeded rate card values, hover Edit opens that rate card",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"Seeded RC 1791015667142\")').first() Expected: visible",
+   "run": 530,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 27,
+   "test": "rate-cards.spec.ts:306:7 › Rate Cards › editing a non-existent rate card shows an error, not a blank form",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Failed to load rate card') Expected: visible",
+   "run": 531,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 28,
+   "test": "rate-cards.spec.ts:312:7 › Rate Cards › search narrows the list to matching rate cards",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"Srch1791015691792 Match\")').first() Expected: visible",
+   "run": 532,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 29,
+   "test": "rate-cards.spec.ts:330:7 › Rate Cards › category filter narrows the list and clearing it restores rows",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"Filt1791015704640 Hotel\")').first() Expected: visible",
+   "run": 533,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 30,
+   "test": "rate-cards.spec.ts:357:7 › Rate Cards › empty state renders when filters match nothing",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No rate cards yet') Expected: visible",
+   "run": 534,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 31,
+   "test": "rate-cards.spec.ts:366:7 › Rate Cards › infinite scroll loads more rows on scroll",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('table tbody tr:has-text(\"Scroll1791015730283\")') Expected: 20 Received: 0",
+   "run": 535,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 32,
+   "test": "rate-cards.spec.ts:384:7 › Rate Cards › bulk delete removes every selected rate card from the list",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('table tbody tr') Expected: 2 Received: 0",
+   "run": 536,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 33,
+   "test": "rate-cards.spec.ts:405:7 › Rate Cards › export downloads a non-empty CSV containing the rate card",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table tbody tr:has-text(\"Export 1791015756184\")').first() Expected: visible",
+   "run": 537,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 34,
+   "test": "reports.spec.ts:165:7 › Reports hub › renders KPI metrics from the dashboard API and every category card",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Revenue This Month', { exact: true }) Expected: visible",
+   "run": 550,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 35,
+   "test": "reports.spec.ts:179:7 › Reports hub › search narrows the cards and shows the empty state for no match",
+   "error": "TimeoutError: locator.clear: Timeout 15000ms exceeded. Call log: - waiting for getByPlaceholder('Search reports...') - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 551,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 36,
+   "test": "reports.spec.ts:193:7 › Reports hub › favoriting a card adds it to Favorites and persists across reload",
+   "error": "Error: page.reload: net::ERR_ABORTED; maybe frame was detached? Call log: - waiting for navigation until \"load\"",
+   "run": 552,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 37,
+   "test": "reports.spec.ts:206:7 › Reports hub › clicking a card navigates and records it under Recently Viewed",
+   "error": "TimeoutError: page.waitForURL: Timeout 15000ms exceeded. waiting for navigation to \"**/reports/sales\" until \"load\"",
+   "run": 553,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 38,
+   "test": "reports.spec.ts:274:7 › Report filters › changing the date range on sales re-queries with the new preset",
+   "error": "TimeoutError: page.waitForRequest: Timeout 15000ms exceeded while waiting for event \"request\"",
+   "run": 571,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 39,
+   "test": "reports.spec.ts:305:7 › Report filters › changing the date range on financial re-queries",
+   "error": "TimeoutError: page.waitForRequest: Timeout 15000ms exceeded while waiting for event \"request\"",
+   "run": 573,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 40,
+   "test": "reports.spec.ts:328:9 › Report tabs › /reports/sales: every tab activates and shows a panel (data, empty state, or retry)",
+   "error": "TimeoutError: locator.scrollIntoViewIfNeeded: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Salesperson', exact: true }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 574,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 41,
+   "test": "reports.spec.ts:328:9 › Report tabs › /reports/leads: every tab activates and shows a panel (data, empty state, or retry)",
+   "error": "TimeoutError: locator.scrollIntoViewIfNeeded: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Source', exact: true }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 575,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 42,
+   "test": "reports.spec.ts:328:9 › Report tabs › /reports/financial: every tab activates and shows a panel (data, empty state, or retry)",
+   "error": "TimeoutError: locator.scrollIntoViewIfNeeded: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Receivables', exact: true }) - navigated to \"http://localhost:3100/login\"",
+   "run": 576,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 43,
+   "test": "reports.spec.ts:342:7 › Report tabs › sales Summary tab shows KPI labels ────",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Total Revenue').first() Expected: visible",
+   "run": null,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 44,
+   "test": "reports.spec.ts:385:7 › Report export › sales export downloads a non-empty xlsx",
+   "error": "TimeoutError: page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 580,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 45,
+   "test": "reports.spec.ts:402:9 › Report export › /reports/financial: Export Excel downloads a non-empty xlsx",
+   "error": "TimeoutError: page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 581,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 46,
+   "test": "reports.spec.ts:402:9 › Report export › /reports/leads: Export Excel downloads a non-empty xlsx",
+   "error": "TimeoutError: page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 582,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 47,
+   "test": "reports.spec.ts:402:9 › Report export › /reports/pipeline: Export Excel downloads a non-empty xlsx",
+   "error": "TimeoutError: page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 583,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 48,
+   "test": "reports.spec.ts:402:9 › Report export › /reports/revenue: Export Excel downloads a non-empty xlsx",
+   "error": "TimeoutError: page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 584,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 49,
+   "test": "reports.spec.ts:414:7 › Report export › financial export offers PDF and downloads a non-empty file",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('menuitem', { name: 'Export as PDF' }) - locator resolved to <div tabindex=\"-1\" role=\"menuitem\" data-variant=\"default\" data-orientation=\"vertical\" data-radix-collection-item=\"\" data-slot=\"dropdown-menu-item\" class=\"relative flex cu",
+   "run": 585,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 50,
+   "test": "settings-company.spec.ts:144:7 › Settings — company configuration › settings hub lists every configuration area and links through",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Company Settings', level: 1 }) Expected: visible",
+   "run": 587,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 51,
+   "test": "settings-team.spec.ts:29:7 › Settings › Team › invite dialog opens, validates required fields, and cancels",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('dialog').getByRole('button', { name: 'Send invitation' }) - locator resolved to <button data-slot=\"button\" data-size=\"default\" data-variant=\"default\" class=\"inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm",
+   "run": 596,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 52,
+   "test": "settings-team.spec.ts:182:7 › Settings › Profile › profile page pre-fills values and persists edits",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Profile' }).first() Expected: visible",
+   "run": 604,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 53,
+   "test": "settings-team.spec.ts:224:7 › Settings › Profile › back button returns to settings",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'Go back' })",
+   "run": 606,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 54,
+   "test": "settings-team.spec.ts:233:7 › Settings › Email signature › fill every field, preview updates, saves and re-loads pre-filled",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Email Signature' }) Expected: visible",
+   "run": 607,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 55,
+   "test": "settings-team.spec.ts:280:7 › Settings › Email signature › hide / show preview toggles the preview card",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Signature Preview') Expected: visible",
+   "run": 608,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 56,
+   "test": "settings-team.spec.ts:292:7 › Settings › Login history & sessions › own login history lists the current login with a status badge",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('thead').getByText('Date & time', { exact: true }) Expected: visible",
+   "run": 609,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 57,
+   "test": "settings-team.spec.ts:305:7 › Settings › Login history & sessions › sessions page shows table with current session",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('table') Expected: visible",
+   "run": 610,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 58,
+   "test": "settings-team.spec.ts:341:7 › Settings › Activity log › lists entries with search, filter dialog, and empty state",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('dialog', { name: 'Filter activity log' }).getByRole('combobox').first() - locator resolved to <button dir=\"ltr\" type=\"button\" role=\"combobox\" data-state=\"closed\" data-size=\"default\" aria-expanded=\"false\" aria-autocomplete=\"none\" d",
+   "run": 613,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 59,
+   "test": "settings-team.spec.ts:368:7 › Settings › Activity log › infinite scroll loads more activity rows",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 20 Received: 0",
+   "run": 614,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 60,
+   "test": "settings-team.spec.ts:379:7 › Settings › Activity log › userId URL param pre-filters the log to that user",
+   "error": "Error: expect(locator).toContainText(expected) failed Locator: locator('tbody tr').first() Expected substring: \"Admin User\"",
+   "run": 615,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 61,
+   "test": "showcase\\full-walkthrough.spec.ts:303:5 › TravelCRM Pro — complete feature walkthrough",
+   "error": "Test timeout of 90000ms exceeded.",
+   "run": 616,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 62,
+   "test": "super-admin.spec.ts:55:7 › Super Admin › sidebar exposes the Super Admin entry to a tenant admin and routes to the dashboard",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Platform administration access required') Expected: visible",
+   "run": 617,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 63,
+   "test": "super-admin.spec.ts:65:7 › Super Admin › every page renders either its data view or the access panel, with no error toast and no mailto/wa.me/tel links",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByTestId('super-admin-no-access') Expected: visible",
+   "run": 618,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 64,
+   "test": "super-admin.spec.ts:77:7 › Super Admin › a tenant admin without super-admin rights sees an explanation instead of 403 errors",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByTestId('super-admin-no-access') Expected: visible",
+   "run": 619,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 65,
+   "test": "suppliers.spec.ts:58:7 › Suppliers: CRUD round trip › create with every field → list → drawer → detail → edit prefill → edit → delete",
+   "error": "TimeoutError: locator.fill: Timeout 15000ms exceeded. Call log: - waiting for locator('#companyName') - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 628,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 66,
+   "test": "suppliers.spec.ts:202:7 › Suppliers: CRUD round trip › form validation: name required and invalid email rejected",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: /save supplier/i }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 629,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 67,
+   "test": "suppliers.spec.ts:225:7 › Suppliers: form components › PhoneInput, category enum, status, preferred switch; no raw ID inputs",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('button[role=\"combobox\"]').filter({ hasText: '+91' }) Expected: visible",
+   "run": 630,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 68,
+   "test": "suppliers.spec.ts:267:7 › Suppliers: form components › edit form pre-fills seeded values with no \"undefined\"",
+   "error": "Error: expect(locator).toHaveValue(expected) failed Locator: locator('#companyName') Expected: \"EditPrefill mus4xepu\"",
+   "run": 631,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 69,
+   "test": "suppliers.spec.ts:300:7 › Suppliers: list page › header, Add Supplier, columns, search placeholder, no undefined/NaN",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'ListRender mus4xo5s' }).first() Expected: visible",
+   "run": 632,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 70,
+   "test": "suppliers.spec.ts:322:7 › Suppliers: list page › search narrows results to the matching supplier only",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'SearchHit mus4xy2e' }).first() Expected: visible",
+   "run": 633,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 71,
+   "test": "suppliers.spec.ts:334:7 › Suppliers: list page › category, status and preferred filters actually narrow the list",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 3 Received: 0",
+   "run": 634,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 72,
+   "test": "suppliers.spec.ts:384:7 › Suppliers: list page › empty state renders when filters match nothing",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No suppliers yet') Expected: visible",
+   "run": 635,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 73,
+   "test": "suppliers.spec.ts:391:7 › Suppliers: list page › hover actions: View, Edit, Delete (and Call) appear and navigate",
+   "error": "TimeoutError: locator.hover: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'Hover mus4ynks' }).first()",
+   "run": 636,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 74,
+   "test": "suppliers.spec.ts:414:7 › Suppliers: list page › delete via row action removes the supplier",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'RowDelete mus4z18h' }).first() Expected: visible",
+   "run": 637,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 75,
+   "test": "suppliers.spec.ts:430:7 › Suppliers: list page › bulk select + Delete removes several suppliers",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 2 Received: 0",
+   "run": 638,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 76,
+   "test": "suppliers.spec.ts:444:7 › Suppliers: list page › infinite scroll loads more rows when scrolled",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr[class*=\"cursor\"], tbody tr:has(td)').filter({ hasText: 'Scrollmus4zh1e' }) Expected: 20 Received: 0",
+   "run": 639,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 77,
+   "test": "suppliers.spec.ts:460:7 › Suppliers: list page › export downloads a non-empty CSV containing the data",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'Export mus4zr00' }).first() Expected: visible",
+   "run": 640,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 78,
+   "test": "suppliers.spec.ts:494:7 › Suppliers: detail page › stats, tabs and overview sections render without undefined",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'DetailTabs mus4zwz9' }) Expected: visible",
+   "run": 642,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 79,
+   "test": "suppliers.spec.ts:518:7 › Suppliers: detail page › Prefer / Unprefer toggles and persists",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: /^prefer$/i }) - waiting for navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 643,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 80,
+   "test": "suppliers.spec.ts:535:7 › Suppliers: detail page › record a payment → appears in Payments list and updates totals",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: /related/i }) - waiting for navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 644,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 81,
+   "test": "suppliers.spec.ts:572:7 › Suppliers: detail page › Related tab: rate cards, payments and ledger sections with Add Rate Card link",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: /related/i }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 645,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 82,
+   "test": "suppliers.spec.ts:599:7 › Suppliers: detail page › Documents tab shows an upload dropzone and empty state",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: /documents/i }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 646,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 83,
+   "test": "suppliers.spec.ts:620:7 › Suppliers: detail page › missing supplier shows a friendly error with a way back",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Failed to load supplier') Expected: visible",
+   "run": 647,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 84,
+   "test": "suppliers.spec.ts:639:7 › Suppliers: communication › detail \"Send message\" opens SendMessageDialog; no mailto/wa.me/tel links",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: /send message/i })",
+   "run": 648,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 85,
+   "test": "suppliers.spec.ts:658:7 › Suppliers: communication › list drawer \"Email\" opens SendMessageDialog; Call routes through the dialer",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'DrawerMsg mus52ea1' }).first()",
+   "run": 649,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 86,
+   "test": "suppliers.spec.ts:684:7 › Suppliers: rate comparison › form fields, season options and enable/disable of Compare Rates",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('combobox').filter({ hasText: /select service type/i }) - locator resolved to <button dir=\"ltr\" type=\"button\" role=\"combobox\" data-state=\"closed\" data-placeholder=\"\" data-size=\"default\" aria-expanded=\"false\" aria-autocomplete=\"none",
+   "run": 650,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 87,
+   "test": "suppliers.spec.ts:709:7 › Suppliers: rate comparison › no matching rates shows the \"No rates found\" empty state",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: 'Standard Room' }).first() - locator resolved to <div role=\"option\" tabindex=\"-1\" data-highlighted=\"\" aria-selected=\"false\" data-state=\"unchecked\" data-slot=\"select-item\" data-radix-collection-item=\"\" aria-labelle",
+   "run": 651,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 88,
+   "test": "suppliers.spec.ts:721:7 › Suppliers: rate comparison › compares seeded rate cards, ranks cheapest first and navigates to the supplier",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: 'Standard Room' }).first() - locator resolved to <div role=\"option\" tabindex=\"-1\" data-highlighted=\"\" aria-selected=\"false\" data-state=\"unchecked\" data-slot=\"select-item\" data-radix-collection-item=\"\" aria-labelle",
+   "run": 652,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 89,
+   "test": "suppliers.spec.ts:767:7 › Suppliers: navigation and API › sidebar Suppliers and Rate Comparison links navigate",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('aside a[href=\"/suppliers\"]').first() Expected: visible",
+   "run": 653,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 90,
+   "test": "tasks.spec.ts:91:7 › Tasks: CRUD round trip › create with every field → list → detail → edit prefill → edit → delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('dialog').locator('button[role=\"combobox\"]').first() - locator resolved to <button dir=\"ltr\" type=\"button\" role=\"combobox\" data-state=\"closed\" data-size=\"default\" aria-expanded=\"false\" aria-autocomplete=\"none\" data-slot=\"select-tri",
+   "run": 655,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 91,
+   "test": "tasks.spec.ts:202:7 › Tasks: create form › submitting without a title shows a validation toast and keeps the dialog open",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('dialog').getByRole('button', { name: /^create task$/i }) - locator resolved to <button data-slot=\"button\" data-size=\"default\" data-variant=\"default\" class=\"inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm ",
+   "run": 656,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 92,
+   "test": "tasks.spec.ts:211:7 › Tasks: create form › category dropdown lists every option",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('dialog').locator('button[role=\"combobox\"]').nth(1) - locator resolved to <button dir=\"ltr\" type=\"button\" role=\"combobox\" data-state=\"closed\" data-size=\"default\" aria-expanded=\"false\" aria-autocomplete=\"none\" data-slot=\"select-trig",
+   "run": 657,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 93,
+   "test": "tasks.spec.ts:223:7 › Tasks: create form › assignee and lead are searchable comboboxes (typing filters), never raw ID inputs",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  getByRole('dialog').locator('input') Expected: 1 Received: 0",
+   "run": 658,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 94,
+   "test": "tasks.spec.ts:253:7 › Tasks: create form › lead is pre-filled from ?leadId URL params and the created task is linked to it",
+   "error": "Error: expect(locator).toContainText(expected) failed Locator: getByRole('dialog').locator('button[role=\"combobox\"]').nth(3) Expected substring: \"Prefill Lead mus55dw2\"",
+   "run": 659,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 95,
+   "test": "tasks.spec.ts:277:7 › Tasks: list UX › search narrows rows and a non-matching search renders the empty state",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'Searchable mus55lqn' }).first() Expected: visible",
+   "run": 660,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 96,
+   "test": "tasks.spec.ts:294:7 › Tasks: list UX › status filter lists every status and narrows the table",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'FilterTodo mus55vlw' }).first() Expected: visible",
+   "run": 661,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 97,
+   "test": "tasks.spec.ts:320:7 › Tasks: list UX › priority filter narrows the table ────",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('button[role=\"combobox\"]').filter({ hasText: /all priorities/i }).first()",
+   "run": null,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 98,
+   "test": "tasks.spec.ts:335:7 › Tasks: list UX › row hover actions: view navigates, delete removes the row",
+   "error": "TimeoutError: locator.hover: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'HoverTask mus56j54' }).first()",
+   "run": 663,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 99,
+   "test": "tasks.spec.ts:360:7 › Tasks: list UX › bulk select → Mark complete, then bulk Delete",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'Bulk A mus56wtg' }).first() Expected: visible",
+   "run": 664,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 100,
+   "test": "tasks.spec.ts:388:7 › Tasks: list UX › export downloads a non-empty CSV containing the data",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'Export mus576n2' }).first() Expected: visible",
+   "run": 665,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 101,
+   "test": "tasks.spec.ts:409:7 › Tasks: list UX › infinite scroll loads more rows when scrolled",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr:has(td)').filter({ hasText: 'Scrollmus57cne' }) Expected: 20 Received: 0",
+   "run": 666,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 102,
+   "test": "tasks.spec.ts:433:7 › Tasks: detail page › status select updates the task and the Overview badge",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Status mus57mn9' }).first() Expected: visible",
+   "run": 668,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 103,
+   "test": "tasks.spec.ts:453:7 › Tasks: detail page › subtasks: add, toggle complete, progress and parent counts",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No subtasks yet') Expected: visible",
+   "run": 669,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 104,
+   "test": "tasks.spec.ts:475:7 › Tasks: detail page › comments: post, edit, delete; Activity tab shows creation and comments",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Related' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 670,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 105,
+   "test": "tasks.spec.ts:508:7 › Tasks: detail page › overdue badge shows for past due dates and disappears when done",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Overdue', { exact: true }).first() Expected: visible",
+   "run": 671,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 106,
+   "test": "tasks.spec.ts:521:7 › Tasks: detail page › unknown task id renders the not-found state",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Task not found') Expected: visible",
+   "run": 672,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 107,
+   "test": "tasks.spec.ts:535:7 › Tasks: kanban › three columns, overdue card, drag a card to Done persists and updates the dashboard summary",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('h3').filter({ hasText: 'To Do' }).first() Expected: visible",
+   "run": 673,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 108,
+   "test": "tasks.spec.ts:576:7 › Tasks: kanban › create from the kanban view adds the card to To Do",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('h3').filter({ hasText: 'To Do' }).first() Expected: visible",
+   "run": 674,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 109,
+   "test": "tasks.spec.ts:594:7 › Tasks: no direct messaging links › list, kanban and detail pages have no mailto:/wa.me/tel: anchors",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('h3').filter({ hasText: 'To Do' }).first() Expected: visible",
+   "run": 675,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 110,
+   "test": "test-harness.spec.ts:52:7 › Test harness — /test/reset › reseeded record appears in the CRM UI and disappears after reset",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Harness Visible 1791016990943').first() Expected: visible",
+   "run": 679,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 111,
+   "test": "travellers.spec.ts:95:7 › Travellers: full round trip › create with every field -> list -> detail -> edit pre-fill -> edit -> delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /TvlrContact 1791017007824/ }).first()",
+   "run": 680,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 112,
+   "test": "travellers.spec.ts:203:7 › Travellers: form › email and phone entered in the form persist and show on the detail and edit pages",
+   "error": "Error: expect(page).toHaveURL(expected) failed Expected pattern: /\\/travellers\\/(?!new$)[\\w-]{20,}$/ Received string:  \"http://localhost:3100/login\"",
+   "run": 681,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 113,
+   "test": "travellers.spec.ts:269:7 › Travellers: form › contact is a searchable relation combobox, not a raw id input",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('option', { name: /RelAlpha 1791017058313/ }) Expected: visible",
+   "run": 684,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 114,
+   "test": "travellers.spec.ts:295:7 › Travellers: form › ?contactId prefills the contact combobox with the contact name",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('combobox').filter({ hasText: 'Prefill 1791017066077' }) Expected: visible",
+   "run": 686,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 115,
+   "test": "travellers.spec.ts:307:7 › Travellers: list › header, add button, search box, columns and sidebar entry",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('aside a[href=\"/travellers\"]').first() Expected: visible",
+   "run": 687,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 116,
+   "test": "travellers.spec.ts:325:7 › Travellers: list › search narrows by name and by passport number; no match shows empty state",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'SrchAlpha1791017085258' }) Expected: 1 Received: 0",
+   "run": 688,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 117,
+   "test": "travellers.spec.ts:347:7 › Travellers: list › hover reveals View / Edit / Delete; row click and View open detail; Edit opens edit page",
+   "error": "TimeoutError: locator.hover: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'Hov1791017092524' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 689,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 118,
+   "test": "travellers.spec.ts:377:7 › Travellers: list › row Delete asks for confirmation; Cancel keeps the row, Delete removes it",
+   "error": "TimeoutError: locator.hover: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'DelRow1791017109760' })",
+   "run": 690,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 119,
+   "test": "travellers.spec.ts:407:7 › Travellers: list › passport expiry tag: valid, expiring soon and expired all render real dates",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'ExpOk1791017127133' }) Expected: 1 Received: 0",
+   "run": 691,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 120,
+   "test": "travellers.spec.ts:432:7 › Travellers: list › export downloads a non-empty CSV containing the visible rows",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Exp1791017134381' }) Expected: 1 Received: 0",
+   "run": 692,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 121,
+   "test": "travellers.spec.ts:454:7 › Travellers: list › bulk select + delete removes the selected rows",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Bulk1791017141743' }) Expected: 2 Received: 0",
+   "run": 693,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 122,
+   "test": "travellers.spec.ts:473:7 › Travellers: list › infinite scroll loads the next page when the sentinel is reached",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr[tabindex]') Expected: 20 Received: 0",
+   "run": 694,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 123,
+   "test": "travellers.spec.ts:507:7 › Travellers: detail › tabs, header, passport in mono font, no undefined/NaN",
+   "error": "Error: expect(locator).toHaveText(expected) failed Locator:  getByRole('heading', { level: 1 }) Expected: \"Head1791017157006 E2E\" Received: \"Manage your travelbusiness smarter\"",
+   "run": 696,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 124,
+   "test": "travellers.spec.ts:524:7 › Travellers: detail › passport status tag reflects valid vs expired",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText(/Passport valid till \\d{1,2} \\w{3,4} \\d{4}/) Expected: visible",
+   "run": 697,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 125,
+   "test": "travellers.spec.ts:536:7 › Travellers: detail › link and unlink a contact via the Link Contact dialog",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No contact linked yet') Expected: visible",
+   "run": 698,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 126,
+   "test": "travellers.spec.ts:565:7 › Travellers: detail › Send message opens SendMessageDialog; no mailto:/tel:/wa.me anchors on detail",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'Send message' })",
+   "run": 699,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 127,
+   "test": "travellers.spec.ts:583:7 › Travellers: detail › Related tab lists the traveller's visa applications; New visa application carries the traveller",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Related' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 700,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 128,
+   "test": "travellers.spec.ts:610:7 › Travellers: detail › traveller without visas shows the empty related state",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Related' })",
+   "run": 701,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 129,
+   "test": "travellers.spec.ts:618:7 › Travellers: detail › Documents tab uploads, lists and deletes a traveller document",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Documents' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 702,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 130,
+   "test": "travellers.spec.ts:638:7 › Travellers: detail › deleting from detail asks for confirmation first; Cancel keeps the traveller",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'More actions' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 703,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 131,
+   "test": "visa.spec.ts:155:7 › A. Create → list → detail → edit → delete › every field survives create, list, detail, edit pre-fill, edit and delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /Flow1791017265025/ }).first()",
+   "run": 705,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 132,
+   "test": "visa.spec.ts:278:7 › B. Form › traveller and destination are searchable comboboxes — typing filters options, no raw ID input",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  getByRole('option', { name: /ComboA1791017282670/ }) Expected: 1 Received: 0",
+   "run": 707,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 133,
+   "test": "visa.spec.ts:323:7 › B. Form › ?travellerId= pre-selects the traveller by name, and the prefilled form saves",
+   "error": "Error: expect(locator).toContainText(expected) failed Locator: locator('label').filter({ hasText: /^Traveller\\s*\\*?$/ }).locator('..').getByRole('combobox') Expected substring: \"Prefill1791017289804 Visa\"",
+   "run": 708,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 134,
+   "test": "visa.spec.ts:358:7 › C. List › header, count, columns, filter bar and sidebar entry render",
+   "error": "TimeoutError: page.waitForURL: Timeout 30000ms exceeded. waiting for navigation until \"load\"",
+   "run": 710,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 135,
+   "test": "visa.spec.ts:377:7 › C. List › search narrows rows by destination ──────────",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Alpha1791017334536land' }) Expected: 1 Received: 0",
+   "run": null,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 136,
+   "test": "visa.spec.ts:394:7 › C. List › status filter lists every status, narrows rows, shows the empty state and clears",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Stat1791017341779land' }) Expected: 2 Received: 0",
+   "run": 712,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 137,
+   "test": "visa.spec.ts:427:7 › C. List › empty state renders when the search matches nothing",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('No visa applications yet') Expected: visible",
+   "run": 713,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 138,
+   "test": "visa.spec.ts:436:7 › C. List › hover reveals View / Edit / Delete and each one navigates or acts",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Hover1791017361103 Visa' }) Expected: 1 Received: 0",
+   "run": 714,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 139,
+   "test": "visa.spec.ts:462:7 › C. List › clicking a row opens the detail page ────────",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'Click1791017368333 Visa' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": null,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 140,
+   "test": "visa.spec.ts:476:7 › C. List › row Delete asks for confirmation: Cancel keeps the row, Delete removes it and the list refreshes",
+   "error": "TimeoutError: locator.hover: Timeout 15000ms exceeded. Call log: - waiting for locator('tbody tr').filter({ hasText: 'DelRow1791017385527 Visa' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 716,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 141,
+   "test": "visa.spec.ts:504:7 › C. List › bulk select + delete removes the selected rows",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Bulk1791017402736land' }) Expected: 2 Received: 0",
+   "run": 717,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 142,
+   "test": "visa.spec.ts:523:7 › C. List › export downloads a non-empty, correctly-shaped CSV",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr').filter({ hasText: 'Exp1791017409994 Csv' }) Expected: 1 Received: 0",
+   "run": 718,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 143,
+   "test": "visa.spec.ts:556:7 › C. List › infinite scroll loads the next page when the sentinel is reached",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr[tabindex]') Expected: 20 Received: 0",
+   "run": 719,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 144,
+   "test": "visa.spec.ts:581:7 › D. Detail › header shows traveller, destination · type and status; missing optionals render a dash, not undefined",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Hdr1791017424882 Visa' }) Expected: visible",
+   "run": 720,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 145,
+   "test": "visa.spec.ts:602:7 › D. Detail › every status renders its own label on the detail page",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Stt1791017436850 Visa' }) Expected: visible",
+   "run": 721,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 146,
+   "test": "visa.spec.ts:621:7 › D. Detail › checklist is auto-generated; ticking items updates progress, persists, and advances the status",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('0/8 completed') Expected: visible",
+   "run": 722,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 147,
+   "test": "visa.spec.ts:652:7 › D. Detail › notes can be edited, cancelled and saved, and persist",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Original note') Expected: visible",
+   "run": 723,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 148,
+   "test": "visa.spec.ts:681:7 › D. Detail › documents: upload, list, download and delete",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Documents' })",
+   "run": 724,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 149,
+   "test": "visa.spec.ts:719:7 › D. Detail › documents: a disallowed file type is rejected client-side",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Documents' })",
+   "run": 725,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 150,
+   "test": "visa.spec.ts:730:7 › D. Detail › activity tab shows created and current status",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Activity' })",
+   "run": 726,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 151,
+   "test": "visa.spec.ts:741:7 › D. Detail › delete asks for confirmation: Cancel keeps the record, Delete removes it and returns to the list",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'More actions' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 727,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 152,
+   "test": "visa.spec.ts:759:7 › D. Detail › an unknown id shows the error state with a way back, not a crash",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Failed to load visa record') Expected: visible",
+   "run": 728,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 153,
+   "test": "visa.spec.ts:772:7 › E. Dashboard › stats match the API, upcoming deadlines and by-country render real data and link to detail",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Visa Dashboard' }) Expected: visible",
+   "run": 729,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 154,
+   "test": "visa.spec.ts:802:7 › E. Dashboard › View All Applications goes to the list ─",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'View All Applications' })",
+   "run": null,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 155,
+   "test": "visa.spec.ts:815:7 › F. Cross-entity and API › traveller detail → New visa application opens the form with that traveller selected; the new visa appears on the traveller",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('tab', { name: 'Related' }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 731,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 156,
+   "test": "visa.spec.ts:840:7 › F. Cross-entity and API › sidebar entry navigates to the visa list",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for locator('aside a[href=\"/visa\"]').first() - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 732,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 157,
+   "test": "voip-settings.spec.ts:152:7 › A. voip_calling gate › both pages render the feature or an upgrade affordance, never a 403 error",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'VoIP Settings' }).first().or(getByText(/not available on your plan/i).first()) Expected: visible",
+   "run": 735,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 158,
+   "test": "voip-settings.spec.ts:181:7 › B. VoIP settings form › fill every field, save, pre-fill after reload, persisted via API with masked secret",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'VoIP Settings' }).first().or(getByText(/not available on your plan/i).first()) Expected: visible",
+   "run": 736,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 159,
+   "test": "voip-settings.spec.ts:312:7 › C. Phone numbers › empty state, search -> purchase, set primary, delete",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'Phone Numbers' }).first().or(getByText(/not available on your plan/i).first()) Expected: visible",
+   "run": 742,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 160,
+   "test": "vouchers.spec.ts:129:7 › A. Hotel voucher — full lifecycle › create through the form with every field, lands on detail showing every value",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /VchLeadAlpha 1791017686155/ })",
+   "run": 746,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 161,
+   "test": "vouchers.spec.ts:345:7 › B. Transport, flight and activity vouchers through the UI › transport voucher: every field in, detail and edit round trip",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /VchLeadAlpha 1791017703329/ })",
+   "run": 752,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 162,
+   "test": "vouchers.spec.ts:393:7 › B. Transport, flight and activity vouchers through the UI › flight voucher: every field in, detail and edit pre-fill",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /VchLeadAlpha 1791017720518/ })",
+   "run": 753,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 163,
+   "test": "vouchers.spec.ts:436:7 › B. Transport, flight and activity vouchers through the UI › activity voucher: every field in, detail and edit pre-fill",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /VchLeadAlpha 1791017737694/ })",
+   "run": 754,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 164,
+   "test": "vouchers.spec.ts:467:7 › B. Transport, flight and activity vouchers through the UI › title is auto-generated when left empty",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: /VchLeadAlpha 1791017754893/ })",
+   "run": 755,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 165,
+   "test": "vouchers.spec.ts:483:7 › C. Voucher form — validation, relations, prefill › submitting an empty form shows required errors and creates nothing",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('option', { name: 'Transport', exact: true }) - locator resolved to <div role=\"option\" tabindex=\"-1\" aria-selected=\"false\" data-state=\"unchecked\" data-slot=\"select-item\" data-radix-collection-item=\"\" aria-labelledby=\"radix-_r_12_\" ",
+   "run": 756,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 166,
+   "test": "vouchers.spec.ts:521:7 › C. Voucher form — validation, relations, prefill › lead and supplier are searchable comboboxes, never raw ID inputs",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('option', { name: /VchLeadBravo 1791017789336/ }) Expected: visible",
+   "run": 757,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 167,
+   "test": "vouchers.spec.ts:546:7 › C. Voucher form — validation, relations, prefill › URL params pre-fill the lead and the voucher type",
+   "error": "Error: expect(locator).toContainText(expected) failed Locator: locator('label[for=\"leadId\"] ~ div button[role=\"combobox\"]') Expected substring: \"VchLeadBravo 1791017801521\"",
+   "run": 758,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 168,
+   "test": "vouchers.spec.ts:600:7 › D. Voucher list › header, count, primary action, filter bar and sidebar entry",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('aside a[href=\"/vouchers\"]').first() Expected: visible",
+   "run": 760,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 169,
+   "test": "vouchers.spec.ts:618:7 › D. Voucher list › search narrows the list and the empty state renders when nothing matches",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 3 Received: 0",
+   "run": 761,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 170,
+   "test": "vouchers.spec.ts:634:7 › D. Voucher list › type filter narrows, shows a chip, and the chip removes it",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 3 Received: 0",
+   "run": 762,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 171,
+   "test": "vouchers.spec.ts:656:7 › D. Voucher list › status filter offers draft/sent/confirmed only and narrows",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 3 Received: 0",
+   "run": 763,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 172,
+   "test": "vouchers.spec.ts:678:7 › D. Voucher list › hover reveals View/Edit/Send/Delete and row click opens the detail page",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: locator('tbody tr').filter({ hasText: 'ListV1791017863013 Hotel' }).first() Expected: visible",
+   "run": 764,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 173,
+   "test": "vouchers.spec.ts:706:7 › D. Voucher list › bulk selection deletes several vouchers and refreshes the list",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 2 Received: 0",
+   "run": 765,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 174,
+   "test": "vouchers.spec.ts:720:7 › D. Voucher list › infinite scroll loads the next page when the list is scrolled",
+   "error": "Error: expect(locator).toHaveCount(expected) failed Locator:  locator('tbody tr') Expected: 20 Received: 0",
+   "run": 766,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 175,
+   "test": "vouchers.spec.ts:740:7 › D. Voucher list › export downloads a non-empty, themed CSV containing the data",
+   "error": "TimeoutError: page.waitForEvent: Timeout 15000ms exceeded while waiting for event \"download\" waiting for event \"download\"",
+   "run": 767,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 176,
+   "test": "vouchers.spec.ts:766:7 › E. Voucher detail — messaging and PDF › Send message opens the Communication Hub dialog, no mailto:/wa.me/tel: anywhere",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: /send message/i })",
+   "run": 768,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 177,
+   "test": "vouchers.spec.ts:786:7 › E. Voucher detail — messaging and PDF › PDF button downloads a non-empty file without an error toast",
+   "error": "TimeoutError: locator.click: Timeout 15000ms exceeded. Call log: - waiting for getByRole('button', { name: 'PDF', exact: true }) - waiting for\" http://localhost:3100/login\" navigation to finish... - navigated to \"http://localhost:3100/login\"",
+   "run": 769,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 178,
+   "test": "vouchers.spec.ts:801:7 › E. Voucher detail — messaging and PDF › detail page shows lead, language and created date for a seeded voucher",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByText('Voucher info') Expected: visible",
+   "run": 770,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  },
+  {
+   "idx": 179,
+   "test": "whatsapp-campaigns.spec.ts:130:7 › WhatsApp campaigns › A. list page renders the working feature or an upgrade affordance, never an error toast",
+   "error": "Error: expect(locator).toBeVisible() failed Locator: getByRole('heading', { name: 'WhatsApp Campaigns' }).first().or(getByText(/not available on your plan/i).first()) Expected: visible",
+   "run": 781,
+   "bug": "@E2E harness reuses one storageState",
+   "kind": "auth cascade (login page)"
+  }
+ ],
+ "notes": "**Classification.** 15 failures are individual (real bugs or stale specs, classified per row). **164 failures are one cascade**: from run #517 (payments.spec, ~36 min into the run) every UI test lands on the login page because all tests share one storageState whose single-use refresh token was rotated by an earlier context (BUG-001 + harness item). Those specs (payments, rate-cards, reports, settings-company, settings-team, super-admin, suppliers, tasks, test-harness, travellers, visa, voip-settings, vouchers, whatsapp-campaigns, showcase/full-walkthrough) are **untested**, not proven broken – re-run after the auth fix. The backend stayed up for the whole run (wrangler log shows traffic until the last spec).\n\n**Why 46 did not run.** 14 spec files use `test.describe.configure({ mode: 'serial' })` (auth-shell, chatbot, fleet-vehicles, follow-ups, import-export, marketing-campaigns, marketing-opt-out, notifications, settings-company, settings-team, test-harness, voip-settings, vouchers, whatsapp-campaigns). In serial mode Playwright stops a describe block at its first failure and reports the remaining tests as \"did not run\"; nearly all of the 46 are tails of serial blocks inside the login cascade (settings-team, vouchers, voip-settings, whatsapp-campaigns, test-harness, notifications, settings-company, fleet-vehicles, auth-shell). The 10 \"skipped\" are explicit test.skip/fixme in specs."
+}

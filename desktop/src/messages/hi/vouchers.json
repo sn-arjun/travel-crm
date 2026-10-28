@@ -1,0 +1,12 @@
+{
+  "vouchers.voucherCode": "वाउचर कोड",
+  "vouchers.type": "प्रकार",
+  "vouchers.supplier": "आपूर्तिकर्ता",
+  "vouchers.amount": "राशि",
+  "vouchers.expiryDate": "समाप्ति की तारीख",
+  "vouchers.status": "स्थिति",
+  "vouchers.createVoucher": "वाउचर बनाएं",
+  "vouchers.editVoucher": "वाउचर संपादित करें",
+  "vouchers.deleteVoucher": "वाउचर हटाएं",
+  "vouchers.used": "इस्तेमाल किया गया"
+}

@@ -1,0 +1,81 @@
+{
+  "id": "B08",
+  "title": "Backend: driver OTP bypass (TEST_MODE), phone normalisation, IST \"today\", CORS, traveller email/phone",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W2",
+  "dependsOn": [
+    "B02"
+  ],
+  "parallelGroup": "W2",
+  "bugIds": [
+    "BUG-005",
+    "BUG-008",
+    "BUG-035",
+    "BUG-064",
+    "BUG-083"
+  ],
+  "fixReqs": [
+    "FR-1",
+    "FR-2"
+  ],
+  "estFiles": 14,
+  "goal": "Drivers can log in locally with OTP 123456 only when TEST_MODE=true, by any phone format; \"today\" follows the tenant timezone; browser clients on any localhost port can send X-Tenant-Id; travellers keep email/phone.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified in backend/src/routes/driver.ts: /login (94-155) and /login/verify (157-230) call Twilio Verify unconditionally -> 500 \"Failed to send OTP\" without credentials; lookups are `WHERE phone = ?` exact (100-103, ~183) while desktop PhoneInput stores digits only (\"9876543210\") and the app sends \"+91...\"; the OTP rate-limit compares ISO timestamps (with \"T\") to `datetime('now','-10 minutes')` (space separator) so every same-day row counts -> effectively 3 OTPs per day; the verify step runs `UPDATE ... ORDER BY created_at DESC LIMIT 1` which SQLite/D1 rejects unless compiled with UPDATE LIMIT; GET /trips (306-351) filters today with `date(ta.pickup_datetime) = date('now')` (UTC) - trips are stored as UTC ISO strings (desktop trips/new toIso() converts local time with toISOString), so IST trips before 05:30 land on the wrong day. Timezone source: look for a company/tenant timezone setting (settings table / settings route); default 'Asia/Kolkata'. CORS (index.ts:119-131): fixed origin list (3000/3100/8080/*.pages.dev) and allowHeaders lacks X-Tenant-Id; parallel e2e slots use web ports 3100/3110/3120/3130. travellers.ts: no email/phone in validator/table (POSTed values dropped - the verify:travellers gate failure) and the PUT field map uses frequent_flyer_number while the column is frequent_flyer_numbers (~line 136). packages/shared has a travellers endpoint (api_endpoints.dart:162) - do NOT change the travellers GET envelope or casing (desktop normalises it in B11). Driver app (B03) now sends {phone:'+91XXXXXXXXXX', tenantId, otp}; the storyboard FR-1 check is `POST /api/v1/driver/login` then `/login/verify` with {phone:'+919876543210', tenantId:'01960000-0000-7000-8000-000000000001', otp:'123456'} -> accessToken.",
+  "steps": [
+    "Validators for driver login/verify: tenantId optional in the body; resolve `body.tenantId ?? c.req.header('X-Tenant-Id')`; 400 \"tenantId is required\" if neither.",
+    "TEST_MODE bypass: const TEST_OTP = '123456'. If c.env.TEST_MODE === 'true': /login skips Twilio, logs the OTP row as 'sent' and returns {message:'OTP sent', driverId, testMode:true}; /login/verify approves only otp === TEST_OTP (others 401 \"Invalid or expired OTP\") without calling Twilio. When TEST_MODE !== 'true' behaviour is unchanged except: missing TWILIO_* env -> 503 \"SMS provider not configured\" (not 500).",
+    "Create backend/src/utils/phone.ts: normalizePhone(raw, defaultCc = '91') -> E.164 ('+' + digits; 10 digits -> +91..., leading 0 + 10 -> +91..., 91 + 10 -> +91..., already + kept) and phoneLookupVariants(raw) -> unique [e164, last 10 digits, digits only]. Use variants in driver login/verify lookups (`WHERE phone IN (?, ?, ?) AND is_deleted = 0`) and the OTP log queries; store E.164 in logs. In routes/fleet.ts driver create/update (and any driver bulk import path there), store normalizePhone(phone).",
+    "Rate limit: bind a JS cutoff `new Date(Date.now() - 10 * 60_000).toISOString()` and compare `created_at > ?`; limit 3 (20 when TEST_MODE).",
+    "OTP log update: `UPDATE driver_otp_log SET status = 'verified' WHERE id = (SELECT id FROM driver_otp_log WHERE phone IN (...) AND status = 'sent' ORDER BY created_at DESC LIMIT 1)`.",
+    "Create backend/src/utils/tz.ts: localDayWindowUtc(timeZone, now = new Date()) -> {startIso, endIso} for the tenant-local calendar day, computed with Intl.DateTimeFormat (no deps). GET /driver/trips: today = pickup in [start, end); upcoming = pickup >= end AND status IN ('assigned','accepted'); past = status IN ('completed','cancelled') OR pickup < start. Keep paginated() output.",
+    "CORS (index.ts block only): allowHeaders add 'X-Tenant-Id'; origin as a function: allow the existing list, plus any `http://localhost:<port>` / `http://127.0.0.1:<port>` when c.env.ENVIRONMENT !== 'production' (check the env var name in types.ts / wrangler.toml) or TEST_MODE === 'true'.",
+    "Travellers: new migration backend/drizzle/tenant/0036_travellers_email_phone.sql (`ALTER TABLE travellers ADD COLUMN email TEXT;` and `... phone TEXT;`), tenant-schema travellers gets email/phone, validator accepts optional email (valid email or empty) and phone, create/update persist them (normalizePhone for phone), GET/detail return them in the existing shape (add email/phone keys in whatever casing that response already uses), PUT maps frequentFlyerNumbers/frequent_flyer_numbers -> column frequent_flyer_numbers. New ids via generateId().",
+    "Tests: backend/test/driver-auth.test.ts - TEST_MODE login+verify with 123456 returns accessToken; wrong OTP 401; bypass refused when env TEST_MODE='false' (pass an env override to app.request); tenantId via header; a driver stored as '9876543210' logs in with '+919876543210' and vice versa; rate-limit uses the cutoff; trips today window for now = 00:30 IST and 23:30 IST. Extend visa-traveller.test.ts (or new travellers test) for email/phone round trip and frequent flyer update. CORS preflight from http://localhost:3110 with X-Tenant-Id allowed.",
+    "Run backend `npx vitest run` (>= 901 + your new tests, 0 failed files) and `npm run typecheck`. Then curl the FR-1 check against `wrangler dev --var TEST_MODE:true` after creating a driver with phone 9876543210 via POST /fleet/drivers (paste output in the report).",
+    "Driver trip payloads (from B03 hand-off): backend/src/routes/driver.ts GET /trips and GET /trips/:id do not return trip coordinates although the trips table has pickup_lat/pickup_lng/drop_lat/drop_lng (tenant-schema.ts ~1574; fleet.ts ~1878 already maps them for the desktop). Add pickupLat, pickupLng, dropLat, dropLng (number|null) to the driver trip list/detail responses (additive only) and cover with a test, so the driver app's Navigate buttons (which read trip['pickupLat'] etc.) appear.",
+    "Backend typecheck (from B02 hand-off): `cd backend && npx tsc --noEmit` reports 1 error in src/routes/travellers.ts (~line 106, passportExpiry type). Fix it as part of the travellers work."
+  ],
+  "filesAllowlist": [
+    "backend/src/routes/driver.ts",
+    "backend/src/routes/fleet.ts (driver create/update phone normalisation only)",
+    "backend/src/routes/travellers.ts",
+    "backend/src/validators/**",
+    "backend/src/utils/phone.ts",
+    "backend/src/utils/tz.ts",
+    "backend/src/index.ts (CORS block only)",
+    "backend/src/db/tenant-schema.ts (travellers table only)",
+    "backend/drizzle/tenant/0036_travellers_email_phone.sql",
+    "backend/test/**"
+  ],
+  "mustNotTouch": [
+    "packages/**",
+    "desktop/**",
+    "backend/drizzle/tenant/00{00..35}_*.sql",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "FR-1: with TEST_MODE=true, POST /driver/login {phone:'+919876543210', tenantId} -> 200, then /driver/login/verify with otp '123456' -> accessToken; with TEST_MODE unset the same call never accepts 123456.",
+    "A driver created from the desktop form with digits-only phone can log in from the app (+91 format) and vice versa.",
+    "GET /driver/trips?tab=today returns a trip whose pickup is 01:00 IST today.",
+    "OPTIONS preflight from http://localhost:3110 with X-Tenant-Id succeeds.",
+    "Travellers POST with email/phone -> GET returns them; frequent flyer numbers update persists.",
+    "backend vitest: 0 failed files, passed >= 901 + new tests.",
+    "GET /api/v1/driver/trips/:id returns pickupLat/pickupLng/dropLat/dropLng (null when unset).",
+    "`cd backend && npx tsc --noEmit` shows 0 errors in src/routes/travellers.ts and src/routes/driver.ts."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Do not weaken OTP security outside TEST_MODE. Never echo the OTP in responses. FR-2 backend part = the IST \"today\" window."
+}

@@ -1,0 +1,58 @@
+name: Driver App
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'packages/driver_app/**'
+      - 'packages/shared/**'
+      - '.github/workflows/driver-app.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packages/driver_app/**'
+      - 'packages/shared/**'
+      - '.github/workflows/driver-app.yml'
+  workflow_dispatch:
+
+jobs:
+  driver:
+    name: Analyze, test, build APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'
+          channel: stable
+          cache: true
+      - name: Shared package dependencies
+        run: flutter pub get
+        working-directory: packages/shared
+      - name: Code generation (shared)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: packages/shared
+      - name: Analyze (shared)
+        run: flutter analyze
+        working-directory: packages/shared
+      - name: Test (shared)
+        run: flutter test
+        working-directory: packages/shared
+      - run: flutter pub get
+        working-directory: packages/driver_app
+      - run: flutter analyze
+        working-directory: packages/driver_app
+      - run: flutter test
+        working-directory: packages/driver_app
+      - name: Build release APK (debug-signed unless a release keystore is configured)
+        run: flutter build apk --release
+        working-directory: packages/driver_app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: driver-app-apk
+          path: packages/driver_app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7

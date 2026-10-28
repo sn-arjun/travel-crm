@@ -1,0 +1,66 @@
+{
+  "slice": "travellers",
+  "title": "Travellers",
+  "status": "existing",
+  "showcaseOrder": 14,
+  "endpoints": [
+    "DELETE /api/v1/travellers/:id",
+    "GET /api/v1/travellers",
+    "GET /api/v1/travellers/:id",
+    "POST /api/v1/travellers",
+    "PUT /api/v1/travellers/:id",
+    "PUT /api/v1/travellers/:id/link-contact",
+    "PUT /api/v1/travellers/:id/unlink-contact"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/visa.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/travellers/page.tsx",
+    "desktop/src/app/(app)/travellers/[id]/page.tsx",
+    "desktop/src/app/(app)/travellers/new/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/travellers/[id]/edit/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/10-travellers-visa.spec.ts",
+    "desktop/e2e/13-m13-travellers-visa.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/travellers.spec.ts",
+  "seedHelpers": [
+    "seedTraveller",
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/travellers/**",
+    "desktop/src/lib/api/visa.ts",
+    "desktop/e2e/travellers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Migrated list/detail/new pages onto ListPage/DetailPage/EntityForm archetypes; added a real edit page (was a modal) with pre-filled values. Wired PUT /:id/link-contact and /:id/unlink-contact via a Link Contact dialog and detail-page action, plus a Linked Contact section on the overview tab. Added 'Travellers' to the sidebar (Operations group) since it had no direct nav entry. No addressAutocomplete/currencyInput — traveller records have no address or money fields, so those archetype slots are not applicable.",
+  "showcaseScript": [
+    "Open Travellers and search by passport number",
+    "Add a traveller with passport and expiry details",
+    "Link the traveller to an existing contact",
+    "Open the traveller and see their visa applications"
+  ]
+}

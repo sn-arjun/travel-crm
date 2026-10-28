@@ -1,0 +1,120 @@
+{
+  "id": "R118",
+  "tier": 1,
+  "title": "CI on the right branch with one npm workspace model, fresh-clone job, driver and desktop jobs; terraform serves the landing page",
+  "lane": "infra",
+  "backend": false,
+  "goal": "Make continuous integration actually run and pass on a fresh copy of the repository, and point the infrastructure code at the apps that exist.",
+  "why": "All workflows trigger on main/develop/release while the repo uses master; test.yml and release-era jobs pin Flutter 3.24.x against Dart ^3.11; backend/ and super-admin/ carry their own package-lock.json inside the root workspace, so `npm ci` in backend/ operates on the root workspace and wiped 1,140 of 1,471 root packages (coordinator, 2026-10-14); deploy-backend health check ends in || echo; terraform/modules/cloudflare/pages.tf still creates the Flutter web project (crm_web) for the root domain, with placeholder 192.0.2.1 records; root package.json deploy scripts upload a raw .next folder to a Pages project that does not exist; melos.yaml has your-org and --web-renderer.",
+  "featuresToWorks": [
+    "platform.deploy",
+    "landing.hosting"
+  ],
+  "dependsOn": [
+    "R103",
+    "R112",
+    "R114",
+    "R115",
+    "R116",
+    "R117"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      ".github/workflows/test.yml",
+      ".github/workflows/deploy-backend.yml",
+      ".github/workflows/deploy-admin.yml",
+      ".github/workflows/desktop-ci.yml",
+      ".github/workflows/terraform.yml",
+      "package.json",
+      "package-lock.json",
+      "melos.yaml",
+      "terraform/modules/cloudflare/pages.tf",
+      "terraform/modules/cloudflare/main.tf",
+      "terraform/modules/cloudflare/outputs.tf",
+      "terraform/modules/cloudflare/variables.tf",
+      "terraform/main.tf",
+      "terraform/variables.tf",
+      "terraform/outputs.tf",
+      "terraform/environments/dev.tfvars",
+      "terraform/environments/staging.tfvars",
+      "terraform/environments/prod.tfvars",
+      "scripts/push-secrets.sh",
+      "scripts/sync-config.sh"
+    ],
+    "create": [
+      ".github/workflows/driver-app.yml",
+      ".github/workflows/fresh-clone.yml",
+      ".github/workflows/landing.yml",
+      "scripts/fresh-clone-check.mjs"
+    ],
+    "mustNotTouch": [
+      "backend/src/**",
+      "desktop/src/**",
+      "super-admin/src/**",
+      "packages/driver_app/lib/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Workspace model (coordinator recommendation): root lockfile only. Delete backend/package-lock.json and super-admin/package-lock.json (git rm); root `npm install` in the MAIN checkout (orchestrator, not in a worktree) to refresh package-lock.json with all four workspaces; verify `npm ls --workspaces --depth=0` has no missing packages. Root scripts use `npm -w <workspace> run ...`: replace every `--prefix backend|super-admin` and `cd backend && ...` in package.json; remove `setup`'s nested installs; remove deploy:desktop (desktop is an installer, not a Pages site) and fix deploy:admin to `npm -w super-admin run deploy` (OpenNext, R112); deploy:api = `npm -w travelcrm-api run gen:wrangler -- --env production && npm -w travelcrm-api run deploy:production`.",
+    "Workflows: every trigger uses branches [master] (push and pull_request); deploy workflows become workflow_dispatch only (local-builds scope; production is the runbook). Each Node job: actions/setup-node with node-version 22, cache npm with cache-dependency-path package-lock.json, root `npm ci`, `npm -w @travelcrm/shared run build` where needed.",
+    "test.yml: backend job (npm ci at root; npm -w travelcrm-api run typecheck; npx -w travelcrm-api vitest run or `cd backend && npx vitest run` after root install), super-admin job (tsc, lint, `npx -w super-admin opennextjs-cloudflare build`), drop the Flutter jobs here (moved to driver-app.yml), remove every `|| true`.",
+    "desktop-ci.yml: lint gate (node desktop/scripts/lint-gate.mjs), typecheck, vitest, next build on ubuntu; the electron packaging matrix only on workflow_dispatch (Windows runner builds NSIS unsigned; mac DMG unsigned) with artifacts uploaded.",
+    "driver-app.yml: subosito/flutter-action with flutter-version 3.41.1, channel stable; working-directory packages/driver_app; flutter pub get; dart run build_runner build --delete-conflicting-outputs in packages/shared if it has generated code; flutter analyze; flutter test (no || true); flutter build apk --release (debug-signed fallback) uploaded as an artifact.",
+    "fresh-clone.yml and scripts/fresh-clone-check.mjs: clone the repo (in CI: the checkout; locally: `git clone --no-hardlinks . <tmp>`) and run root `npm ci`, `npm -w @travelcrm/shared run build`, backend tsc + vitest, desktop tsc + vitest + `node scripts/lint-gate.mjs`; the script prints a summary and exits non-zero on any failure; it must not need backend/.dev.vars or desktop/.env.local.",
+    "deploy-backend.yml (dispatch): gen-wrangler from secrets-provided ids, migrate-tenants --remote --env production (canary), deploy, then a health check that fails the job (`curl -fsS ${{ vars.API_URL }}/api/v1/health`).",
+    "landing.yml (dispatch): wrangler pages deploy landing --project-name travelcrm-landing after check-links.",
+    "Terraform: replace cloudflare_pages_project.crm_web with travelcrm-landing (production branch master, no build command, output landing); attach the root domain and www to it with cloudflare_pages_domain; remove the 192.0.2.1 root/api/admin A records in favour of Pages domains and a Workers custom domain resource for api (cloudflare_workers_domain or the provider's current resource; check the provider version pinned in terraform/providers.tf); admin points at the OpenNext Worker. Add R2 bucket travelcrm-backups and travelcrm-desktop-updates. environments/*.tfvars get every required variable with non-secret placeholders. `terraform fmt -check` and `terraform validate` must pass (init with -backend=false).",
+    "melos.yaml: repository URL to github.com/sn-arjun/travel-crm, remove build:web and --web-renderer; scripts/push-secrets.sh and sync-config.sh: names updated for the new secrets (CREDENTIALS_KEYS, SUPER_ADMIN_JWT_SECRET, UNSUB_SECRET, PROVISIONER_SECRET, TURNSTILE_SECRET) and the removed ones.",
+    "From R112 merge (2026-10-15): `npx opennextjs-cloudflare build` in super-admin/ fails because super-admin/node_modules is a half-separate install from super-admin/package-lock.json and its `.bin/next` shim points at super-admin/node_modules/next, which does not exist (next is hoisted to the root). After moving to the single root workspace install (delete super-admin/package-lock.json and super-admin/node_modules, root npm install), the OpenNext build must produce .open-next/worker.js; add it to the CI build job. `next build` alone already passes.",
+    "From R116 (2026-10-15): the landing page is plain static files; its host must serve landing/ with landing/public/ published at the site root (/favicon.svg, /og-image.png, /sitemap.xml, /robots.txt). Configure the Pages project (or a build step that copies public/ to the output root) accordingly and run node landing/scripts/check-links.mjs in CI."
+  ],
+  "migrations": [],
+  "tests": [
+    "node scripts/fresh-clone-check.mjs passes locally.",
+    "actionlint on .github/workflows if available (npx --yes actionlint is not an npm package; use the binary only if installed; otherwise parse every YAML with node + js-yaml from node_modules if present, else note it).",
+    "terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate (only if terraform is installed; else note it as unverified)."
+  ],
+  "acceptance": [
+    "No nested package-lock.json under backend/ or super-admin/.",
+    "No workflow mentions main, develop, crm_app, next-on-pages, 3.24 or `|| true` (grep).",
+    "fresh-clone-check passes.",
+    "cd super-admin && npx opennextjs-cloudflare build produces .open-next/worker.js on a fresh clone after a single root npm ci."
+  ],
+  "gate": [
+    "node scripts/fresh-clone-check.mjs",
+    "npm ls --workspaces --depth=0",
+    "cd super-admin && npx tsc --noEmit && npm run lint && npm run build"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "First green run of every workflow on GitHub after the repository is private (R100); terraform plan against the real account; Pages and Workers custom domains."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Windows checkout: files may have CRLF line endings. When writing regexes over file contents (scripts, tests that read SQL or TOML), split on /\\r?\\n/ and never anchor on \\n alone.",
+    "Never run `npm ci` or `npm install` inside backend/ or super-admin/; that is the bug this batch removes.",
+    "The orchestrator performs the root `npm install` in the main checkout and commits the regenerated lockfile with this batch."
+  ]
+}

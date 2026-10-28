@@ -1,0 +1,70 @@
+{
+  "slice": "visa",
+  "title": "Visa Applications",
+  "status": "existing",
+  "showcaseOrder": 15,
+  "endpoints": [
+    "DELETE /api/v1/visa/:id",
+    "DELETE /api/v1/visa/:id/documents/:docId",
+    "GET /api/v1/visa",
+    "GET /api/v1/visa/:id",
+    "GET /api/v1/visa/:id/documents",
+    "GET /api/v1/visa/:id/documents/:docId/download",
+    "GET /api/v1/visa/dashboard",
+    "GET /api/v1/visa/missing-documents",
+    "POST /api/v1/visa",
+    "POST /api/v1/visa/:id/documents",
+    "POST /api/v1/visa/:id/notes",
+    "PUT /api/v1/visa/:id",
+    "PUT /api/v1/visa/:id/checklist/:itemId",
+    "PUT /api/v1/visa/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/visa.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/visa/page.tsx",
+    "desktop/src/app/(app)/visa/[id]/page.tsx",
+    "desktop/src/app/(app)/visa/new/page.tsx",
+    "desktop/src/app/(app)/visa/dashboard/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/13-m13-travellers-visa.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/visa.spec.ts",
+  "seedHelpers": [
+    "seedTraveller"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/visa/**",
+    "desktop/src/lib/api/visa.ts",
+    "desktop/e2e/visa.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Migrated list/detail/new pages onto ListPage/DetailPage archetypes; added a real edit page (previously missing). Traveller and destination country now use RelationCombobox (fixes #53); status now correctly defaults to not_started on create (fixes #52). Dashboard rebuilt on design tokens. sendMessageDialog not wired — visa has no messaging affordance in the original app and no contact/phone data on the record to drive it. GET /visa/missing-documents remains orphaned (#112, no Kanban view — out of scope for this pass, would need a KanbanBoard rebuild).",
+  "showcaseScript": [
+    "Open the Visa dashboard and see applications by stage",
+    "Create a visa application for a traveller",
+    "Tick off checklist items and upload a document",
+    "Move the application to Approved"
+  ]
+}

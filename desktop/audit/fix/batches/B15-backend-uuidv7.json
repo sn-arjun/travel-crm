@@ -1,0 +1,57 @@
+{
+  "id": "B15",
+  "title": "Backend: UUIDv7 for every DB primary key (replace crypto.randomUUID)",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W4",
+  "dependsOn": [
+    "B12"
+  ],
+  "parallelGroup": "W4",
+  "bugIds": [
+    "BUG-081"
+  ],
+  "fixReqs": [],
+  "estFiles": 15,
+  "goal": "Project rule: all new database ids are UUIDv7 via generateId().",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. backend/src/utils/uuid.ts exports generateId() (uuidv7 package). crypto.randomUUID() is used in: cron/campaign-scheduler.ts, cron/fleet-alerts.ts, cron/overdue-tasks.ts, durable-objects/realtime.ts, queues/import-queue.ts, routes/driver.ts, routes/exports.ts, routes/imports.ts, routes/planner.ts, routes/suppliers.ts, routes/tasks.ts, routes/travellers.ts, routes/visa.ts, routes/webhook.ts, services/imports/row-inserter.ts.",
+  "steps": [
+    "For each occurrence decide: database primary key / persisted row id -> generateId(); non-id randomness (secrets, signing tokens, nonces, websocket connection ids) -> keep crypto.randomUUID() or crypto.getRandomValues and add a short comment why. List every decision in your report.",
+    "Run backend vitest and typecheck.",
+    "From B12 hand-off (P1): on a FRESH DB the suppliers table has no is_deleted column, so GET /suppliers returns 500 (routes/suppliers.ts:35,56,88 filter is_deleted = 0). Add migration 0037 (next free number) adding the missing suppliers columns the routes use (check every column referenced by routes/suppliers.ts and the supplier reports against the migrated table; is_deleted INTEGER NOT NULL DEFAULT 0 at least). Prove with a vitest on a fresh DB: GET /suppliers 200, create/list/delete round trip.",
+    "From B12 hand-off: the report engine (backend/src/services/reports/ engine/runner file) appends the salesperson filter AFTER {ORDER_BY}, producing invalid SQL for salesperson-role users. Inject the filter into the WHERE clause before ORDER BY/LIMIT; add a test that runs every report id as a salesperson."
+  ],
+  "filesAllowlist": [
+    "the 15 files listed in context",
+    "backend/test/**",
+    "backend/drizzle/tenant/0037_*.sql",
+    "backend/src/db/tenant-schema.ts",
+    "backend/src/services/reports/**",
+    "backend/src/routes/suppliers.ts"
+  ],
+  "mustNotTouch": [
+    "backend/drizzle/**",
+    "packages/**",
+    "desktop/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "`grep -rn \"crypto.randomUUID\" backend/src` only shows commented non-id uses.",
+    "backend vitest green.",
+    "Fresh DB: GET /api/v1/suppliers returns 200; every report id runs as salesperson without SQL error."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Mechanical."
+}

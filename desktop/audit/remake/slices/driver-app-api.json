@@ -1,0 +1,60 @@
+{
+  "slice": "driver-app-api",
+  "title": "Driver App API (no CRM UI)",
+  "status": "existing",
+  "showcaseOrder": 49,
+  "endpoints": [
+    "DELETE /api/v1/driver/push-tokens/:token",
+    "GET /api/v1/driver/profile",
+    "GET /api/v1/driver/profile/documents",
+    "GET /api/v1/driver/trips",
+    "GET /api/v1/driver/trips/:id",
+    "POST /api/v1/driver/login",
+    "POST /api/v1/driver/login/verify",
+    "POST /api/v1/driver/logout",
+    "POST /api/v1/driver/profile/documents",
+    "POST /api/v1/driver/profile/photo",
+    "POST /api/v1/driver/push-tokens",
+    "POST /api/v1/driver/refresh",
+    "POST /api/v1/driver/trips/:id/accept",
+    "POST /api/v1/driver/trips/:id/check-in",
+    "POST /api/v1/driver/trips/:id/check-out",
+    "POST /api/v1/driver/trips/:id/reject",
+    "POST /api/v1/driver/trips/:id/status",
+    "PUT /api/v1/driver/profile"
+  ],
+  "gates": [],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/driver-app-api.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/e2e/driver-app-api.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "INTENTIONALLY UI-LESS: 18 endpoints serving the Flutter driver_app with its own OTP auth. Confirmed not orphaned — all 18 endpoints are referenced in packages/shared/lib/api_client/api_endpoints.dart (driver* constants, lines 482-498), consumed by the Flutter driver app. No desktop UI should be built. Slice job verified as no-op; the smoke spec at desktop/e2e/driver-app-api.spec.ts is owned by the verify phase, not this slice.",
+  "showcaseScript": [
+    "Confirm the driver mobile API is reachable",
+    "Accept a trip as a driver and check in",
+    "Show that trip status update landing on the CRM fleet board"
+  ]
+}

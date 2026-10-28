@@ -60,10 +60,10 @@ export function HsnCodePicker({ value, onChange, placeholder = 'Select HSN/SAC c
           className={cn('justify-between font-normal', !value && 'text-muted-foreground', className)}
         >
           {value ? `${value} - ${selectedCode?.description ?? ''}` : placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ms-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0">
+      <PopoverContent className="w-96 p-0">
         <Command shouldFilter={false}>
           <CommandInput placeholder="Search HSN/SAC codes..." value={search} onValueChange={setSearch} />
           <CommandList>
@@ -83,11 +83,11 @@ export function HsnCodePicker({ value, onChange, placeholder = 'Select HSN/SAC c
                     setOpen(false);
                   }}
                 >
-                  <Check className={cn('mr-2 h-4 w-4', value === code.code ? 'opacity-100' : 'opacity-0')} />
+                  <Check className={cn('me-2 h-4 w-4', value === code.code ? 'opacity-100' : 'opacity-0')} />
                   <div>
                     <span className="font-mono text-xs">{code.code}</span>
-                    <span className="ml-2 text-sm text-muted-foreground">{code.description}</span>
-                    {code.category && <span className="ml-2 text-xs text-muted-foreground/60">({code.category})</span>}
+                    <span className="ms-2 text-sm text-muted-foreground">{code.description}</span>
+                    {code.category && <span className="ms-2 text-xs text-muted-foreground/60">({code.category})</span>}
                   </div>
                 </CommandItem>
               ))}

@@ -1,0 +1,111 @@
+{
+  "id": "R208",
+  "tier": 2,
+  "title": "GDPR and DPDP tooling: consent records, contact export and erasure, public unsubscribe, cookie notice, legal links",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Let agencies answer a customer's request to see or delete their data, prove consent, and let recipients unsubscribe with one click.",
+  "why": "Contact delete is soft only (routes/contacts.ts); no consent records, no export or erasure, no public unsubscribe endpoint (inbox.unsubscribe is a stub; marketing/opt-out.ts is authenticated list management), landing legal links were dead (R116 added drafts), platform.compliance is a stub.",
+  "featuresToWorks": [
+    "inbox.unsubscribe",
+    "platform.compliance",
+    "export.full"
+  ],
+  "dependsOn": [
+    "R121"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R204"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/contacts.ts",
+      "backend/src/routes/marketing/opt-out.ts",
+      "backend/src/routes/public.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/services/sendgrid.ts",
+      "backend/src/queues/campaign-queue.ts",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx",
+      "desktop/src/lib/api/contacts.ts",
+      "landing/index.html",
+      "landing/main.js",
+      "landing/styles.css"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0048_contact_consents.sql",
+      "backend/src/services/privacy/export-contact.ts",
+      "backend/src/services/privacy/erase-contact.ts",
+      "backend/src/utils/unsubscribe-token.ts",
+      "backend/test/gdpr.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/utils/phone.ts",
+      "desktop/src/components/ui/phone-input.tsx",
+      "packages/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Tenant 0048 contact_consents (id, contact_id, channel email|whatsapp|sms|call|any, purpose marketing|service|recording, status granted|withdrawn, source form|import|manual|unsubscribe_link|chatbot, captured_at, evidence JSON, captured_by). Contact create/import record consent when given; marketing sends check consent (marketing purpose) in addition to opted_out.",
+    "Export: POST /contacts/:id/privacy-export (admin) builds JSON (contact, leads, messages, itineraries, invoices, payments, documents metadata, call logs, consents, traveller records: walk every tenant table with a contact_id or traveller link; list them in services/privacy/export-contact.ts) + R2 file list, stores a zip-less JSON bundle in R2 under `${tenantId}/privacy/...`, returns a signed short-lived download through files route.",
+    "Erasure: POST /contacts/:id/erase (admin, confirmation phrase) hard-deletes personal rows and R2 objects for the contact (documents, visa files, recordings when present), keeps invoices/payments/credit notes with party name replaced by \"Erased contact <first 8 of id>\" and contact fields nulled (tax law retention), writes an activity log entry without personal data; idempotent.",
+    "Unsubscribe: utils/unsubscribe-token.ts HMAC-SHA256 (UNSUB_SECRET) token over tenantId+contactId+channel; every marketing email gets List-Unsubscribe and List-Unsubscribe-Post headers plus a footer link; WhatsApp marketing templates get the link text; public GET/POST /api/v1/public/unsubscribe/:token sets opted_out for the channel, records a withdrawn consent, shows a minimal confirmation page (HTML) with no other data; 20 per minute per IP.",
+    "Desktop contact detail: Privacy section (Export data, Erase contact with useConfirm and a typed confirmation, consent history).",
+    "Landing: cookie notice (the site sets no tracking cookies; a dismissible notice linking to the privacy page, stored in localStorage) and footer legal links already from R116."
+  ],
+  "migrations": [
+    "backend/drizzle/tenant/0048_contact_consents.sql"
+  ],
+  "tests": [
+    "backend/test/gdpr.test.ts: export includes rows from every listed table for that contact and nothing for another contact; erase leaves no row with the contact's email/phone/name in any tenant table (scan all text columns with LIKE), keeps invoices anonymised, deletes R2 objects (local R2 binding); unsubscribe token for tenant A cannot unsubscribe in tenant B; tampered token -> 400; campaign skips withdrawn contacts."
+  ],
+  "acceptance": [
+    "Erasure scan finds no personal data (test).",
+    "Every marketing email has List-Unsubscribe (test on the SendGrid payload)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/contacts.spec.ts e2e/marketing-opt-out.spec.ts e2e/campaigns.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node landing/scripts/check-links.mjs"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/contacts.spec.ts",
+      "e2e/marketing-opt-out.spec.ts",
+      "e2e/campaigns.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Lawyer review: retention periods, DPA, sub-processors, DPDP (India) notice; UNSUB_SECRET set."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it."
+  ]
+}

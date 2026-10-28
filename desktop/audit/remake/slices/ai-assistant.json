@@ -1,0 +1,83 @@
+{
+  "slice": "ai-assistant",
+  "title": "AI Assistant",
+  "status": "existing",
+  "showcaseOrder": 37,
+  "endpoints": [
+    "DELETE /api/v1/ai/conversations/:id",
+    "GET /api/v1/ai/conversations",
+    "GET /api/v1/ai/conversations/:id",
+    "GET /api/v1/ai/generated",
+    "GET /api/v1/ai/generated/:id",
+    "POST /api/v1/ai/compose-message",
+    "POST /api/v1/ai/enrich-itinerary",
+    "POST /api/v1/ai/extract-lead",
+    "POST /api/v1/ai/generate-invoice",
+    "POST /api/v1/ai/generate-itinerary",
+    "POST /api/v1/ai/generated/:id/accept",
+    "POST /api/v1/ai/generated/:id/feedback",
+    "POST /api/v1/ai/generated/:id/reject",
+    "POST /api/v1/ai/parse-bulk-leads",
+    "POST /api/v1/ai/parse-email",
+    "POST /api/v1/ai/parse-whatsapp",
+    "POST /api/v1/ai/scan-business-card",
+    "POST /api/v1/ai/suggest-replies"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/ai.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/ai/page.tsx",
+    "desktop/src/app/(app)/ai/compose/page.tsx",
+    "desktop/src/app/(app)/ai/itinerary/page.tsx",
+    "desktop/src/app/(app)/ai/lead-creation/page.tsx",
+    "desktop/src/app/(app)/ai/search/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/18-ai-features.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/ai-assistant.spec.ts",
+  "seedHelpers": [
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/ai/page.tsx",
+    "desktop/src/app/(app)/ai/compose/**",
+    "desktop/src/app/(app)/ai/itinerary/**",
+    "desktop/src/app/(app)/ai/lead-creation/**",
+    "desktop/src/app/(app)/ai/search/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/src/components/domain/ai/**",
+    "desktop/e2e/ai-assistant.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "All 4 tool pages (compose, itinerary, lead-creation, search) plus the hub are now wrapped in AiGate (useFeatureGate('ai_assistant')), which renders a skeleton while loading and an upgrade/quota-exhausted prompt instead of the page when gated — no page fires its AI call against a 403. Each page's header shows a live remaining-quota badge (AiQuotaBadge, desktop/src/components/domain/ai/quota-badge.tsx) via the existing useAiUsageCap hook. The compose page's send dialog used a raw 'Contact ID' text input; replaced with RelationCombobox against contactsApi. Added a GeneratedContentActions component (accept/reject/thumbs up-down) wired to the previously-orphaned /ai/generated/:id endpoints and surfaced it under each page's AI result once a contentId is returned. These pages are single-shot AI tool forms, not entity lists — ListPage/FilterBar/infiniteScroll/detailDrawer/emptyState/hoverActions/themedExport archetypes don't apply here (no paginated collection to browse). SendMessageDialog wasn't reused on the compose page because it has no prop for injecting a pre-composed body/subject; it still routes strictly through communicationsApi.send (Communication Hub), never mailto/wa.me. Business-card scan and bulk-lead-parse endpoints are now typed in ai.ts (aiApi.scanBusinessCard, aiApi.parseBulkLeads, aiApi.parseWhatsapp, aiApi.parseEmail, aiApi.enrichItinerary, aiApi.generateInvoice, aiApi.generated.*) but have no UI surface in this slice's page allowlist — no manifest page exists for them, so they remain callable-but-unsurfaced pending a future slice/page addition. AI Assistant was already reachable from the sidebar under Intelligence.",
+  "showcaseScript": [
+    "Open the AI Assistant",
+    "Paste a WhatsApp enquiry and let AI extract a lead",
+    "Generate a 5-day itinerary from a one-line brief",
+    "Accept the generated draft and open it in the editor",
+    "Show the remaining daily AI quota"
+  ]
+}

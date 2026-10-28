@@ -1,0 +1,1640 @@
+[
+  {
+    "id": "BUG-001",
+    "severity": "P0",
+    "area": "auth",
+    "title": "Token refresh race logs the user out",
+    "symptom": "When the access token expires (15 min TTL) every in-flight request 401s and each one starts its own refresh. The backend rotates refresh tokens and rejects the replay (\"Token has already been used (possible replay attack)\"), so the client clears auth and redirects to /login. This is why the showcase session died mid-recording.",
+    "repro": "Log in, corrupt/expire the access token (or wait 15 min), load /dashboard. Runtime: 19 parallel POST /auth/refresh-token calls, URL ends at /login. API-level: two parallel refreshes with the same token -> 200 + 401 replay.",
+    "evidence": [
+      "interact.json: token-refresh-race refreshCalls=19 -> /login",
+      "E2E run: from test #517 (~36 min in) 164 of 179 failures are on the login page (error-context.md shows \"Manage your travel business smarter\")",
+      "desktop/src/lib/api/client.ts:127-168 (handleAuthRefresh, no single-flight)",
+      "desktop/src/lib/api/client.ts:285-330 (proactive interval refresh, separate path)",
+      "backend/src/routes/auth.ts:430-452 (used_refresh replay key)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/lib/api/client.ts"
+    ],
+    "rootCause": "ROOT-AUTH",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-002",
+    "severity": "P0",
+    "area": "migrations",
+    "title": "Migration 0033_flyers_simplify fails on a fresh database; backend test suite collapses",
+    "symptom": "0033 copies flyer_templates.preview_url, but no earlier migration creates that column (\"no such column: preview_url\"). Every fresh D1 (CI, prod deploy, vitest pool) stops at 0033 so 0034 never applies. `npx vitest run` in backend: 16/30 files FAIL in beforeAll, 268 passed / 676 skipped (baseline 29 files / 901 passed). The local dev DB only works because columns were hand-added (d1_migrations shows 0031 as last applied; 0032 then fails with duplicate column).",
+    "repro": "cd backend && npx wrangler d1 migrations apply travelcrm-master --local --persist-to <empty dir>  -> 0033 ❌; or cd backend && npx vitest run.",
+    "evidence": [
+      "backend/drizzle/tenant/0033_flyers_simplify.sql:32-41 (SELECT preview_url FROM flyer_templates)",
+      "backend vitest: \"Caused by: Error: no such column: preview_url\" in test/*.test.ts beforeAll"
+    ],
+    "suspectedFiles": [
+      "backend/drizzle/tenant/0033_flyers_simplify.sql",
+      "backend/drizzle/tenant/0010_marketing_tables.sql"
+    ],
+    "rootCause": "BACKEND-MIGRATIONS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-003",
+    "severity": "P0",
+    "area": "migrations",
+    "title": "Migration 0030 (contacts opt-out columns) was quarantined out of the chain — contact inserts fail on a fresh DB",
+    "symptom": "tenant-schema.ts declares contacts.opted_out_at / opt_out_channel / opt_out_reason but no committed migration creates them. 0030_contacts_opt_out_columns.sql sits in desktop/audit/remake/quarantine/ (its own comment: \"broke every contact insert\"). The local DB has it applied (d1_migrations lists 0030) so the bug is invisible locally; any fresh tenant DB breaks contact creation and GET /marketing/opt-out.",
+    "repro": "Fresh DB from drizzle/tenant + POST /contacts -> \"table contacts has no column named opted_out_at\".",
+    "evidence": [
+      "desktop/audit/remake/quarantine/0030_contacts_opt_out_columns.sql",
+      "backend/src/db/tenant-schema.ts:57-59",
+      "backend/src/routes/marketing/opt-out.ts (verify:marketing-opt-out now SELECTs these columns)",
+      "local d1_migrations: 0030_contacts_opt_out_columns.sql applied, file absent from backend/drizzle/tenant"
+    ],
+    "suspectedFiles": [
+      "backend/drizzle/tenant/",
+      "desktop/audit/remake/quarantine/0030_contacts_opt_out_columns.sql"
+    ],
+    "rootCause": "BACKEND-MIGRATIONS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-004",
+    "severity": "P0",
+    "area": "contacts",
+    "title": "Contact detail renders mock itineraries, payments and documents",
+    "symptom": "Contact detail tabs are fed by generated mock arrays rather than API data.",
+    "repro": "Open /contacts/<id> and the Itineraries/Payments/Documents tabs.",
+    "evidence": [
+      "desktop/src/app/(app)/contacts/[id]/page.tsx:150-191 (\"Generate mock itineraries/payments/documents\")",
+      "shots/contact-detail-1920-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/contacts/[id]/page.tsx"
+    ],
+    "rootCause": "ROOT-FAKEDATA",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-005",
+    "severity": "P0",
+    "area": "travellers",
+    "title": "Traveller email/phone silently discarded; frequent-flyer PUT mapping wrong",
+    "symptom": "Neither validator nor table has email/phone, so they are dropped (verify:travellers gate failure). PUT maps frequent_flyer_number vs column frequent_flyer_numbers. GET /travellers also returns a nested {data:{data:[...]}} snake_case envelope and crypto.randomUUID ids.",
+    "repro": "POST /travellers with email+phone, GET it back -> fields absent.",
+    "evidence": [
+      "backend/src/routes/travellers.ts:136",
+      "runtime: GET /travellers?limit=1 -> {\"data\":{\"data\":[{...\"first_name\"...}]}} with no email/phone"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/travellers.ts",
+      "backend/src/validators/",
+      "backend/drizzle/tenant/0035_*.sql (new)"
+    ],
+    "rootCause": "BACKEND-TRAVELLERS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-006",
+    "severity": "P0",
+    "area": "reports",
+    "title": "Reports customer / team / visa pages crash with \"Application error\"",
+    "symptom": "Pages assume res.data is an array, but /reports/:id returns {success,data:{data:[],columns,meta}}. `D.reduce is not a function` / `T.forEach is not a function` -> full white screen.",
+    "repro": "Open /reports/customer, /reports/team or /reports/visa.",
+    "evidence": [
+      "shots/reports-customer-crash-1366-light.png",
+      "crawl pageErrors on all 4 combos",
+      "desktop/src/app/(app)/reports/customer/page.tsx:76,111",
+      "desktop/src/app/(app)/reports/team/page.tsx:97-109",
+      "desktop/src/app/(app)/reports/visa/page.tsx:112"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/reports/customer/page.tsx",
+      "desktop/src/app/(app)/reports/team/page.tsx",
+      "desktop/src/app/(app)/reports/visa/page.tsx"
+    ],
+    "rootCause": "ROOT-ENVELOPE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-007",
+    "severity": "P0",
+    "area": "auth",
+    "title": "Driver login impossible: missing tenantId -> 400, then error handler throws and spinner hangs forever",
+    "symptom": "sendOtp/verifyOtp post {phone} without tenantId (backend requires it -> 400 ZodError). DriverAuthNotifier._extractError returns response.data[\"error\"] which is a Map, not a String -> TypeError; state stays sendingOtp, Send OTP button spins forever with no message.",
+    "repro": "Emulator: enter 9876543210, tap Send OTP. logcat: \"type _Map<String, dynamic> is not a subtype of type String\" at driver_auth_provider.dart:74.",
+    "evidence": [
+      "shots/driver-02-send-otp.png",
+      "shots/driver-03-otp-stuck-spinner.png",
+      "packages/driver_app/lib/features/auth/data/driver_auth_repository.dart:12,20",
+      "packages/driver_app/lib/features/auth/data/driver_auth_provider.dart:72-77"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/lib/features/auth/data/driver_auth_repository.dart",
+      "packages/driver_app/lib/features/auth/data/driver_auth_provider.dart"
+    ],
+    "rootCause": "DRIVER-AUTH",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-008",
+    "severity": "P0",
+    "area": "driver-auth",
+    "title": "No OTP bypass without Twilio: /driver/login returns 500 \"Failed to send OTP\"",
+    "symptom": "Even with tenantId, OTP send/verify call Twilio Verify unconditionally; local/dev/demo has no Twilio credentials so drivers can never log in.",
+    "repro": "curl -X POST :8787/api/v1/driver/login -d {phone:\"+919876543210\",tenantId:\"01960000-…0001\"} -> 500.",
+    "evidence": [
+      "backend/src/routes/driver.ts:121-184"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/driver.ts"
+    ],
+    "rootCause": "DRIVER-AUTH",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-009",
+    "severity": "P0",
+    "area": "trips",
+    "title": "Trip list never loads (pagination.offset null) and load-more pages wrong",
+    "symptom": "trip_provider computes hasMore from pagination[\"offset\"] + pagination[\"limit\"]; backend paginated() returns page/limit/total -> null + int throws -> list shows error/cached data. Repository sends offset= but backend reads page= so load-more refetches page 1 (duplicates).",
+    "repro": "Code read (login blocked at runtime).",
+    "evidence": [
+      "packages/driver_app/lib/features/trips/data/trip_provider.dart:35",
+      "packages/driver_app/lib/features/trips/data/trip_repository.dart:9-17",
+      "backend/src/routes/driver.ts:306-351"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/lib/features/trips/data/trip_provider.dart",
+      "packages/driver_app/lib/features/trips/data/trip_repository.dart"
+    ],
+    "rootCause": "DRIVER-API",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-010",
+    "severity": "P0",
+    "area": "android",
+    "title": "AndroidManifest has no location permissions; no cleartext policy",
+    "symptom": "Check-in/check-out call Geolocator.requestPermission(); with no ACCESS_FINE/COARSE_LOCATION declared it throws -> check-in impossible. usesCleartextTraffic not set (debug build reached http://localhost via adb reverse, but release/profile builds will block HTTP). App label is \"driver_app\".",
+    "repro": "Code read; check-in screen unreachable at runtime because login is blocked.",
+    "evidence": [
+      "packages/driver_app/android/app/src/main/AndroidManifest.xml",
+      "packages/driver_app/lib/features/trips/presentation/screens/check_in_screen.dart:41-55"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/android/app/src/main/AndroidManifest.xml"
+    ],
+    "rootCause": "DRIVER-ANDROID",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-011",
+    "severity": "P1",
+    "area": "list-pages",
+    "title": "Contacts & Invoices lists stop at the first page; count badge shows 0",
+    "symptom": "extractTotal reads r.data.pagination.total but the client returns {success,data:[...],pagination}. Total=0 -> badge \"0\" and hasMore=false, so infinite scroll never loads page 2 (contacts: 20 of 77 shown).",
+    "repro": "/contacts: badge \"0\"; scroll to bottom -> still 20 rows.",
+    "evidence": [
+      "shots/contacts-list-count0-1920-light.png",
+      "interact.json: contacts-count-badge \"0\", contacts-infinite-scroll before=20 after=20",
+      "desktop/src/app/(app)/contacts/page.tsx:537",
+      "desktop/src/app/(app)/invoices/page.tsx:123"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/contacts/page.tsx",
+      "desktop/src/app/(app)/invoices/page.tsx",
+      "desktop/src/hooks/use-infinite-scroll.ts"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-012",
+    "severity": "P1",
+    "area": "list-pages",
+    "title": "List sort does nothing",
+    "symptom": "Clicking a sortable header toggles the icon but no request is made and row order never changes; sort is not passed to the fetcher.",
+    "repro": "/contacts -> click \"Name\" twice: first row stays \"Aarav Sharma\", no /contacts request fired.",
+    "evidence": [
+      "interact.json: contacts-sort-name reqs=[]",
+      "desktop/src/components/domain/list-page.tsx:134-139"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/list-page.tsx",
+      "desktop/src/hooks/use-infinite-scroll.ts"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-013",
+    "severity": "P1",
+    "area": "list-pages",
+    "title": "ListPage refetches on any parent re-render, shows fetch errors as empty state, no refresh()",
+    "symptom": "Inline fetcher is a hook dependency -> full refetch on unrelated state changes; fetch failure renders the \"No X yet\" empty state instead of an error with retry; 23 pages remount with key={listKey} to refresh.",
+    "repro": "Code read (known finding).",
+    "evidence": [
+      "desktop/src/components/domain/list-page.tsx:134-139,252"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/list-page.tsx",
+      "desktop/src/hooks/use-infinite-scroll.ts"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-014",
+    "severity": "P1",
+    "area": "forms",
+    "title": "Failed saves are silent (no toast, no inline error)",
+    "symptom": "EntityForm onSubmit has no try/catch; the API client throws, so a 400 leaves the user on the form with nothing shown. Example: invoice with unit price 0 -> backend 400 ZodError, UI shows nothing. Client schema also does not enforce rate > 0.",
+    "repro": "/invoices/new: pick contact, type a description, leave Unit Price 0, Save.",
+    "evidence": [
+      "interact.json: invoice-create -> 400 POST /invoices \"Too small: expected number to be >0\", toast=\"\", validation=[]",
+      "desktop/src/components/domain/entity-form.tsx:119",
+      "shots/invoice-new-nogutter-1366-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/entity-form.tsx",
+      "desktop/src/app/(app)/invoices/new/page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-015",
+    "severity": "P1",
+    "area": "dates",
+    "title": "Dates saved one day early in IST",
+    "symptom": "toISOString().split(\"T\")[0] converts local midnight to the previous UTC day. Runtime: picked 15 Oct in Travel Date -> POST /leads travelDate \"2026-10-14\". 71 occurrences across app/ components/ lib/.",
+    "repro": "/leads/new, pick 15th of next month, save, inspect request body.",
+    "evidence": [
+      "interact.json: lead-create dateShown=\"15 Oct 2026\" postBody travelDate \"2026-10-14\"",
+      "desktop/src/app/(app)/leads/new/page.tsx",
+      "desktop/src/app/(app)/leads/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/fleet/drivers/new/page.tsx",
+      "desktop/src/app/(app)/invoices/[id]/edit/page.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/lib/utils/date.ts (new toLocalDate)",
+      "desktop/src/app/(app)/leads/new/page.tsx",
+      "desktop/src/app/(app)/leads/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/invoices/new/page.tsx",
+      "desktop/src/app/(app)/invoices/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/fleet/drivers/new/page.tsx",
+      "desktop/src/app/(app)/fleet/drivers/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/calendar/page.tsx",
+      "desktop/src/app/(app)/fleet/page.tsx"
+    ],
+    "rootCause": "ROOT-DATES",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-016",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Theme toggle bypasses next-themes; choice lost on reload",
+    "symptom": "TopNavbar keeps its own useState and toggles the .dark class directly; localStorage \"theme\" never updates, so reload reverts. Icon state is also out of sync with system theme.",
+    "repro": "Click moon icon -> dark; reload -> light again.",
+    "evidence": [
+      "interact.json: theme-toggle before=light after=\"light dark\" reloaded=light ls=null",
+      "desktop/src/components/layout/top-navbar.tsx:328-334"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/top-navbar.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-017",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Top-bar \"Search…\" button does nothing",
+    "symptom": "Dispatches a synthetic keydown on document; CommandPalette listens on window (Ctrl+K itself works).",
+    "repro": "Click \"Search… ⌘K\" in the top bar.",
+    "evidence": [
+      "interact.json: search-button-opens-palette dialogs=0; ctrl-k-opens-palette dialogs=1",
+      "desktop/src/components/layout/top-navbar.tsx:348",
+      "desktop/src/components/ui/command-palette.tsx:85"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/top-navbar.tsx",
+      "desktop/src/components/ui/command-palette.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-018",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Pressing Escape triggers infinite recursion (\"Maximum call stack size exceeded\")",
+    "symptom": "The global Escape shortcut re-dispatches an Escape keydown on document, which the same listener handles again. Six page errors per keypress.",
+    "repro": "Focus anything that is not an input and press Escape (e.g. after opening the command palette).",
+    "evidence": [
+      "interact.json: pageErrors \"Maximum call stack size exceeded.\" x6 during search-button step",
+      "desktop/src/components/domain/keyboard-shortcuts-provider.tsx:62-77",
+      "desktop/src/hooks/use-keyboard-shortcuts.ts:43"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/keyboard-shortcuts-provider.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-019",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Sidebar highlights parent and child at once (49 routes)",
+    "symptom": "Prefix match marks e.g. /marketing and /marketing/flyers (and /marketing/flyers/templates -> 3 items) as active.",
+    "repro": "Open /marketing/flyers/templates or /itineraries/templates.",
+    "evidence": [
+      "crawl sidebarActive: 49/187 routes with !=1 active item",
+      "interact.json sidebar-active /itineraries/templates",
+      "desktop/src/components/layout/sidebar.tsx:240"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/sidebar.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-020",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Hard-coded user \"Arjun\" in sidebar footer, dashboard greeting and AI briefing",
+    "symptom": "Logged in as Demo Admin, sidebar shows \"Arjun S / arjun@travelcrm.io\", dashboard says \"Welcome back, Arjun\".",
+    "repro": "Log in as admin@demo.com and look at the sidebar footer and /dashboard header.",
+    "evidence": [
+      "shots/dashboard-1920-light.png",
+      "desktop/src/components/layout/sidebar.tsx:358-362",
+      "desktop/src/app/(app)/dashboard/page.tsx:774",
+      "desktop/src/components/domain/ai-daily-briefing.tsx:24"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/app/(app)/dashboard/page.tsx",
+      "desktop/src/components/domain/ai-daily-briefing.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-021",
+    "severity": "P1",
+    "area": "shell",
+    "title": "Super Admin link visible to every tenant admin; its empty state is invisible in dark mode",
+    "symptom": "Sidebar always shows Super Admin; the page then 403s (/admin/config) and shows \"Platform administration access required\". In dark mode the page body is near-white with white text (contrast 1.00) because EmptyState uses undefined --color-text-primary on a hardcoded light background. Top-bar title is blank on all /super-admin/* routes.",
+    "repro": "Click Super Admin as admin@demo.com; repeat in dark theme.",
+    "evidence": [
+      "shots/super-admin-blank-title-1366-light.png",
+      "shots/xdark-super-admin-invisible-1920.png",
+      "desktop/src/components/layout/sidebar.tsx:172,298",
+      "crawl gated: 403 GET /admin/config on 9 routes"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/components/ui/empty-state.tsx",
+      "desktop/src/app/(app)/super-admin/layout.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-022",
+    "severity": "P1",
+    "area": "layout",
+    "title": "No page gutter / max-width on 101 of 187 routes",
+    "symptom": "h1 sits at x=0 of <main> (flush against the sidebar border); primary buttons touch the right window edge; the sidebar collapse toggle (x≈240) covers the first letter of page subtitles (\"assenger records…\", \"tay on top…\", \"ll messages…\").",
+    "repro": "Open /leads/new, /invoices/new, /travellers, /follow-ups, /communication at 1366x768.",
+    "evidence": [
+      "shots/lead-new-nogutter-1366-light.png",
+      "shots/invoice-new-nogutter-1366-light.png",
+      "shots/travellers-clipped-subtitle-1366-light.png",
+      "shots/follow-ups-1366-light.png",
+      "crawl gutterLeft=0 on 101 routes (all 4 combos)",
+      "desktop/src/components/layout/app-shell.tsx:38",
+      "desktop/src/components/domain/list-page.tsx:176",
+      "desktop/src/components/domain/detail-page.tsx:101",
+      "desktop/src/components/domain/entity-form.tsx:119"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/app-shell.tsx",
+      "desktop/src/components/domain/list-page.tsx",
+      "desktop/src/components/domain/detail-page.tsx",
+      "desktop/src/components/domain/entity-form.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-023",
+    "severity": "P1",
+    "area": "design-tokens",
+    "title": "Orange shadcn palette instead of indigo ds-primary; orange/indigo mixed on 27 routes; primary buttons fail contrast",
+    "symptom": "All ui/* primitives use the legacy orange --primary (globals.css:330). Links, charts, badges and ds-* components are indigo -> clashes (dashboard, fleet, follow-ups, settings/ai, calendar…). White on orange buttons = 2.64:1 (63 hits in dark), orange sidebar active text on white = 2.90:1 (every route).",
+    "repro": "Any page; e.g. /settings/ai, /fleet, /follow-ups.",
+    "evidence": [
+      "shots/settings-ai-orange-indigo-1366-dark.png",
+      "shots/fleet-dashboard-dup-tripids-1920-light.png",
+      "shots/lead-new-1366-dark.png",
+      "crawl: lowContrast on 184/187 routes; orange+indigo on 27 routes",
+      "desktop/src/app/globals.css:330"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/globals.css",
+      "desktop/src/components/ui/button.tsx",
+      "desktop/src/components/ui/"
+    ],
+    "rootCause": "ROOT-TOKENS",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-024",
+    "severity": "P1",
+    "area": "design-tokens",
+    "title": "CSS variables referenced but never defined",
+    "symptom": "--color-text-*, --color-bg-muted, --sidebar-collapsed, --z-popover, --radius-button are used (37 references) but not defined, so empty states, filter bar, data table, form field, page header, sidebar collapsed width and tooltip z-index fall back to browser defaults (see invisible super-admin text).",
+    "repro": "grep \"var(--color-text\" desktop/src/components.",
+    "evidence": [
+      "desktop/src/components/ui/empty-state.tsx",
+      "desktop/src/components/domain/filter-bar.tsx",
+      "desktop/src/components/ui/data-table.tsx",
+      "desktop/src/components/layout/sidebar.tsx:306",
+      "desktop/src/components/ui/tooltip.tsx:20",
+      "shots/xdark-super-admin-invisible-1920.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/globals.css"
+    ],
+    "rootCause": "ROOT-TOKENS",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-025",
+    "severity": "P1",
+    "area": "dashboard",
+    "title": "Dashboard shows fabricated KPIs and dead controls",
+    "symptom": "Trend % (12/5/8/5), \"87% Collection Rate\" and all sparklines are constants; \"Quick Add\" has no onClick; the \"This Month\" range selector state is never used; \"Revenue (Month) ₹0\" (won-lead value) contradicts \"Revenue This Month ₹221.3Cr\" (invoices) on the same screen. Also fetches leads?limit=1000 and invoices?limit=1000 to compute client-side.",
+    "repro": "Open /dashboard; click Quick Add; change \"This Month\".",
+    "evidence": [
+      "shots/dashboard-1920-light.png",
+      "desktop/src/app/(app)/dashboard/page.tsx:682-683 (dateRange unused)",
+      "desktop/src/app/(app)/dashboard/page.tsx:746-767 (hardcoded trends, 87%)",
+      "desktop/src/app/(app)/dashboard/page.tsx:784 (Quick Add, no handler)",
+      "desktop/src/app/(app)/dashboard/page.tsx:807-843 (sparkData literals)",
+      "desktop/src/app/(app)/dashboard/page.tsx:705-708"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/dashboard/page.tsx"
+    ],
+    "rootCause": "ROOT-FAKEDATA",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-026",
+    "severity": "P1",
+    "area": "leads",
+    "title": "Lead notes show \"Unknown · Invalid Date\"",
+    "symptom": "GET /leads/:id/notes returns snake_case (created_by_name, created_at); the page reads note.createdBy / note.createdAt.",
+    "repro": "Open any lead detail -> Notes card.",
+    "evidence": [
+      "shots/lead-detail-invalid-date-1920-light.png",
+      "desktop/src/app/(app)/leads/[id]/page.tsx:338",
+      "crawl flags \"Invalid Date\" on /leads/[id]"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/leads/[id]/page.tsx",
+      "backend/src/routes/leads.ts"
+    ],
+    "rootCause": "ROOT-CASE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-027",
+    "severity": "P1",
+    "area": "routing",
+    "title": "Static routes shadowed by /:id routes (calls analytics, vehicle availability, rate-card lookup)",
+    "symptom": "Hono matches in registration order: GET /calls/analytics hits /calls/:id (\"Call log not found\" 404); GET /fleet/vehicles/availability hits /vehicles/:id (404, so the fleet availability grid ignores trips); GET /fleet/vehicle-rate-cards/lookup hits /:id (404 even when a matching card exists -> trip auto-pricing never works).",
+    "repro": "GET /api/v1/fleet/vehicle-rate-cards/lookup?vehicleType=sedan&tripType=airport_pickup after creating that card -> 404.",
+    "evidence": [
+      "backend/src/routes/calls.ts:171 vs :437",
+      "backend/src/routes/fleet.ts:71 vs :520",
+      "backend/src/routes/fleet.ts:1926 vs :1935",
+      "crawl failed: /communication/calls/analytics, /fleet"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/calls.ts",
+      "backend/src/routes/fleet.ts"
+    ],
+    "rootCause": "BACKEND-ROUTEORDER",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-028",
+    "severity": "P1",
+    "area": "reports",
+    "title": "Report SQL errors: fleet_utilization, lead_response_time, followup_compliance",
+    "symptom": "fleet_utilization uses v.registration_no (column is registration_number); lead_response_time / followup_compliance have ambiguous created_at. All 400 -> /reports/fleet and /reports/leads show \"Failed to load\".",
+    "repro": "GET /api/v1/reports/fleet_utilization?date_preset=this_month",
+    "evidence": [
+      "backend/src/services/reports/fleet-reports.ts:17",
+      "backend/src/services/reports/lead-reports.ts",
+      "crawl failed requests on /reports/fleet, /reports/leads"
+    ],
+    "suspectedFiles": [
+      "backend/src/services/reports/fleet-reports.ts",
+      "backend/src/services/reports/lead-reports.ts"
+    ],
+    "rootCause": "BACKEND-REPORTS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-029",
+    "severity": "P1",
+    "area": "campaigns",
+    "title": "Campaign recipients endpoint 500 (no such column m.sent_at)",
+    "symptom": "/campaigns/[id] recipients tab fails.",
+    "repro": "GET /api/v1/campaigns/<id>/recipients",
+    "evidence": [
+      "backend/src/routes/campaigns.ts:554-559",
+      "backend log: \"[CAMPAIGNS] Recipients error: no such column: m.sent_at\""
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/campaigns.ts"
+    ],
+    "rootCause": "BACKEND-SCHEMA",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-030",
+    "severity": "P1",
+    "area": "marketing",
+    "title": "Festival campaigns: route added in verify phase but table never migrated (500)",
+    "symptom": "festival-campaigns.ts queries festival_campaigns which no migration creates (\"no such table\") -> /marketing/festivals shows \"Failed to…\". Routes also lack requirePermission.",
+    "repro": "GET /api/v1/marketing/festivals",
+    "evidence": [
+      "shots/marketing-festivals-500-1366-light.png",
+      "backend/src/routes/festival-campaigns.ts:62-114",
+      "backend log: no such table: festival_campaigns"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/festival-campaigns.ts",
+      "backend/drizzle/tenant/ (new migration)"
+    ],
+    "rootCause": "BACKEND-MIGRATIONS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-031",
+    "severity": "P1",
+    "area": "api-contract",
+    "title": "Verify-phase backend edits broke the Flutter CRM app contract",
+    "symptom": "bookmarks: POST body entity_type->entityType, GET /check -> POST /check, list now camelCase+paginated (packages/crm_app bookmark_repository.dart:10-38 + shared bookmark_model still snake_case). documents: DTO drops file_url (shared DocumentModel requires fileUrl -> JSON parse failure). social-content: generatedText -> content (shared social_content_model.dart:14).",
+    "repro": "Compare git diff 08312a4..HEAD for those routes with packages/shared models.",
+    "evidence": [
+      "cdd7d35 bookmarks.ts",
+      "b6b0c25 documents.ts",
+      "76ee8d2 social-content.ts",
+      "packages/shared/lib/models/document_model.dart:11",
+      "packages/crm_app/lib/features/bookmarks/data/bookmark_repository.dart:10-38"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/bookmarks.ts",
+      "backend/src/routes/documents.ts",
+      "backend/src/routes/social-content.ts"
+    ],
+    "rootCause": "BACKEND-FREEZE",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-032",
+    "severity": "P1",
+    "area": "combobox",
+    "title": "Combobox: invalid Tailwind v4 width class, filters by value not label, selected label disappears while searching",
+    "symptom": "Known finding, confirmed by E2E: typing a seeded record name does not surface it as an option (calls dial contact search, documents lead/itinerary pickers).",
+    "repro": "Any RelationCombobox/Combobox, type to search.",
+    "evidence": [
+      "desktop/src/components/ui/combobox.tsx",
+      "desktop/src/components/domain/relation-combobox.tsx",
+      "e2e calls.spec.ts:30, calls.spec.ts:271 (text=CallContact-…/DialSearch-… not visible)",
+      "e2e documents.spec.ts:27, :295 (option DocItinerary-…/ComboLead-… never appears)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/ui/combobox.tsx",
+      "desktop/src/components/domain/relation-combobox.tsx"
+    ],
+    "rootCause": "ROOT-COMBOBOX",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-033",
+    "severity": "P1",
+    "area": "itineraries",
+    "title": "Itinerary detail: raw JSON destination, broken tabs bar, header actions overflow at 1366",
+    "symptom": "Destination renders `[\"Thailand\"]`; the Tabs list is stretched to full width with pill outlines spanning; at 1366 the 7 header buttons overflow (Delete off-screen, main scrollWidth 1180>1126) and the owner name wraps.",
+    "repro": "Open /itineraries/<id> at 1920 and 1366.",
+    "evidence": [
+      "shots/itinerary-detail-tabs-json-1920-light.png",
+      "shots/x1366-itinerary-detail-actions-overflow.png",
+      "desktop/src/app/(app)/itineraries/[id]/page.tsx:265-266"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/itineraries/[id]/page.tsx"
+    ],
+    "rootCause": "ROOT-DETAILPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-034",
+    "severity": "P1",
+    "area": "itinerary-templates",
+    "title": "Itinerary Templates has no create action",
+    "symptom": "Only Export is offered; no way to create a template from the list.",
+    "repro": "Open /itineraries/templates.",
+    "evidence": [
+      "desktop/src/app/(app)/itineraries/templates/page.tsx",
+      "crawl 1366x768-light itineraries_templates.jpg"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/itineraries/templates/page.tsx"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-035",
+    "severity": "P1",
+    "area": "phones",
+    "title": "Phone numbers stored in mixed formats; driver lookup is exact match",
+    "symptom": "Desktop PhoneInput stores digits only (\"9820000000\") while API/seeded data and the driver app use \"+91…\". /driver/login does WHERE phone = ? so a driver created from the desktop UI can never log in from the app.",
+    "repro": "Create a driver in /fleet/drivers/new with 98…; app sends +9198….",
+    "evidence": [
+      "shots/contacts-list-count0-1920-light.png (mixed phone column)",
+      "backend/src/routes/driver.ts:100-103",
+      "packages/driver_app/lib/features/auth/presentation/screens/phone_input_screen.dart:45"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/driver.ts",
+      "backend/src/routes/fleet.ts",
+      "desktop/src/components/ui/phone-input.tsx"
+    ],
+    "rootCause": "BACKEND-PHONE",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-036",
+    "severity": "P1",
+    "area": "trips",
+    "title": "Trip card/detail read flat vehicleRegistration but backend sends nested vehicle.registration",
+    "symptom": "Vehicle never shown on trip cards.",
+    "repro": "Code read.",
+    "evidence": [
+      "packages/driver_app/lib/features/trips/presentation/widgets/trip_card.dart:17",
+      "backend/src/routes/driver.ts:879-886"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/lib/features/trips/presentation/widgets/trip_card.dart",
+      "packages/driver_app/lib/features/trips/presentation/screens/trip_detail_screen.dart"
+    ],
+    "rootCause": "DRIVER-API",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-037",
+    "severity": "P1",
+    "area": "tooling",
+    "title": "ESLint does not run; contract lint rules unenforced",
+    "symptom": "eslint.config.mjs crashes on load (FlatCompat \"Converting circular structure to JSON\" via react plugin); \"lint\": \"next lint\" no longer exists in Next 16.",
+    "repro": "cd desktop && npx eslint src/app/layout.tsx; npm run lint",
+    "evidence": [
+      "desktop/eslint.config.mjs",
+      "desktop/package.json:14"
+    ],
+    "suspectedFiles": [
+      "desktop/eslint.config.mjs",
+      "desktop/package.json"
+    ],
+    "rootCause": "TOOLING",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-038",
+    "severity": "P1",
+    "area": "tooling",
+    "title": "`npm run build` / `build:electron` fail on Next 16",
+    "symptom": "next build defaults to Turbopack and errors on the custom webpack config (\"Call retries were exceeded\"). Only `next build --webpack` (used by the pipeline gate) works, so Electron packaging scripts are broken.",
+    "repro": "cd desktop && npx next build",
+    "evidence": [
+      "desktop/next.config.ts:19-30",
+      "desktop/package.json:10-12"
+    ],
+    "suspectedFiles": [
+      "desktop/package.json",
+      "desktop/next.config.ts"
+    ],
+    "rootCause": "TOOLING",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-039",
+    "severity": "P1",
+    "area": "e2e-harness",
+    "title": "E2E harness reuses one storageState (one rotating refresh token) for the whole 56-min run",
+    "symptom": "global-setup logs in once and every test context starts from e2e/.auth/admin.json. Refresh tokens are single-use (used_refresh replay key), so once any context refreshes, every later context presents a used token and is bounced to /login. 164/179 failures (all of payments → whatsapp-campaigns from run #517 on) are this cascade, not feature bugs. Fix BUG-001 (single-flight) AND re-authenticate per spec file (or mint a fresh storageState in a beforeAll / worker fixture).",
+    "repro": "npx playwright test (full suite); inspect test-results/*/error-context.md – login hero \"Manage your travel business smarter\".",
+    "evidence": [
+      "scratchpad e2e.log; 164 error-context.md files show the login page",
+      "desktop/e2e/global-setup.ts",
+      "desktop/playwright.config.ts:22 (storageState for all tests)"
+    ],
+    "suspectedFiles": [
+      "desktop/e2e/global-setup.ts",
+      "desktop/playwright.config.ts",
+      "desktop/e2e/helpers/auth.ts"
+    ],
+    "rootCause": "TEST-STALE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-040",
+    "severity": "P2",
+    "area": "data-table",
+    "title": "DataTable sticky header never sticks; >200 rows switches to 600px inner scroll (page jump)",
+    "symptom": "Known finding (code read).",
+    "repro": "List with >200 rows.",
+    "evidence": [
+      "desktop/src/components/ui/data-table.tsx:191-196"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/ui/data-table.tsx"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-041",
+    "severity": "P2",
+    "area": "forms",
+    "title": "Stale validation errors (214/262 setValue calls without shouldValidate)",
+    "symptom": "Errors stay visible after picking a value via Combobox/DatePicker.",
+    "repro": "Submit empty /leads/new, then pick a contact.",
+    "evidence": [
+      "desktop/src/components/domain/entity-form.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/entity-form.tsx",
+      "pages using form.setValue"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-042",
+    "severity": "P2",
+    "area": "date-picker",
+    "title": "DatePicker only navigates month-by-month",
+    "symptom": "Picking a passport expiry or DOB requires dozens of clicks.",
+    "repro": "/travellers/new DOB.",
+    "evidence": [
+      "desktop/src/components/ui/date-picker.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/ui/date-picker.tsx"
+    ],
+    "rootCause": "ROOT-DATES",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-043",
+    "severity": "P2",
+    "area": "follow-ups",
+    "title": "Follow-up \"Schedule\" button disabled with no hint",
+    "symptom": "Dialog opens with Schedule disabled and nothing explains that Lead and Date & time are required.",
+    "repro": "/follow-ups -> Schedule follow-up.",
+    "evidence": [
+      "shots/followup-save-disabled-no-hint-1366.png",
+      "interact.json followup-create saveDisabledInitially=true"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/follow-ups/page.tsx"
+    ],
+    "rootCause": "ROOT-DIALOG",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-044",
+    "severity": "P2",
+    "area": "dialogs",
+    "title": "Dialogs have no max-height / internal scroll",
+    "symptom": "DialogContent has no max-h or overflow; Create task is already 568px tall at 1366x768 and grows past the viewport once validation messages or extra fields render. (All 8 dialogs probed fit in their initial state.)",
+    "repro": "Open Create task at 1366x768, submit empty.",
+    "evidence": [
+      "desktop/src/components/ui/dialog.tsx:64",
+      "shots/dialog-tasks-addtask-1366.png",
+      "dialogs.json"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/ui/dialog.tsx"
+    ],
+    "rootCause": "ROOT-DIALOG",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-045",
+    "severity": "P2",
+    "area": "dialogs",
+    "title": "Native window.confirm() instead of ConfirmDialog",
+    "symptom": "Browser confirm boxes (unstyled, block the thread, not themed).",
+    "repro": "Delete a contact from the list hover action; send/cancel/delete a campaign; apply a credit note.",
+    "evidence": [
+      "desktop/src/app/(app)/campaigns/[id]/page.tsx:94,123,134",
+      "desktop/src/app/(app)/contacts/page.tsx:614",
+      "desktop/src/app/(app)/credit-notes/page.tsx:44",
+      "desktop/src/app/(app)/debit-notes/page.tsx:44"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/campaigns/[id]/page.tsx",
+      "desktop/src/app/(app)/contacts/page.tsx",
+      "desktop/src/app/(app)/credit-notes/page.tsx",
+      "desktop/src/app/(app)/debit-notes/page.tsx"
+    ],
+    "rootCause": "ROOT-DIALOG",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-046",
+    "severity": "P2",
+    "area": "performance",
+    "title": "Client-side filtering over 100–1000 rows (dashboard, contact detail)",
+    "symptom": "Dashboard requests leads?limit=1000 and invoices?limit=1000; contact detail filters related records client-side.",
+    "repro": "Network tab on /dashboard.",
+    "evidence": [
+      "desktop/src/app/(app)/dashboard/page.tsx:705-708",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/dashboard/page.tsx",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-047",
+    "severity": "P2",
+    "area": "shell",
+    "title": "Blank or generic top-bar titles on 23 routes",
+    "symptom": "Top bar is empty on /credit-notes*, /debit-notes*, /travellers*, /reports/{customer,team,visa}, /super-admin/*, /help, /import, /onboarding; other areas repeat the section name instead of the page.",
+    "repro": "Open /travellers.",
+    "evidence": [
+      "shots/travellers-clipped-subtitle-1366-light.png",
+      "crawl topbar=\"\" on 23 routes",
+      "desktop/src/components/layout/top-navbar.tsx (getPageTitle)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/top-navbar.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-048",
+    "severity": "P2",
+    "area": "layout",
+    "title": "Nested double scroll areas (20 routes at 1366)",
+    "symptom": "Pages wrap content in their own overflow-auto flex-1 container inside <main overflow-auto> (dashboard, contacts/new+edit, itineraries/new+edit, reports/*, marketing, festivals, help, import, fleet, settings/email-signature).",
+    "repro": "Scroll /dashboard at 1366x768 – inner div scrolls, not main.",
+    "evidence": [
+      "crawl innerScrollers list (1366x768-light)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/dashboard/page.tsx",
+      "desktop/src/app/(app)/reports/",
+      "desktop/src/app/(app)/contacts/new/page.tsx",
+      "desktop/src/app/(app)/itineraries/new/page.tsx",
+      "desktop/src/app/(app)/marketing/page.tsx",
+      "desktop/src/app/(app)/help/page.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-049",
+    "severity": "P2",
+    "area": "shell",
+    "title": "Sidebar at 1366x768: tiny nav viewport, blank logo in light mode, stray green dot",
+    "symptom": "Only ~10 nav items visible (fixed bottom block + user card take ~250px; \"Itinerary Templates\" cut mid-line). Logo tile is an empty white square in light mode (glyph only visible in dark). Unlabelled green dot under Settings.",
+    "repro": "/dashboard at 1366x768.",
+    "evidence": [
+      "shots/lead-new-1366-dark.png",
+      "shots/dashboard-1920-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/sidebar.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-050",
+    "severity": "P2",
+    "area": "design-tokens",
+    "title": "Dark mode mixes warm brown-black surfaces with a navy header band; off-system gradients",
+    "symptom": "Body/cards use the legacy warm dark palette while page headers use a navy tint. Festivals and Reports hub use saturated rainbow gradient banners and emoji; \"Republic Day\" title is gray-800 on dark (1.26:1); calendar event chips are 10px text at 2.8:1.",
+    "repro": "/dashboard, /marketing/festivals, /reports, /calendar in dark mode.",
+    "evidence": [
+      "shots/dashboard-1920-dark.png",
+      "shots/xdark-festivals-1366.png",
+      "shots/xdark-reports-1366.png",
+      "shots/xdark-calendar-1366.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/globals.css",
+      "desktop/src/app/(app)/marketing/festivals/page.tsx",
+      "desktop/src/app/(app)/reports/page.tsx",
+      "desktop/src/app/(app)/calendar/page.tsx"
+    ],
+    "rootCause": "ROOT-TOKENS",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-051",
+    "severity": "P2",
+    "area": "calendar",
+    "title": "Calendar month view: out-of-month cells drawn with orange highlight borders",
+    "symptom": "Leading days of the month look selected/focused.",
+    "repro": "/calendar (October 2026).",
+    "evidence": [
+      "shots/calendar-1920-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/calendar/page.tsx"
+    ],
+    "rootCause": "ROOT-TOKENS",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-052",
+    "severity": "P2",
+    "area": "fleet",
+    "title": "Fleet dashboard: identical trip IDs, \"No drivers available\" with 3 drivers, availability ignores trips",
+    "symptom": "Trip labels use trip.id.slice(0,8) – UUIDv7 prefixes are time-based so every trip reads \"Trip #01a100b2\". Top Drivers empty despite 3 active drivers. Availability grid shows all vehicles free on trip days (endpoint 404, see BACKEND-ROUTEORDER). Dates shown as raw ISO.",
+    "repro": "/fleet with 3 trips.",
+    "evidence": [
+      "shots/fleet-dashboard-dup-tripids-1920-light.png",
+      "desktop/src/app/(app)/fleet/page.tsx:260,395,417"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/fleet/page.tsx"
+    ],
+    "rootCause": "ROOT-FAKEDATA",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-053",
+    "severity": "P2",
+    "area": "invoices",
+    "title": "Invoice detail omits the client and uses en-US dates",
+    "symptom": "No Bill-to/contact on the detail page; Issue Date \"3/10/2026\" (ambiguous en-US) while the rest of the app is en-IN; status shown twice (badge + lowercase \"draft\"). Same toLocaleDateString() issue on itinerary templates (\"3/10/2026\").",
+    "repro": "Open any invoice.",
+    "evidence": [
+      "shots/invoice-detail-1920-dark.png",
+      "desktop/src/app/(app)/invoices/[id]/page.tsx:411"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/invoices/[id]/page.tsx",
+      "desktop/src/app/(app)/itineraries/templates/page.tsx"
+    ],
+    "rootCause": "ROOT-DETAILPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-054",
+    "severity": "P2",
+    "area": "contacts",
+    "title": "Contact detail: \"Last Interaction\" is the first scheduled follow-up; City not shown; \"₹0.0L\"",
+    "symptom": "Last Interaction (2 Oct) predates creation (3 Oct) because it is follow-ups[0].scheduledAt; City entered at creation is missing from Contact Information; zero revenue rendered as ₹0.0L.",
+    "repro": "Open /contacts/<id> for a contact with a follow-up.",
+    "evidence": [
+      "shots/contact-detail-1920-light.png",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx:142-148"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/contacts/[id]/page.tsx"
+    ],
+    "rootCause": "ROOT-DETAILPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-055",
+    "severity": "P2",
+    "area": "suppliers",
+    "title": "Suppliers table cramped at 1366: wrapping cells, hover actions clipped, horizontal scroll",
+    "symptom": "Company/contact/phone wrap to 2-3 lines; row hover icons cut at the right edge; table scrollWidth 1090 > 1060.",
+    "repro": "/suppliers at 1366x768.",
+    "evidence": [
+      "shots/x1366-suppliers-table-cramped.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/suppliers/page.tsx",
+      "desktop/src/components/ui/data-table.tsx"
+    ],
+    "rootCause": "ROOT-LISTPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-056",
+    "severity": "P2",
+    "area": "tasks",
+    "title": "Tasks list: view toggle floats above header; \"DE\" initials for Demo Admin",
+    "symptom": "List/board toggle sits alone in a row above the page header; avatar initials take the first two letters of the first word.",
+    "repro": "/tasks.",
+    "evidence": [
+      "shots/tasks-1366-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/tasks/page.tsx"
+    ],
+    "rootCause": "ROOT-CASE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-057",
+    "severity": "P2",
+    "area": "forms",
+    "title": "Raw ID / plain inputs for relations",
+    "symptom": "Contract requires RelationCombobox.",
+    "repro": "Code read.",
+    "evidence": [
+      "desktop/src/app/(app)/campaigns/new/page.tsx:225",
+      "desktop/src/app/(app)/chatbot/conversations/[id]/page.tsx:309",
+      "desktop/src/app/(app)/itineraries/new/page.tsx (plain Combobox for lead)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/campaigns/new/page.tsx",
+      "desktop/src/app/(app)/chatbot/conversations/[id]/page.tsx",
+      "desktop/src/app/(app)/itineraries/new/page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-058",
+    "severity": "P2",
+    "area": "forms",
+    "title": "16 raw type=\"date\" inputs (US mm/dd/yyyy) and raw number inputs for money",
+    "symptom": "e.g. itineraries/new \"Valid Until\" shows mm/dd/yyyy.",
+    "repro": "/itineraries/new.",
+    "evidence": [
+      "shots/itinerary-new-native-date-1366-light.png",
+      "desktop/src/app/(app)/contacts/new/page.tsx",
+      "desktop/src/app/(app)/contacts/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/fleet/vehicles/[id]/page.tsx",
+      "desktop/src/app/(app)/itineraries/new/page.tsx",
+      "desktop/src/app/(app)/itineraries/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/suppliers/compare/page.tsx",
+      "desktop/src/components/domain/report-page-template.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/itineraries/new/page.tsx",
+      "desktop/src/app/(app)/contacts/new/page.tsx",
+      "desktop/src/app/(app)/contacts/[id]/edit/page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-059",
+    "severity": "P2",
+    "area": "itineraries",
+    "title": "New itinerary shows phantom versions V1/V2/V3 and a hidden title field",
+    "symptom": "A brand-new itinerary already displays three version chips; the title is a borderless \"Itinerary title…\" placeholder in the header.",
+    "repro": "/itineraries/new.",
+    "evidence": [
+      "shots/itinerary-new-native-date-1366-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/itineraries/new/page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-060",
+    "severity": "P2",
+    "area": "messaging",
+    "title": "share-panel uses mailto: / wa.me",
+    "symptom": "Bypasses Communication Hub (contract §4, rule 3).",
+    "repro": "Itinerary Share tab.",
+    "evidence": [
+      "desktop/src/components/domain/share-panel.tsx:52,62"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/domain/share-panel.tsx"
+    ],
+    "rootCause": "ROOT-CONTRACT",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-061",
+    "severity": "P2",
+    "area": "errors",
+    "title": "Validation errors returned as a raw JSON string in error.message",
+    "symptom": "zValidator failures return {error:{name:\"ZodError\",message:\"[\\n {\\n \\\"code\\\"…\"}} – any UI that toasts error.message shows JSON.",
+    "repro": "POST /leads with source \"walk_in\".",
+    "evidence": [
+      "runtime: POST /invoices, /leads, /suppliers, /fleet/trips 400 bodies"
+    ],
+    "suspectedFiles": [
+      "backend/src/index.ts (onError / zValidator hook)",
+      "backend/src/utils/response.ts"
+    ],
+    "rootCause": "BACKEND-ERRORS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-062",
+    "severity": "P2",
+    "area": "api-contract",
+    "title": "Inconsistent response envelopes and casing across endpoints",
+    "symptom": "/visa -> {data:{data,pagination}} with no success flag; /notifications -> {data:{items,total,page,limit,data,pagination}}; /users unpaginated; /travellers nested + snake_case; /tasks snake_case and ignores camelCase dueDate on create; lead notes snake_case. Every page re-implements unwrapping (root of BUG contacts/invoices/reports).",
+    "repro": "GET each endpoint with ?page=1&limit=2.",
+    "evidence": [
+      "runtime envelope probe (scratch)",
+      "backend/src/routes/tasks.ts:117-127",
+      "backend/src/routes/visa.ts",
+      "backend/src/routes/notifications.ts:73-82"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/visa.ts",
+      "backend/src/routes/notifications.ts",
+      "backend/src/routes/tasks.ts",
+      "backend/src/routes/travellers.ts",
+      "backend/src/routes/users.ts"
+    ],
+    "rootCause": "ROOT-ENVELOPE",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-063",
+    "severity": "P2",
+    "area": "rbac",
+    "title": "festival-campaigns routes have no requirePermission",
+    "symptom": "Any authenticated role can create/update festival campaigns.",
+    "repro": "Code read.",
+    "evidence": [
+      "backend/src/routes/festival-campaigns.ts"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/festival-campaigns.ts"
+    ],
+    "rootCause": "BACKEND-FREEZE",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-064",
+    "severity": "P2",
+    "area": "trips",
+    "title": "\"Today\" tab uses UTC date and includes cancelled/completed; upcoming excludes en_route/started",
+    "symptom": "date('now') in SQL is UTC – IST trips before 05:30 fall into the wrong day.",
+    "repro": "Code read.",
+    "evidence": [
+      "backend/src/routes/driver.ts:315-326"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/driver.ts"
+    ],
+    "rootCause": "DRIVER-API",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-065",
+    "severity": "P2",
+    "area": "profile",
+    "title": "Document upload is a TODO",
+    "symptom": "Upload button does nothing.",
+    "repro": "Profile -> Documents.",
+    "evidence": [
+      "packages/driver_app/lib/features/profile/presentation/screens/documents_screen.dart:81"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/lib/features/profile/presentation/screens/documents_screen.dart"
+    ],
+    "rootCause": "DRIVER-UI",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-066",
+    "severity": "P2",
+    "area": "ui",
+    "title": "Driver app visual polish: off-brand blue, mismatched inputs, low-contrast icon in dark",
+    "symptom": "Seed colour #1565C0 (not the desktop indigo); country-code dropdown is outlined while the phone field is filled (different heights/styles); Send OTP button is a muted grey-blue that reads as disabled; car icon keeps the fixed light-theme primary in dark mode; status colours hardcoded (assigned = orange); no branded splash/app name.",
+    "repro": "Launch app in light and dark.",
+    "evidence": [
+      "shots/driver-01-launch.png",
+      "shots/driver-04-login-dark.png",
+      "packages/driver_app/lib/core/constants/app_colors.dart",
+      "packages/driver_app/lib/app/theme.dart"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/lib/app/theme.dart",
+      "packages/driver_app/lib/core/constants/app_colors.dart",
+      "packages/driver_app/lib/features/auth/presentation/screens/phone_input_screen.dart"
+    ],
+    "rootCause": "DRIVER-UI",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-067",
+    "severity": "P2",
+    "area": "demo-data",
+    "title": "Demo tenant polluted with test data",
+    "symptom": "\"Showcase Contact\", \"Showcase Traveller Showcase Last Name\" (nationality Afghan), \"E2E Salesperson\" auto-assigned to new leads, ₹221.3Cr revenue from E2E invoices.",
+    "repro": "Open /contacts, /travellers, a new lead.",
+    "evidence": [
+      "shots/contacts-list-count0-1920-light.png",
+      "shots/dashboard-1920-light.png"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/test.ts",
+      "desktop/e2e/helpers/api-seed.ts"
+    ],
+    "rootCause": "PIPELINE",
+    "platform": "pipeline"
+  },
+  {
+    "id": "BUG-068",
+    "severity": "P2",
+    "area": "showcase",
+    "title": "Showcase gate: sign-out click timed out; state.json keeps only the head of gate output",
+    "symptom": "Sign-out itself works (interact sign-out PASS) – the showcase failure is the session dying first (see token refresh race). The pipeline stores the head of the output so repair runs never saw the cause.",
+    "repro": "desktop/audit/remake/state.json showcase entry.",
+    "evidence": [
+      "desktop/audit/remake/state.json",
+      "scripts/remake-pipeline.js"
+    ],
+    "suspectedFiles": [
+      "scripts/remake-pipeline.js"
+    ],
+    "rootCause": "PIPELINE",
+    "platform": "pipeline"
+  },
+  {
+    "id": "BUG-069",
+    "severity": "P2",
+    "area": "invoices",
+    "title": "Invoice bulk export failure is silent (no error toast)",
+    "symptom": "When the export job fails to queue the list shows nothing; spec expects \"Failed to export invoices\".",
+    "repro": "e2e invoices.spec.ts:369 (mocks a failing export).",
+    "evidence": [
+      "e2e invoices.spec.ts:369"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/invoices/page.tsx",
+      "desktop/src/components/domain/list-page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-070",
+    "severity": "P2",
+    "area": "leads",
+    "title": "Leads are auto-assigned on create, so \"Unassigned leads\" can never be populated",
+    "symptom": "A lead created without assignedTo comes back assigned (to \"E2E Salesperson\" in the demo tenant) by assignment rules/round-robin; /leads/unassigned bulk-assign spec receives an assignee id where it expects none.",
+    "repro": "POST /leads without assignedTo, GET it back.",
+    "evidence": [
+      "e2e leads.spec.ts:413 (Received \"01a0fba9-…\")",
+      "shots/lead-detail-invalid-date-1920-light.png (Assigned To E2E Salesperson)"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/leads.ts",
+      "backend/src/services/ (assignment rules)"
+    ],
+    "rootCause": "BACKEND-ASSIGNMENT",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-071",
+    "severity": "P3",
+    "area": "shell",
+    "title": "Electron drag bar covers the sidebar logo",
+    "symptom": "Fixed h-8 drag region over the sidebar header in Electron.",
+    "repro": "Run in Electron.",
+    "evidence": [
+      "desktop/src/components/layout/app-shell.tsx:21-23"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/app-shell.tsx",
+      "desktop/src/components/layout/sidebar.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-072",
+    "severity": "P3",
+    "area": "design-tokens",
+    "title": "400+ raw Tailwind palette classes and 48 hex literals in app/components",
+    "symptom": "Violates contract lint rule 1 once ESLint runs.",
+    "repro": "grep -rE \"#[0-9a-f]{6}\" desktop/src/app",
+    "evidence": [
+      "desktop/src/app/(app)/dashboard/page.tsx:69",
+      "desktop/src/app/(app)/itineraries/new/page.tsx:94",
+      "desktop/src/app/(app)/marketing/festivals/page.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/dashboard/page.tsx",
+      "desktop/src/app/(app)/calendar/page.tsx",
+      "desktop/src/app/(app)/marketing/",
+      "desktop/src/app/(app)/itineraries/new/page.tsx",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx"
+    ],
+    "rootCause": "ROOT-TOKENS",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-073",
+    "severity": "P3",
+    "area": "a11y",
+    "title": "Missing aria-labels on icon-only buttons; duplicate id=\"relation-error\"",
+    "symptom": "Theme toggle, notification bell, row actions; duplicate ids when two RelationComboboxes are on one form.",
+    "repro": "axe on /leads/new.",
+    "evidence": [
+      "desktop/src/components/layout/top-navbar.tsx:357",
+      "desktop/src/components/domain/relation-combobox.tsx"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/top-navbar.tsx",
+      "desktop/src/components/domain/relation-combobox.tsx"
+    ],
+    "rootCause": "ROOT-A11Y",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-074",
+    "severity": "P3",
+    "area": "architecture",
+    "title": "~18 pages not built on ListPage/EntityForm/DetailPage",
+    "symptom": "contacts/new+edit, itineraries/*, reports/*, marketing, settings/*, ai/* hand-roll headers/padding.",
+    "repro": "Code read.",
+    "evidence": [
+      "desktop/src/app/(app)/contacts/new/page.tsx",
+      "desktop/src/app/(app)/itineraries/new/page.tsx",
+      "desktop/src/app/(app)/reports/"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/contacts/new/page.tsx",
+      "desktop/src/app/(app)/contacts/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/itineraries/",
+      "desktop/src/app/(app)/reports/",
+      "desktop/src/app/(app)/settings/"
+    ],
+    "rootCause": "ROOT-ARCHETYPE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-075",
+    "severity": "P3",
+    "area": "navigation",
+    "title": "Orphan pages and missing sidebar entries",
+    "symptom": "/settings/announcements, /settings/phone-numbers, /fleet/rate-cards unreachable from nav; /campaigns/*, /onboarding and /reports/* subpages highlight nothing in the sidebar.",
+    "repro": "Open /campaigns.",
+    "evidence": [
+      "crawl sidebarActive=[] on /campaigns*, /reports/{customer,team,visa}, /onboarding"
+    ],
+    "suspectedFiles": [
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/app/(app)/settings/page.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-076",
+    "severity": "P3",
+    "area": "leads",
+    "title": "Lead detail copy: \"1 Adults\", blank Priority, raw source values (\"manual\")",
+    "symptom": "Pluralisation and empty values not handled.",
+    "repro": "Open a lead created without priority.",
+    "evidence": [
+      "shots/lead-detail-invalid-date-1920-light.png",
+      "shots/lead-new-nogutter-1366-light.png"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/leads/[id]/page.tsx",
+      "desktop/src/app/(app)/leads/new/page.tsx"
+    ],
+    "rootCause": "ROOT-DETAILPAGE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-077",
+    "severity": "P3",
+    "area": "fleet",
+    "title": "Driver form requires licence number + expiry though the API makes them optional",
+    "symptom": "Cannot add a driver quickly (e.g. for the demo) without licence data.",
+    "repro": "/fleet/drivers/new with name+phone only.",
+    "evidence": [
+      "interact.json driver-create validation [\"License number is required\",\"License expiry is required\"]"
+    ],
+    "suspectedFiles": [
+      "desktop/src/app/(app)/fleet/drivers/new/page.tsx"
+    ],
+    "rootCause": "ROOT-ENTITYFORM",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-078",
+    "severity": "P3",
+    "area": "assets",
+    "title": "Missing /grid.svg asset (404)",
+    "symptom": "Background pattern request 404s.",
+    "repro": "Network tab.",
+    "evidence": [
+      "crawl failed: 404 GET /grid.svg"
+    ],
+    "suspectedFiles": [
+      "desktop/public/",
+      "desktop/src/app/(app)/layout.tsx"
+    ],
+    "rootCause": "ROOT-SHELL",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-079",
+    "severity": "P3",
+    "area": "tests",
+    "title": "Vitest: 10 failing files / 19 failing tests (baseline: 4 load-failure files)",
+    "symptom": "New stale API-client tests after slice changes: ai, chatbot, credit-notes (8), exports, marketing, payments, vouchers; plus auth/client/users fail to load (useAuthStore.subscribe is not a function in client.ts:345).",
+    "repro": "cd desktop && npx vitest run",
+    "evidence": [
+      "vitest: Test Files 10 failed | 43 passed (53); Tests 19 failed | 1085 passed (1104)"
+    ],
+    "suspectedFiles": [
+      "desktop/src/lib/api/*.test.ts",
+      "desktop/src/lib/api/client.ts:345"
+    ],
+    "rootCause": "TOOLING",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-080",
+    "severity": "P3",
+    "area": "tests",
+    "title": "tsc: 99 errors, all in tests (97 unit, 2 e2e) – exactly at the gate ceiling",
+    "symptom": "Any new test-file error breaks the \"≤99\" gate.",
+    "repro": "cd desktop && npx tsc --noEmit",
+    "evidence": [
+      "e2e/itineraries.spec.ts:40",
+      "e2e/webhooks-integrations.spec.ts:61",
+      "desktop/src/hooks/use-notifications.test.ts",
+      "desktop/src/lib/api/client.test.ts"
+    ],
+    "suspectedFiles": [
+      "desktop/src/**/*.test.ts",
+      "desktop/e2e/itineraries.spec.ts",
+      "desktop/e2e/webhooks-integrations.spec.ts"
+    ],
+    "rootCause": "TOOLING",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-081",
+    "severity": "P3",
+    "area": "ids",
+    "title": "crypto.randomUUID() in 15 backend files (project rule: UUIDv7)",
+    "symptom": "events, tasks, travellers, visa, suppliers, driver, imports/exports, webhook, cron use random v4 ids.",
+    "repro": "grep -rl crypto.randomUUID backend/src",
+    "evidence": [
+      "backend/src/routes/planner.ts:121",
+      "backend/src/routes/travellers.ts",
+      "backend/src/routes/tasks.ts"
+    ],
+    "suspectedFiles": [
+      "backend/src/routes/planner.ts",
+      "backend/src/routes/tasks.ts",
+      "backend/src/routes/travellers.ts",
+      "backend/src/routes/visa.ts",
+      "backend/src/routes/suppliers.ts",
+      "backend/src/routes/driver.ts"
+    ],
+    "rootCause": "BACKEND-IDS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-082",
+    "severity": "P3",
+    "area": "schema",
+    "title": "Drizzle schema drift on flyers",
+    "symptom": "generatedFlyers.name is notNull() but 0033 made it nullable; sizePreset declared but no column; flyer_shares table has shared_by/shared_at while schema says createdBy/createdAt.",
+    "repro": "Compare tenant-schema.ts:1297-1330 with migrations.",
+    "evidence": [
+      "backend/src/db/tenant-schema.ts:1297-1330",
+      "backend/drizzle/tenant/0010_marketing_tables.sql:154-190"
+    ],
+    "suspectedFiles": [
+      "backend/src/db/tenant-schema.ts"
+    ],
+    "rootCause": "BACKEND-SCHEMA",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-083",
+    "severity": "P3",
+    "area": "cors",
+    "title": "CORS allowHeaders omits X-Tenant-Id",
+    "symptom": "Driver/web clients sending X-Tenant-Id fail preflight from a browser origin.",
+    "repro": "Code read.",
+    "evidence": [
+      "backend/src/index.ts:119-127"
+    ],
+    "suspectedFiles": [
+      "backend/src/index.ts"
+    ],
+    "rootCause": "BACKEND-CORS",
+    "platform": "backend"
+  },
+  {
+    "id": "BUG-084",
+    "severity": "P3",
+    "area": "tests",
+    "title": "Driver app has no tests (placeholder widget_test.dart)",
+    "symptom": "flutter test proves nothing.",
+    "repro": "packages/driver_app/test/widget_test.dart",
+    "evidence": [
+      "packages/driver_app/test/widget_test.dart"
+    ],
+    "suspectedFiles": [
+      "packages/driver_app/test/"
+    ],
+    "rootCause": "DRIVER-TESTS",
+    "platform": "driver"
+  },
+  {
+    "id": "BUG-085",
+    "severity": "P3",
+    "area": "pipeline",
+    "title": "Verify jobs lack backendFrozen gate; git add not scoped",
+    "symptom": "Verify jobs made ~29 unapproved backend changes (migrations 0031-0034 etc.) that only the cleanup gate caught.",
+    "repro": "scripts/remake-pipeline.js:285-317.",
+    "evidence": [
+      "scripts/remake-pipeline.js:267,290,317"
+    ],
+    "suspectedFiles": [
+      "scripts/remake-pipeline.js"
+    ],
+    "rootCause": "PIPELINE",
+    "platform": "pipeline"
+  },
+  {
+    "id": "BUG-086",
+    "severity": "P3",
+    "area": "e2e",
+    "title": "Specs that assert the old GET /templates 400 bug now fail (bug fixed by d7e8f45)",
+    "symptom": "campaigns.spec.ts:342 C1, communication-inbox.spec.ts:366 C3-note and :461 D3-note expect the template dropdown to 400; verify:message-templates switched page/limit to z.coerce so /templates now returns 200 with options. The app is correct; update the specs to assert options load.",
+    "repro": "npx playwright test campaigns communication-inbox",
+    "evidence": [
+      "e2e campaigns.spec.ts:342",
+      "e2e communication-inbox.spec.ts:366,461",
+      "commit d7e8f45 backend/src/routes/templates.ts:35-36"
+    ],
+    "suspectedFiles": [
+      "desktop/e2e/campaigns.spec.ts",
+      "desktop/e2e/communication-inbox.spec.ts"
+    ],
+    "rootCause": "TEST-STALE",
+    "platform": "desktop"
+  },
+  {
+    "id": "BUG-087",
+    "severity": "P3",
+    "area": "e2e",
+    "title": "Brittle/stale specs outside the auth cascade",
+    "symptom": "auth-shell.spec.ts:154 expects a user menu named \"Admin User\" (tenant user is \"Demo Admin\"); contacts.spec.ts:423 strict-mode violation – two \"New Field\" buttons (header + empty state; consider one CTA); fleet-drivers.spec.ts:27 clicks day \"15\" which is disabled by the picker min/max date (date-dependent); fleet-vehicles.spec.ts:498 counts tbody tr[role=\"button\"] = 0 (row role changed); notifications.spec.ts:378 preference page shows only the \"Settings\" heading – confirm whether /settings/notifications lost its page header (possible app bug); ai-business-intelligence.spec.ts:92 gets \"No briefing available\" because the e2e wrangler config strips the [ai] binding.",
+    "repro": "Run each spec individually after the auth harness fix.",
+    "evidence": [
+      "e2e auth-shell.spec.ts:154",
+      "e2e contacts.spec.ts:423",
+      "e2e fleet-drivers.spec.ts:27",
+      "e2e fleet-vehicles.spec.ts:498",
+      "e2e notifications.spec.ts:378",
+      "e2e ai-business-intelligence.spec.ts:92"
+    ],
+    "suspectedFiles": [
+      "desktop/e2e/auth-shell.spec.ts",
+      "desktop/e2e/contacts.spec.ts",
+      "desktop/e2e/fleet-drivers.spec.ts",
+      "desktop/e2e/fleet-vehicles.spec.ts",
+      "desktop/e2e/notifications.spec.ts",
+      "desktop/e2e/ai-business-intelligence.spec.ts"
+    ],
+    "rootCause": "TEST-STALE",
+    "platform": "desktop"
+  }
+]

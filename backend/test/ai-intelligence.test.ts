@@ -4,6 +4,10 @@ import worker from '../src/index';
 
 const testEnv = env as any;
 
+// These suites exercise the success path of every AI route, so they run with a working Workers AI binding.
+// The no-provider behaviour (503 AI_UNAVAILABLE) is covered in b36-ai-unavailable.test.ts.
+const fakeAiBinding = { run: async () => ({ response: '{}' }) };
+
 async function authRequest(
   method: string,
   path: string,
@@ -21,7 +25,7 @@ async function authRequest(
   const ctx = createExecutionContext();
   const res = await worker.fetch(
     new Request(`http://localhost/api/v1${path}`, opts),
-    testEnv,
+    { ...testEnv, AI: fakeAiBinding },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -96,14 +100,14 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         query: 'How many new leads were created this month?',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
         expect(body.data).toHaveProperty('id');
         expect(body.data).toHaveProperty('query');
         expect(body.data).toHaveProperty('sql');
-        expect(body.data).toHaveProperty('explanation');
+        expect(body.data).toHaveProperty('narrative');
       }
     });
 
@@ -112,7 +116,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         query: 'Show me the top 5 leads by estimated value',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should handle multi-turn conversation with conversationId', async () => {
@@ -121,7 +125,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         conversationId: 'nonexistent-conv',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('GET /ai/intelligence/nl-queries should list past queries', async () => {
@@ -149,16 +153,13 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.success).toBe(true);
-      expect(body.data).toHaveProperty('data');
-      expect(Array.isArray(body.data.data)).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
     });
 
-    it('POST /ai/intelligence/insights/generate should trigger generation', async () => {
-      const res = await authRequest('POST', '/ai/intelligence/insights/generate', adminToken, {
-        types: ['lead', 'revenue', 'pipeline'],
-      });
+    it('GET /ai/intelligence/insights/:id should be 404 for an unknown insight', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/insights/nonexistent-insight', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
 
     it('GET /ai/intelligence/recommendations should return list', async () => {
@@ -173,8 +174,8 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('AI Lead Scoring', () => {
-    it('GET /ai/intelligence/lead-scores should return all scores', async () => {
-      const res = await authRequest('GET', '/ai/intelligence/lead-scores', adminToken);
+    it('GET /ai/intelligence/lead-score/:id/history should return a list', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/lead-score/nonexistent-lead/history', adminToken);
       if (res.status === 403) return;
       expect(res.status).toBe(200);
       const body: any = await res.json();
@@ -192,7 +193,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
       const res = await authRequest('POST', '/ai/intelligence/lead-score/nonexistent-lead/compute', adminToken);
       if (res.status === 403) return;
       // 404 (lead not found) or 200 (score computed)
-      expect([200, 404, 500]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -204,11 +205,11 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/intelligence/smart-followup/:id should return suggestion', async () => {
       const res = await authRequest('GET', '/ai/intelligence/smart-followup/nonexistent-lead', adminToken);
       if (res.status === 403) return;
-      expect([200, 404, 500]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
 
-    it('GET /ai/intelligence/followup-suggestions should list suggestions', async () => {
-      const res = await authRequest('GET', '/ai/intelligence/followup-suggestions', adminToken);
+    it('GET /ai/intelligence/smart-followups should list suggestions', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/smart-followups', adminToken);
       if (res.status === 403) return;
       expect(res.status).toBe(200);
     });
@@ -275,7 +276,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         type: 'daily',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -289,7 +290,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         type: 'weekly',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('POST /ai/bi/briefings/generate should generate monthly briefing', async () => {
@@ -297,7 +298,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         type: 'monthly',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('GET /ai/bi/briefings should list past briefings', async () => {
@@ -315,7 +316,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/health-score should return a score', async () => {
       const res = await authRequest('GET', '/ai/bi/health-score', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -333,7 +334,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/destination-profitability should return analysis', async () => {
       const res = await authRequest('GET', '/ai/bi/destination-profitability', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -350,7 +351,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/customer-ltv should return LTV data', async () => {
       const res = await authRequest('GET', '/ai/bi/customer-ltv', adminToken);
       if (res.status === 403) return;
-      expect([200, 404, 500]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -362,7 +363,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/cash-flow-forecast should return forecast', async () => {
       const res = await authRequest('GET', '/ai/bi/cash-flow-forecast', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -379,7 +380,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/team-performance should return team metrics', async () => {
       const res = await authRequest('GET', '/ai/bi/team-performance', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -391,7 +392,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/trending-destinations should return list', async () => {
       const res = await authRequest('GET', '/ai/bi/trending-destinations', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -403,7 +404,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/lost-deal-analysis should return analysis', async () => {
       const res = await authRequest('GET', '/ai/bi/lost-deal-analysis', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -415,7 +416,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/lead-source-roi should return ROI data', async () => {
       const res = await authRequest('GET', '/ai/bi/lead-source-roi', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -427,7 +428,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/revenue-pulse should return revenue data', async () => {
       const res = await authRequest('GET', '/ai/bi/revenue-pulse', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -439,7 +440,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
     it('GET /ai/bi/seasonal-demand should return demand data', async () => {
       const res = await authRequest('GET', '/ai/bi/seasonal-demand', adminToken);
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 

@@ -1,19 +1,25 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Loader2, UserPlus, Copy, CheckCircle2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { aiApi, type ExtractedLead } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type ExtractedLead } from '@/lib/api/ai';
 import { leadsApi } from '@/lib/api/leads';
 import { contactsApi } from '@/lib/api/contacts';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
+import { toLocalDateString } from '@/lib/dates';
 
 export default function LeadCreationPage() {
   const router = useRouter();
@@ -21,6 +27,8 @@ export default function LeadCreationPage() {
   const [loading, setLoading] = React.useState(false);
   const [isCreating, setIsCreating] = React.useState(false);
   const [result, setResult] = React.useState<ExtractedLead | null>(null);
+  const [aiError, setAiError] = React.useState<AiUnavailableError | null>(null);
+  const [contentId, setContentId] = React.useState<string | undefined>();
 
   const handleExtract = async () => {
     if (!text.trim()) {
@@ -29,11 +37,19 @@ export default function LeadCreationPage() {
     }
     setLoading(true);
     setResult(null);
+    setContentId(undefined);
+    setAiError(null);
     try {
       const response = await aiApi.extractLead({ text });
       setResult(response.data);
+      const returnedId = response.data.contentId;
+      if (returnedId) setContentId(returnedId);
       toast.success('Lead data extracted successfully');
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setAiError(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to extract lead data';
       toast.error(msg);
     } finally {
@@ -58,8 +74,8 @@ export default function LeadCreationPage() {
         contactId: contact.id,
         title: `Inquiry from ${name}`,
         source: 'website',
-        destinations: (result as any).destination ? [(result as any).destination] : ['TBD'],
-        travelDate: (result as any).travelDate || new Date().toISOString().split('T')[0],
+        destinations: result.destination ? [result.destination] : ['TBD'],
+        travelDate: result.travelDate || toLocalDateString(new Date()),
         tripType: 'domestic',
         notes: result.notes,
       });
@@ -77,13 +93,9 @@ export default function LeadCreationPage() {
     }
   };
 
-  const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 90)
-      return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{confidence}%</Badge>;
-    if (confidence >= 70)
-      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">{confidence}%</Badge>;
-    return <Badge className="bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400">{confidence}%</Badge>;
-  };
+  const getConfidenceBadge = (confidence: number) => (
+    <Tag tone={confidence >= 90 ? 'success' : confidence >= 70 ? 'warning' : 'danger'}>{confidence}%</Tag>
+  );
 
   const fields = result
     ? [
@@ -97,14 +109,14 @@ export default function LeadCreationPage() {
     : [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Lead Extraction</h1>
-        <p className="text-muted-foreground mt-1">
-          Paste an email or inquiry text and let AI extract lead details automatically
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="AI Lead Extraction"
+        description="Paste an email or inquiry text and let AI extract lead details automatically"
+        actions={<AiQuotaBadge capKey="ai_extractions" />}
+      />
 
+      <AiGate>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input Section */}
         <Card>
@@ -163,7 +175,9 @@ export default function LeadCreationPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!result && !loading && (
+            {aiError && !loading && <AiUnavailableNotice error={aiError} onRetry={handleExtract} />}
+
+            {!result && !loading && !aiError && (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <UserPlus className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm">No data extracted yet</p>
@@ -197,6 +211,7 @@ export default function LeadCreationPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Copy ${field.label}`}
                             className="h-8 w-8"
                             onClick={() => {
                               navigator.clipboard.writeText(field.value || '');
@@ -228,11 +243,14 @@ export default function LeadCreationPage() {
                     {isCreating ? 'Creating...' : 'Create Lead'}
                   </Button>
                 </div>
+
+                <GeneratedContentActions contentId={contentId} />
               </div>
             )}
           </CardContent>
         </Card>
       </div>
-    </div>
+      </AiGate>
+    </PageContainer>
   );
 }

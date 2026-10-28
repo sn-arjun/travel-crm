@@ -1,35 +1,42 @@
 'use client';
 
+
+import { formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Loader2, Save, Plus, Trash2, GripVertical, MapPin, Calendar, ImagePlus, X, Check, AlertCircle, FileText,
+  Loader2, Save, Plus, Trash2, GripVertical, Check, AlertCircle, FileText,
 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { DatePicker } from '@/components/ui/date-picker';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { itinerariesApi, type UpdateItineraryRequest } from '@/lib/api/itineraries';
-import { client, type ApiResponse } from '@/lib/api/client';
-import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/page-header';
+import { useApiQuery } from '@/hooks/use-api';
+import {
+  itinerariesApi, ageBandsApi, toItineraryDetail, formatDestination, errorMessage,
+  type UpdateItineraryRequest, type ItineraryItem, type ItineraryDay,
+} from '@/lib/api/itineraries';
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
-import type { Itinerary } from '@travelcrm/shared';
-import { toast } from 'sonner';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { unwrapEntity } from '@/lib/api/envelope';
+import { DEFAULT_AGE_BANDS, bandsFor, type AgeBand } from '@/lib/age-bands';
+import { formatDisplayDate, parseLocalDate, toLocalDateString } from '@/lib/dates';
+import { DayImageUploader, imageFromKey, uploadDayImage, type DayImage } from '../../_components/day-images';
+import { DayItemsEditor } from '../../_components/day-items-editor';
 
-interface DayImage {
-  key: string;
-  url: string;
-  name: string;
-}
+type ItineraryStatus = NonNullable<UpdateItineraryRequest['status']>;
 
 interface DayItem {
   id: string;
@@ -37,9 +44,21 @@ interface DayItem {
   title: string;
   description: string;
   location?: string;
-  meals?: string;
-  accommodation?: string;
+  overnightCity?: string;
+  isFreeDay?: boolean;
   images?: DayImage[];
+  items?: ItineraryItem[];
+}
+
+interface FormState {
+  title?: string;
+  description?: string;
+  validityDate?: string;
+  destination?: string;
+  status?: ItineraryStatus;
+  currency?: string;
+  markupType?: 'percentage' | 'fixed';
+  markupValue?: number;
 }
 
 let editIdCounter = 0;
@@ -48,10 +67,37 @@ function generateEditId(): string {
   return `edit-day-${Date.now()}-${editIdCounter}`;
 }
 
+/** Only the fields the API accepts; the GET response carries extra columns (dayId, createdAt, nulls). */
+function toRequestItem(item: ItineraryItem, sortOrder: number): ItineraryItem {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title.trim() || 'Untitled item',
+    description: item.description ?? undefined,
+    supplierId: item.supplierId ?? undefined,
+    rateCardId: item.rateCardId ?? undefined,
+    costPrice: item.costPrice ?? 0,
+    sellingPrice: item.sellingPrice ?? 0,
+    markupType: item.markupType ?? undefined,
+    markupValue: item.markupValue ?? undefined,
+    taxRate: item.taxRate ?? 0,
+    taxAmount: item.taxAmount ?? 0,
+    quantity: item.quantity ?? 1,
+    paxType: item.paxType ?? undefined,
+    timeStart: item.timeStart ?? undefined,
+    timeEnd: item.timeEnd ?? undefined,
+    sortOrder,
+    detailsJson: item.detailsJson ?? undefined,
+    internalNotes: item.internalNotes ?? undefined,
+  };
+}
+
 /* ── Sortable Day Card ── */
 function SortableDayCard({
   item,
   index,
+  currency,
+  bands,
   updateDayItem,
   removeDayItem,
   onUploadImages,
@@ -60,7 +106,10 @@ function SortableDayCard({
 }: {
   item: DayItem;
   index: number;
-  updateDayItem: (index: number, field: keyof DayItem, value: any) => void;
+  currency?: string;
+  /** Age bands in force for the quote, when age-band pricing is on (R149). */
+  bands?: AgeBand[];
+  updateDayItem: <K extends keyof DayItem>(index: number, field: K, value: DayItem[K]) => void;
   removeDayItem: (index: number) => void;
   onUploadImages: (index: number, files: FileList) => void;
   onRemoveImage: (index: number, imgIndex: number) => void;
@@ -68,137 +117,87 @@ function SortableDayCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative' as const };
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="border rounded-lg p-4 space-y-3">
+      <div className="border border-ds-border rounded-lg p-ds-4 space-y-ds-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button type="button" {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-ds-2">
+            <button
+              type="button"
+              aria-label="Reorder day"
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted"
+            >
+              <GripVertical className="size-4 text-muted-foreground" aria-hidden="true" />
             </button>
             <Badge variant="outline" className="text-xs">Day {item.dayNumber}</Badge>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-ds-1">
             {onCreateVoucher && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-xs gap-1 text-primary hover:text-primary"
+                className="gap-ds-1 text-ds-primary hover:text-ds-primary"
                 onClick={() => onCreateVoucher(item)}
                 title="Create voucher from this day"
               >
-                <FileText className="h-3.5 w-3.5" />
+                <FileText className="size-3.5" aria-hidden="true" />
                 Create Voucher
               </Button>
             )}
-            <Button variant="ghost" size="icon-sm" onClick={() => removeDayItem(index)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
+            <Button variant="ghost" size="icon-sm" aria-label={`Remove day ${item.dayNumber}`} onClick={() => removeDayItem(index)}>
+              <Trash2 className="size-4 text-ds-danger" aria-hidden="true" />
             </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
+        <div className="grid grid-cols-2 gap-ds-3">
+          <div className="space-y-ds-1">
             <Label className="text-xs">Title</Label>
             <Input
               value={item.title}
               onChange={(e) => updateDayItem(index, 'title', e.target.value)}
               placeholder="Day title"
+              aria-label={`Day ${item.dayNumber} title`}
               className="h-8 text-sm"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-ds-1">
             <Label className="text-xs">Location</Label>
             <Input
               value={item.location ?? ''}
               onChange={(e) => updateDayItem(index, 'location', e.target.value)}
               placeholder="Location"
+              aria-label={`Day ${item.dayNumber} location`}
               className="h-8 text-sm"
             />
           </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-ds-1">
           <Label className="text-xs">Description</Label>
           <RichTextEditor
             value={item.description}
             onChange={(html) => updateDayItem(index, 'description', html)}
             placeholder="Activities and details for this day"
-            minHeight="80px"
+            minHeight="5rem"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Meals</Label>
-            <Input
-              value={item.meals ?? ''}
-              onChange={(e) => updateDayItem(index, 'meals', e.target.value)}
-              placeholder="e.g., Breakfast, Lunch, Dinner"
-              className="h-8 text-sm"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Accommodation</Label>
-            <Input
-              value={item.accommodation ?? ''}
-              onChange={(e) => updateDayItem(index, 'accommodation', e.target.value)}
-              placeholder="e.g., Hotel Name"
-              className="h-8 text-sm"
-            />
-          </div>
-        </div>
+        <DayItemsEditor
+          items={item.items ?? []}
+          currency={currency}
+          bands={bands}
+          onChange={(items) => updateDayItem(index, 'items', items)}
+        />
 
-        {/* Images */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs">Images</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  onUploadImages(index, e.target.files);
-                  e.target.value = '';
-                }
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-6 text-xs gap-1"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ImagePlus className="h-3 w-3" /> Add Images
-            </Button>
-          </div>
-          {item.images && item.images.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {item.images.map((img, imgIdx) => (
-                <div key={img.key} className="relative group">
-                  <img
-                    src={img.url}
-                    alt={img.name}
-                    className="h-20 w-20 object-cover rounded-md border"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onRemoveImage(index, imgIdx)}
-                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <DayImageUploader
+          images={item.images ?? []}
+          onUpload={(files) => onUploadImages(index, files)}
+          onRemove={(imgIdx) => onRemoveImage(index, imgIdx)}
+        />
       </div>
     </div>
   );
@@ -209,19 +208,7 @@ export default function ItineraryEditPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [form, setForm] = React.useState<{
-    title?: string;
-    description?: string;
-    startDate?: string;
-    endDate?: string;
-    destination?: string;
-    budget?: number;
-    status?: string;
-    termsConditions?: string;
-    currency?: string;
-    markupType?: string;
-    markupValue?: number;
-  }>({});
+  const [form, setForm] = React.useState<FormState>({});
   const [dayItems, setDayItems] = React.useState<DayItem[]>([]);
   const [inclusions, setInclusions] = React.useState<string[]>([]);
   const [exclusions, setExclusions] = React.useState<string[]>([]);
@@ -230,15 +217,30 @@ export default function ItineraryEditPage() {
   const [newExclusion, setNewExclusion] = React.useState('');
 
   const { data: itinerary, loading, error } = useApiQuery(
-    () => itinerariesApi.getById(id).then((res) => {
-      if (res && typeof res === 'object' && 'data' in res) return (res as any).data as Itinerary;
-      return res as Itinerary;
-    }),
+    () => itinerariesApi.getById(id).then(toItineraryDetail),
     [id],
   );
 
-  const { mutate: updateItinerary, loading: isSaving } = useApiMutation<UpdateItineraryRequest, any>(
-    (data) => itinerariesApi.update(id, data),
+  // The bands the lines can be priced by: the quote's own snapshot, else the agency's (R149).
+  const bandsGate = useFeatureGate('age_band_pricing');
+  const [agencyBands, setAgencyBands] = React.useState<AgeBand[] | null>(null);
+  React.useEffect(() => {
+    if (!bandsGate.enabled) return;
+    ageBandsApi.get().then((res) => setAgencyBands(unwrapEntity<{ bands: AgeBand[] }>(res).bands)).catch(() => setAgencyBands(DEFAULT_AGE_BANDS));
+  }, [bandsGate.enabled]);
+  const lineBands = bandsGate.enabled && agencyBands ? bandsFor(itinerary?.ageBands, agencyBands) : undefined;
+
+  const [isSaving, setIsSaving] = React.useState(false);
+  const updateItinerary = React.useCallback(
+    async (data: UpdateItineraryRequest) => {
+      setIsSaving(true);
+      try {
+        return await itinerariesApi.update(id, data);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [id],
   );
 
   // Auto-save state
@@ -257,19 +259,16 @@ export default function ItineraryEditPage() {
     setIsDirty(true);
     setAutoSaveStatus('idle');
 
-    // Clear existing auto-save timer
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
 
     // Schedule auto-save after 30 seconds of inactivity
     autoSaveTimerRef.current = setTimeout(() => {
-      // Trigger auto-save via a custom event so the save logic can read current state
       window.dispatchEvent(new CustomEvent('itinerary-auto-save'));
     }, 30000);
   }, []);
 
-  // Cleanup timer on unmount
   React.useEffect(() => {
     return () => {
       if (autoSaveTimerRef.current) {
@@ -278,7 +277,6 @@ export default function ItineraryEditPage() {
     };
   }, []);
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -287,34 +285,48 @@ export default function ItineraryEditPage() {
   // Initialize form from loaded data
   React.useEffect(() => {
     if (itinerary) {
-      const itin = itinerary as any;
+      const rawDays: ItineraryDay[] = itinerary.days ?? [];
       setForm({
-        title: itin.title ?? '',
-        description: itin.description ?? '',
-        startDate: itin.startDate ?? '',
-        endDate: itin.endDate ?? '',
-        destination: itin.destination ?? '',
-        budget: itin.budget ?? undefined,
-        status: itin.status ?? 'draft',
+        title: itinerary.title ?? '',
+        description: itinerary.notes ?? '',
+        validityDate: itinerary.validityDate ?? '',
+        destination: rawDays.find((d) => d.city)?.city ?? formatDestination(itinerary.lead?.destination),
+        status: itinerary.status ?? 'draft',
+        currency: itinerary.currency ?? undefined,
+        markupType: itinerary.markupType ?? undefined,
+        markupValue: itinerary.markupValue ?? undefined,
       });
-      // Ensure each dayItem has a stable id for dnd-kit
-      const rawItems: DayItem[] = itin.dayItems ?? itin.items ?? [];
-      setDayItems(rawItems.map((item) => ({
-        ...item,
-        id: item.id || generateEditId(),
-        images: item.images ?? [],
+      setDayItems(rawDays.map((d) => ({
+        id: d.id || generateEditId(),
+        dayNumber: d.dayNumber,
+        title: d.title ?? '',
+        description: d.description ?? '',
+        location: d.city ?? '',
+        overnightCity: d.overnightCity ?? undefined,
+        isFreeDay: d.isFreeDay ?? false,
+        images: (d.images ?? []).map(imageFromKey),
+        items: d.items ?? [],
       })));
-      setInclusions(itin.inclusions ?? []);
-      setExclusions(itin.exclusions ?? []);
-      setTerms(itin.terms ?? itin.termsAndConditions ?? '');
+      setInclusions(itinerary.inclusions ?? []);
+      setExclusions(itinerary.exclusions ?? []);
+      setTerms(itinerary.termsConditions ?? '');
       // Allow dirty tracking after initial data load
       setTimeout(() => { isInitializedRef.current = true; }, 100);
     }
   }, [itinerary]);
 
-  function updateField(field: string, value: any) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  function patchForm(patch: Partial<FormState>) {
+    setForm((prev) => ({ ...prev, ...patch }));
     markDirty();
+  }
+
+  // Destination is a convenience over the per-day location: days that still carry the old destination follow it.
+  function updateDestination(value: string) {
+    const previous = form.destination ?? '';
+    setDayItems((prev) => prev.map((d) => (
+      (d.location ?? '') === previous ? { ...d, location: value } : d
+    )));
+    patchForm({ destination: value });
   }
 
   function addDayItem() {
@@ -324,10 +336,9 @@ export default function ItineraryEditPage() {
       dayNumber: nextDay,
       title: '',
       description: '',
-      location: '',
-      meals: '',
-      accommodation: '',
+      location: form.destination ?? '',
       images: [],
+      items: [],
     }]);
     markDirty();
   }
@@ -344,7 +355,6 @@ export default function ItineraryEditPage() {
       const reordered = [...prev];
       const [moved] = reordered.splice(oldIndex, 1) as [DayItem];
       reordered.splice(newIndex, 0, moved);
-      // Recalculate dayNumbers
       return reordered.map((item, i) => ({ ...item, dayNumber: i + 1 }));
     });
     markDirty();
@@ -353,21 +363,12 @@ export default function ItineraryEditPage() {
   async function uploadDayImages(dayIndex: number, files: FileList) {
     for (const file of Array.from(files)) {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await client.post<ApiResponse<{ key: string; url: string; name: string; size: number }>>(
-          API_ENDPOINTS.files.upload,
-          formData as any,
-        );
-        const uploaded = (res as any)?.data ?? res;
-        if (uploaded?.key) {
+        const image = await uploadDayImage(file);
+        if (image) {
           setDayItems((prev) =>
-            prev.map((item, i) =>
-              i === dayIndex
-                ? { ...item, images: [...(item.images ?? []), { key: uploaded.key, url: uploaded.url, name: uploaded.name }] }
-                : item,
-            ),
+            prev.map((item, i) => (i === dayIndex ? { ...item, images: [...(item.images ?? []), image] } : item)),
           );
+          markDirty();
         }
       } catch {
         toast.error(`Failed to upload ${file.name}`);
@@ -378,20 +379,19 @@ export default function ItineraryEditPage() {
   function removeDayImage(dayIndex: number, imgIndex: number) {
     setDayItems((prev) =>
       prev.map((item, i) =>
-        i === dayIndex
-          ? { ...item, images: (item.images ?? []).filter((_, j) => j !== imgIndex) }
-          : item,
+        i === dayIndex ? { ...item, images: (item.images ?? []).filter((_, j) => j !== imgIndex) } : item,
       ),
     );
+    markDirty();
   }
 
-  function updateDayItem(index: number, field: keyof DayItem, value: any) {
-    setDayItems((prev) => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  function updateDayItem<K extends keyof DayItem>(index: number, field: K, value: DayItem[K]) {
+    setDayItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
     markDirty();
   }
 
   function removeDayItem(index: number) {
-    setDayItems((prev) => prev.filter((_, i) => i !== index));
+    setDayItems((prev) => prev.filter((_, i) => i !== index).map((item, i) => ({ ...item, dayNumber: i + 1 })));
     markDirty();
   }
 
@@ -413,13 +413,25 @@ export default function ItineraryEditPage() {
     return {
       title: form.title,
       notes: form.description,
-      status: form.status as any,
+      validityDate: form.validityDate || undefined,
+      status: form.status,
       currency: form.currency,
-      markupType: form.markupType as any,
+      markupType: form.markupType,
       markupValue: form.markupValue,
       inclusions,
       exclusions,
       termsConditions: terms,
+      days: dayItems.map((d, i) => ({
+        id: d.id.startsWith('edit-day-') ? undefined : d.id,
+        dayNumber: i + 1,
+        title: d.title,
+        description: d.description,
+        city: d.location || undefined,
+        overnightCity: d.overnightCity,
+        isFreeDay: d.isFreeDay,
+        images: (d.images ?? []).map((img) => img.key),
+        items: (d.items ?? []).map((item, itemIdx) => toRequestItem(item, itemIdx)),
+      })),
     };
   }
 
@@ -433,15 +445,15 @@ export default function ItineraryEditPage() {
       return;
     }
 
-    const result = await updateItinerary(buildPayload());
-    if (result) {
+    try {
+      await updateItinerary(buildPayload());
       setIsDirty(false);
       setAutoSaveStatus('saved');
       setLastSavedAt(new Date());
       toast.success('Itinerary updated successfully');
       router.push(`/itineraries/${id}`);
-    } else {
-      toast.error('Failed to update itinerary');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update itinerary'));
     }
   }
 
@@ -454,14 +466,10 @@ export default function ItineraryEditPage() {
 
     setAutoSaveStatus('saving');
     try {
-      const result = await updateItinerary(buildPayload());
-      if (result) {
-        setIsDirty(false);
-        setAutoSaveStatus('saved');
-        setLastSavedAt(new Date());
-      } else {
-        setAutoSaveStatus('error');
-      }
+      await updateItinerary(buildPayload());
+      setIsDirty(false);
+      setAutoSaveStatus('saved');
+      setLastSavedAt(new Date());
     } catch {
       setAutoSaveStatus('error');
     }
@@ -469,286 +477,268 @@ export default function ItineraryEditPage() {
 
   // Listen for auto-save events
   React.useEffect(() => {
-    const handler = () => handleAutoSave();
+    const handler = () => { void handleAutoSave(); };
     window.addEventListener('itinerary-auto-save', handler);
     return () => window.removeEventListener('itinerary-auto-save', handler);
   });
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading itinerary...</p>
-      </div>
+      <PageContainer width="narrow">
+        <div className="flex flex-col gap-ds-4" role="status" aria-busy="true" aria-label="Loading itinerary" data-testid="itinerary-edit-skeleton">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </PageContainer>
     );
   }
 
   if (error || !itinerary) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-destructive">Failed to load itinerary</p>
-        <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
-      </div>
+      <PageContainer width="narrow">
+        <div className="flex flex-col items-center justify-center gap-ds-4 py-ds-9">
+          <p className="text-ds-danger">Failed to load itinerary</p>
+          <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Edit Itinerary
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Auto-save status indicator */}
-          {autoSaveStatus === 'saving' && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>Saving...</span>
-            </div>
-          )}
-          {autoSaveStatus === 'saved' && lastSavedAt && (
-            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
-              <Check className="h-3.5 w-3.5" />
-              <span>Auto-saved at {lastSavedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-          )}
-          {autoSaveStatus === 'error' && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-              <AlertCircle className="h-3.5 w-3.5" />
-              <span>Auto-save failed</span>
-            </div>
-          )}
-          {isDirty && autoSaveStatus === 'idle' && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>Unsaved changes</span>
-            </div>
-          )}
-          <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Changes
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl space-y-6">
-          {/* Basic Information */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Basic Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title *</Label>
-                <Input
-                  id="title"
-                  value={form.title ?? ''}
-                  onChange={(e) => updateField('title', e.target.value)}
-                  placeholder="Itinerary title"
-                />
+    <PageContainer width="narrow">
+      <PageHeader
+        title="Edit Itinerary"
+        description={itinerary.title}
+        breadcrumbs={[
+          { label: 'Itineraries', href: '/itineraries' },
+          { label: itinerary.title, href: `/itineraries/${id}` },
+          { label: 'Edit' },
+        ]}
+        actions={
+          <>
+            {autoSaveStatus === 'saving' && (
+              <div className="flex items-center gap-ds-2 text-xs text-ds-foreground-muted animate-pulse">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                <span>Saving...</span>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={form.description ?? ''}
-                  onChange={(e) => updateField('description', e.target.value)}
-                  placeholder="Brief description"
-                  rows={3}
-                />
+            )}
+            {autoSaveStatus === 'saved' && lastSavedAt && (
+              <div className="flex items-center gap-ds-2 text-xs text-ds-success">
+                <Check className="size-3.5" aria-hidden="true" />
+                <span>Saved at {formatLocaleTime(lastSavedAt, { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="destination">Destination</Label>
-                  <Input
-                    id="destination"
-                    value={form.destination ?? ''}
-                    onChange={(e) => updateField('destination', e.target.value)}
-                    placeholder="e.g., Bali, Maldives"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={form.startDate ?? ''}
-                    onChange={(e) => updateField('startDate', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">End Date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={form.endDate ?? ''}
-                    onChange={(e) => updateField('endDate', e.target.value)}
-                  />
-                </div>
+            )}
+            {autoSaveStatus === 'error' && (
+              <div className="flex items-center gap-ds-2 text-xs text-ds-warning">
+                <AlertCircle className="size-3.5" aria-hidden="true" />
+                <span>Auto-save failed</span>
               </div>
+            )}
+            {isDirty && autoSaveStatus === 'idle' && (
+              <span className="text-xs text-ds-foreground-muted">Unsaved changes</span>
+            )}
+            <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? <Loader2 className="size-4 animate-spin me-1.5" aria-hidden="true" /> : <Save className="size-4 me-1.5" aria-hidden="true" />}
+              Save Changes
+            </Button>
+          </>
+        }
+      />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="budget">Budget</Label>
-                  <Input
-                    id="budget"
-                    type="number"
-                    value={form.budget ?? ''}
-                    onChange={(e) => updateField('budget', parseFloat(e.target.value) || undefined)}
-                    placeholder="0"
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select value={form.status ?? 'draft'} onValueChange={(v) => updateField('status', v as any)}>
-                    <SelectTrigger id="status"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="sent">Sent</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                      <SelectItem value="expired">Expired</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Day Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Day-wise Itinerary ({dayItems.length} days)</CardTitle>
-                <Button variant="outline" size="sm" onClick={addDayItem}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Day
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {dayItems.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No day items yet. Click &quot;Add Day&quot; to start.</p>
-              )}
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={dayItems.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-                  {dayItems.map((item, idx) => (
-                    <SortableDayCard
-                      key={item.id}
-                      item={item}
-                      index={idx}
-                      updateDayItem={updateDayItem}
-                      removeDayItem={removeDayItem}
-                      onUploadImages={uploadDayImages}
-                      onRemoveImage={removeDayImage}
-                      onCreateVoucher={(dayItem) => {
-                        const itin = itinerary as any;
-                        const leadId = itin?.leadId || itin?.lead_id || '';
-                        // Determine voucher type based on day content
-                        let voucherType = 'hotel';
-                        if (dayItem.accommodation) voucherType = 'hotel';
-                        else if (dayItem.title?.toLowerCase().includes('transport') || dayItem.title?.toLowerCase().includes('transfer')) voucherType = 'transport';
-                        else if (dayItem.title?.toLowerCase().includes('flight')) voucherType = 'flight';
-                        else if (dayItem.title?.toLowerCase().includes('activity') || dayItem.title?.toLowerCase().includes('tour')) voucherType = 'activity';
-
-                        const params = new URLSearchParams();
-                        if (dayItem.id) params.set('itineraryItemId', dayItem.id);
-                        params.set('type', voucherType);
-                        if (leadId) params.set('leadId', leadId);
-                        if (dayItem.title) params.set('title', dayItem.title);
-                        if (dayItem.accommodation) params.set('hotelName', dayItem.accommodation);
-                        if (dayItem.location) params.set('location', dayItem.location);
-                        router.push(`/vouchers/new?${params.toString()}`);
-                      }}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </CardContent>
-          </Card>
-
-          {/* Inclusions */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Inclusions</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {inclusions.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-sm flex-1">{item}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setInclusions((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <Input
-                  value={newInclusion}
-                  onChange={(e) => setNewInclusion(e.target.value)}
-                  placeholder="Add inclusion..."
-                  className="h-8 text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && addInclusion()}
-                />
-                <Button variant="outline" size="sm" onClick={addInclusion}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Exclusions */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Exclusions</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {exclusions.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-sm flex-1">{item}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setExclusions((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <Input
-                  value={newExclusion}
-                  onChange={(e) => setNewExclusion(e.target.value)}
-                  placeholder="Add exclusion..."
-                  className="h-8 text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && addExclusion()}
-                />
-                <Button variant="outline" size="sm" onClick={addExclusion}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Terms & Conditions */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Terms & Conditions</CardTitle></CardHeader>
-            <CardContent>
-              <Textarea
-                value={terms}
-                onChange={(e) => setTerms(e.target.value)}
-                placeholder="Enter terms and conditions..."
-                rows={6}
+      <div className="space-y-ds-5">
+        {/* Basic Information */}
+        <Card>
+          <CardHeader><CardTitle className="text-base">Basic Information</CardTitle></CardHeader>
+          <CardContent className="space-y-ds-4">
+            <div className="space-y-ds-2">
+              <Label htmlFor="title">Title *</Label>
+              <Input
+                id="title"
+                value={form.title ?? ''}
+                onChange={(e) => patchForm({ title: e.target.value })}
+                placeholder="Itinerary title"
               />
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+
+            <div className="space-y-ds-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={form.description ?? ''}
+                onChange={(e) => patchForm({ description: e.target.value })}
+                placeholder="Brief description"
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-3">
+              <div className="space-y-ds-2">
+                <Label htmlFor="destination">Destination</Label>
+                <Input
+                  id="destination"
+                  value={form.destination ?? ''}
+                  onChange={(e) => updateDestination(e.target.value)}
+                  placeholder="e.g., Bali, Maldives"
+                />
+              </div>
+              <div className="space-y-ds-2">
+                <Label htmlFor="validity">Valid Until</Label>
+                <DatePicker
+                  id="validity"
+                  value={form.validityDate ? parseLocalDate(form.validityDate) : undefined}
+                  onChange={(d) => patchForm({ validityDate: d ? toLocalDateString(d) : '' })}
+                  placeholder={form.validityDate ? formatDisplayDate(form.validityDate) : 'Pick a date'}
+                  toYear={new Date().getFullYear() + 3}
+                />
+              </div>
+              <div className="space-y-ds-2">
+                <Label htmlFor="status">Status</Label>
+                <Select value={form.status ?? 'draft'} onValueChange={(v) => patchForm({ status: v as ItineraryStatus })}>
+                  <SelectTrigger id="status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="expired">Expired</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Day Items */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Day-wise Itinerary ({dayItems.length} days)</CardTitle>
+              <Button variant="outline" size="sm" onClick={addDayItem}>
+                <Plus className="size-4 me-1" aria-hidden="true" /> Add Day
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-ds-4">
+            {dayItems.length === 0 && (
+              <p className="text-sm text-ds-foreground-muted text-center py-ds-4">No day items yet. Click &quot;Add Day&quot; to start.</p>
+            )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={dayItems.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+                {dayItems.map((item, idx) => (
+                  <SortableDayCard
+                    key={item.id}
+                    item={item}
+                    index={idx}
+                    currency={form.currency}
+                    bands={lineBands}
+                    updateDayItem={updateDayItem}
+                    removeDayItem={removeDayItem}
+                    onUploadImages={uploadDayImages}
+                    onRemoveImage={removeDayImage}
+                    onCreateVoucher={(dayItem) => {
+                      const leadId = itinerary.leadId ?? '';
+                      const title = dayItem.title?.toLowerCase() ?? '';
+                      let voucherType = 'hotel';
+                      if (title.includes('transport') || title.includes('transfer')) voucherType = 'transport';
+                      else if (title.includes('flight')) voucherType = 'flight';
+                      else if (title.includes('activity') || title.includes('tour')) voucherType = 'activity';
+
+                      const query = new URLSearchParams();
+                      if (dayItem.id) query.set('itineraryItemId', dayItem.id);
+                      query.set('type', voucherType);
+                      if (leadId) query.set('leadId', leadId);
+                      if (dayItem.title) query.set('title', dayItem.title);
+                      if (dayItem.location) query.set('location', dayItem.location);
+                      router.push(`/vouchers/new?${query.toString()}`);
+                    }}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </CardContent>
+        </Card>
+
+        {/* Inclusions */}
+        <Card>
+          <CardHeader><CardTitle className="text-base">Inclusions</CardTitle></CardHeader>
+          <CardContent className="space-y-ds-3">
+            {inclusions.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-ds-2">
+                <span className="text-sm flex-1">{item}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove inclusion ${item}`}
+                  onClick={() => { setInclusions((prev) => prev.filter((_, i) => i !== idx)); markDirty(); }}
+                >
+                  <Trash2 className="size-3.5 text-ds-danger" aria-hidden="true" />
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-ds-2">
+              <Input
+                value={newInclusion}
+                onChange={(e) => setNewInclusion(e.target.value)}
+                placeholder="Add inclusion..."
+                className="h-8 text-sm"
+                onKeyDown={(e) => e.key === 'Enter' && addInclusion()}
+              />
+              <Button variant="outline" size="sm" aria-label="Add inclusion" onClick={addInclusion}>
+                <Plus className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Exclusions */}
+        <Card>
+          <CardHeader><CardTitle className="text-base">Exclusions</CardTitle></CardHeader>
+          <CardContent className="space-y-ds-3">
+            {exclusions.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-ds-2">
+                <span className="text-sm flex-1">{item}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove exclusion ${item}`}
+                  onClick={() => { setExclusions((prev) => prev.filter((_, i) => i !== idx)); markDirty(); }}
+                >
+                  <Trash2 className="size-3.5 text-ds-danger" aria-hidden="true" />
+                </Button>
+              </div>
+            ))}
+            <div className="flex items-center gap-ds-2">
+              <Input
+                value={newExclusion}
+                onChange={(e) => setNewExclusion(e.target.value)}
+                placeholder="Add exclusion..."
+                className="h-8 text-sm"
+                onKeyDown={(e) => e.key === 'Enter' && addExclusion()}
+              />
+              <Button variant="outline" size="sm" aria-label="Add exclusion" onClick={addExclusion}>
+                <Plus className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Terms & Conditions */}
+        <Card>
+          <CardHeader><CardTitle className="text-base">Terms & Conditions</CardTitle></CardHeader>
+          <CardContent>
+            <Textarea
+              value={terms}
+              onChange={(e) => { setTerms(e.target.value); markDirty(); }}
+              placeholder="Enter terms and conditions..."
+              rows={6}
+              aria-label="Terms and conditions"
+            />
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

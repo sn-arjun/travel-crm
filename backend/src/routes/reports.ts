@@ -1,17 +1,29 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { authMiddleware } from '../middleware/auth';
 import { AppContext } from '../types';
-import { reportEngine } from '../services/report-engine';
+import { reportEngine, ForbiddenError } from '../services/report-engine';
 import { reportRegistry } from '../services/report-registry';
-import { ReportCache } from '../services/report-cache';
+import { ReportCache, reportCacheScope } from '../services/report-cache';
 import { resolveDateRange } from '../utils/date-range';
+import { tenantToday, sqlOffsetModifier } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
 import { pdfExportService } from '../services/exports/pdf-export';
+import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
 
 const reportRoutes = new Hono<AppContext>();
 
 reportRoutes.use('*', authMiddleware);
+
+// A report that belongs to a plan feature (the tour reports, group_departures) is refused without it; the list below leaves it out.
+const gateReportFeature: MiddlewareHandler<AppContext> = async (c, next) => {
+  const featureKey = reportRegistry.get(c.req.param('id') ?? '')?.featureKey;
+  return featureKey ? requireFeature(featureKey)(c, next) : next();
+};
+reportRoutes.use('/:id', gateReportFeature);
+reportRoutes.use('/:id/export', gateReportFeature);
 
 // Dashboard endpoint — aggregated lead stats for widgets
 reportRoutes.get('/dashboard', async (c) => {
@@ -19,53 +31,90 @@ reportRoutes.get('/dashboard', async (c) => {
     const tenantDb = c.get('tenantDb') as any;
     const userId = c.get('userId') as string;
 
-    const today = new Date().toISOString().split('T')[0];
+    const { timeZone: tz, today } = await tenantToday(c);
+    const tzMod = sqlOffsetModifier(tz);
+    const nowIso = new Date().toISOString();
     const monthStart = today.substring(0, 7) + '-01';
+
+    // Optional date range (date_from/date_to or a date_preset). When omitted the behaviour is
+    // unchanged: lists are unfiltered and the "this month" figures run from the 1st of the month.
+    const dq = c.req.query();
+    const dPreset = dq.date_preset || dq.datePreset;
+    let rFrom: string | undefined = dq.date_from || dq.startDate;
+    let rTo: string | undefined = dq.date_to || dq.endDate;
+    if (dPreset && !rFrom && !rTo) {
+      try {
+        // presets resolve in the tenant's calendar; use the local dates (not the UTC instants' dates)
+        const resolved = resolveDateRange(dPreset, undefined, undefined, tz);
+        rFrom = resolved.fromDate;
+        rTo = resolved.toDate;
+      } catch { /* invalid preset -> no range */ }
+    }
+    const dayOf = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+    const from = dayOf(rFrom);
+    const to = dayOf(rTo);
+    // Range clause for list-style figures (only filters when a range was supplied)
+    const rangeClause = (col: string): { sql: string; params: string[] } => {
+      const parts: string[] = [];
+      const params: string[] = [];
+      // timestamps are UTC: shift to the tenant's local calendar day before comparing dates
+      if (from) { parts.push(`DATE(${col}, '${tzMod}') >= DATE(?)`); params.push(from); }
+      if (to) { parts.push(`DATE(${col}, '${tzMod}') <= DATE(?)`); params.push(to); }
+      return { sql: parts.length ? ' AND ' + parts.join(' AND ') : '', params };
+    };
+    const leadRange = rangeClause('created_at');
+    const hotRange = rangeClause('l.created_at');
+    const actRange = rangeClause('created_at');
+    const fuRange = rangeClause('scheduled_at');
+    // Financial window: default = month to date
+    const finFrom = from ?? monthStart;
+    const finTo = to ?? '9999-12-31';
 
     const [pipelineResult, hotLeadsResult, followUpResult, recentActivitiesResult, financialResult, collectionsResult] = await Promise.all([
       // 1. Pipeline summary
       tenantDb.prepare(
         `SELECT status, COUNT(*) as count, COALESCE(SUM(budget), 0) as total_value
-         FROM leads WHERE is_deleted = 0
+         FROM leads WHERE is_deleted = 0${leadRange.sql}
          GROUP BY status`
-      ).all(),
+      ).bind(...leadRange.params).all(),
       // 2. Hot leads (top 5)
       tenantDb.prepare(
         `SELECT l.id, l.title, l.destination, l.budget, l.status, l.priority, l.created_at as createdAt,
                 l.contact_id as contactId, l.travel_date as travelDate
          FROM leads l
-         WHERE l.priority = 'hot' AND l.status NOT IN ('won', 'lost') AND l.is_deleted = 0
+         WHERE l.priority = 'hot' AND l.status NOT IN ('won', 'lost') AND l.is_deleted = 0${hotRange.sql}
          ORDER BY l.created_at DESC LIMIT 5`
-      ).all(),
+      ).bind(...hotRange.params).all(),
       // 3. Follow-up counts
       tenantDb.prepare(
         `SELECT COUNT(*) as total,
-                SUM(CASE WHEN scheduled_at < datetime('now') AND completed_at IS NULL THEN 1 ELSE 0 END) as overdue,
+                SUM(CASE WHEN scheduled_at < ? AND completed_at IS NULL THEN 1 ELSE 0 END) as overdue,
                 SUM(CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END) as pending
-         FROM follow_ups WHERE created_by = ?`
-      ).bind(userId).all(),
+         FROM follow_ups WHERE created_by = ?${fuRange.sql}`
+      ).bind(nowIso, userId, ...fuRange.params).all(),
       // 4. Recent activities
       tenantDb.prepare(
-        `SELECT id, lead_id as leadId, type, description, created_at as createdAt, created_by as createdBy
+        `SELECT id, lead_id as leadId, type, content as description, created_at as createdAt, created_by as createdBy
          FROM lead_activities
+         WHERE 1 = 1${actRange.sql}
          ORDER BY created_at DESC LIMIT 10`
-      ).all(),
+      ).bind(...actRange.params).all(),
       // 5. Financial summary
       tenantDb.prepare(
         `SELECT
-          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
+          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at, '${tzMod}') >= DATE(?) AND DATE(updated_at, '${tzMod}') <= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') THEN balance_due ELSE 0 END), 0) as outstanding,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') AND due_date < ? THEN balance_due ELSE 0 END), 0) as overdue,
-          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
+          COALESCE(SUM(CASE WHEN DATE(created_at, '${tzMod}') >= DATE(?) AND DATE(created_at, '${tzMod}') <= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
          FROM invoices
          WHERE type IN ('tax_invoice', 'proforma') AND status != 'cancelled'`
-      ).bind(monthStart, today, monthStart).first(),
-      // 6. Collections this month
+      ).bind(finFrom, finTo, today, finFrom, finTo).first(),
+      // 6. Collections in the window
       tenantDb.prepare(
         `SELECT COALESCE(SUM(amount), 0) as collections
          FROM payments
-         WHERE type = 'incoming' AND DATE(date) >= DATE(?)`
-      ).bind(monthStart).first(),
+         WHERE type = 'incoming' AND DATE(date) >= DATE(?) AND DATE(date) <= DATE(?)`
+      ).bind(finFrom, finTo).first(),
     ]);
 
     return success(c, {
@@ -88,7 +137,16 @@ reportRoutes.get('/dashboard', async (c) => {
 
 // Existing routes ...
 reportRoutes.get('/', async (c) => {
-  const reports = reportRegistry.getAll();
+  const tenantId = c.get('tenantId');
+  const features = new Map<string, boolean>();
+  const reports = [];
+  for (const report of reportRegistry.getAll()) {
+    if (report.featureKey) {
+      if (!features.has(report.featureKey)) features.set(report.featureKey, !!tenantId && (await resolveFeature(c.env, tenantId, report.featureKey)).enabled);
+      if (!features.get(report.featureKey)) continue;
+    }
+    reports.push(report);
+  }
   return success(c, reports);
 });
 
@@ -99,7 +157,7 @@ reportRoutes.get('/', async (c) => {
 reportRoutes.get('/outstanding', async (c) => {
   try {
     const tenantDb = c.get('tenantDb') as any;
-    const today = new Date().toISOString().split('T')[0];
+    const { today } = await tenantToday(c);
 
     const result = await tenantDb
       .prepare(`
@@ -152,7 +210,7 @@ reportRoutes.get('/outstanding', async (c) => {
 reportRoutes.get('/ageing', async (c) => {
   try {
     const tenantDb = c.get('tenantDb') as any;
-    const today = new Date().toISOString().split('T')[0];
+    const { today } = await tenantToday(c);
 
     const ageingData = await tenantDb
       .prepare(`
@@ -230,11 +288,12 @@ reportRoutes.get('/:id', async (c) => {
     const datePreset = query.date_preset || query.datePreset;
     let dateFrom = query.date_from || query.startDate;
     let dateTo = query.date_to || query.endDate;
+    const { timeZone: tz } = await tenantToday(c);
 
-    // Resolve preset to concrete date range if provided
+    // Resolve preset to concrete date range if provided (in the tenant's calendar)
     if (datePreset && !dateFrom && !dateTo) {
       try {
-        const resolved = resolveDateRange(datePreset, dateFrom, dateTo);
+        const resolved = resolveDateRange(datePreset, dateFrom, dateTo, tz);
         dateFrom = resolved.from;
         dateTo = resolved.to;
       } catch (e) { /* ignore invalid presets — engine handles no-date case */ }
@@ -253,11 +312,12 @@ reportRoutes.get('/:id', async (c) => {
       ...parsedFilters
     };
 
-    // Try cache first
-    const kv = (c.env as any).REPORT_CACHE;
+    // Try cache first (keyed by the caller's data-visibility scope, never shared across scopes)
+    const cacheScope = reportCacheScope(role, userId);
+    const kv = reportRegistry.get(id)?.noCache ? undefined : (c.env as any).REPORT_CACHE;
     if (kv && tenantId) {
       const cache = new ReportCache(kv);
-      const cached = await cache.get(tenantId, id, params);
+      const cached = await cache.get(tenantId, id, params, cacheScope);
       if (cached) {
         c.header('X-Cache', 'HIT');
         return success(c, cached);
@@ -269,12 +329,15 @@ reportRoutes.get('/:id', async (c) => {
     // Store in cache
     if (kv && tenantId) {
       const cache = new ReportCache(kv);
-      await cache.set(tenantId, id, params, result);
+      await cache.set(tenantId, id, params, cacheScope, result);
     }
     c.header('X-Cache', 'MISS');
 
     return success(c, result);
   } catch (err: any) {
+    if (err instanceof ForbiddenError) {
+      return c.json({ success: false, error: { code: 'FORBIDDEN', message: err.message } }, 403);
+    }
     if (err.message.includes('not found')) {
       return error(c, err.message, 404, { code: 'NOT_FOUND' });
     }
@@ -302,10 +365,11 @@ reportRoutes.get('/:id/export', async (c) => {
     const exportDatePreset = query.date_preset || query.datePreset;
     let exportDateFrom = query.date_from || query.startDate;
     let exportDateTo = query.date_to || query.endDate;
+    const { timeZone: exportTz } = await tenantToday(c);
 
     if (exportDatePreset && !exportDateFrom && !exportDateTo) {
       try {
-        const resolved = resolveDateRange(exportDatePreset, exportDateFrom, exportDateTo);
+        const resolved = resolveDateRange(exportDatePreset, exportDateFrom, exportDateTo, exportTz);
         exportDateFrom = resolved.from;
         exportDateTo = resolved.to;
       } catch (e) { /* ignore */ }
@@ -331,12 +395,12 @@ reportRoutes.get('/:id/export', async (c) => {
     const fileName = `${id}_${dateLabel}`;
 
     if (format === 'excel') {
-      const buffer = await excelExportService.generateExcel(reportDef, result.data);
+      const buffer = await excelExportService.generateExcel(reportDef, result.data, await loadLocaleContext(c.get('tenantDb'), userId));
       c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       c.header('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
       return c.body(buffer as any);
     } else if (format === 'pdf') {
-      const buffer = await pdfExportService.generatePdf(reportDef, result.data);
+      const buffer = await pdfExportService.generatePdf(reportDef, result.data, exportTz);
       c.header('Content-Type', 'application/pdf');
       c.header('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
       return c.body(buffer as any);

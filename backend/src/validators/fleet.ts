@@ -45,6 +45,9 @@ export const createDriverSchema = z.object({
   emergencyContactPhone: z.string().optional(),
   dateOfJoining: z.string().optional(),
   notes: z.string().optional(),
+  // R145: a crew member is a driver, a tour leader, or both; userId links the staff user this person is
+  crewRole: z.enum(['driver', 'tour_leader', 'both']).optional(),
+  userId: z.string().min(1).nullable().optional(),
 });
 
 export const updateDriverSchema = createDriverSchema.partial();
@@ -61,6 +64,7 @@ export const driverListSchema = z.object({
   search: z.string().optional(),
   availableFrom: z.string().optional(),
   availableTo: z.string().optional(),
+  crewRole: z.enum(['driver', 'tour_leader', 'both']).optional(),
   sortBy: z.string().optional(),
   sortOrder: z.string().optional(),
 });
@@ -92,7 +96,8 @@ export const createRateCardSchema = z.object({
   extraHourRate: z.number().min(0).default(0),
   tollIncluded: z.boolean().default(false),
   parkingIncluded: z.boolean().default(false),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency, filled in by the handler.
+  currency: z.string().length(3).optional(),
   validFrom: z.string().optional(),
   validTo: z.string().optional(),
   notes: z.string().optional(),
@@ -133,10 +138,10 @@ export const calculateDistanceSchema = z.object({
 
 // ── Trip Assignment Schemas ─────────────────────────────────
 
-export const createTripSchema = z.object({
+const tripFields = z.object({
   leadId: z.string().optional(),
-  vehicleId: z.string().min(1, 'Vehicle is required'),
-  driverId: z.string().min(1, 'Driver is required'),
+  vehicleId: z.string().min(1, 'Vehicle is required').optional(),
+  driverId: z.string().min(1, 'Driver is required').optional(),
   pickupLocation: z.string().optional(),
   dropLocation: z.string().optional(),
   pickupDatetime: z.string().min(1, 'Pickup datetime is required'),
@@ -157,9 +162,22 @@ export const createTripSchema = z.object({
   dropLng: z.number().optional(),
   contactId: z.string().optional(),
   autoCreateVoucher: z.boolean().optional(),
+  // R145: coach trips
+  tripKind: z.enum(['transfer', 'coach']).optional(),
+  tourLeaderId: z.string().min(1).nullable().optional(),
+  departureId: z.string().min(1).nullable().optional(),
 });
 
-export const updateTripSchema = createTripSchema.partial();
+/** A transfer needs its vehicle and driver; a coach trip may have neither yet (a hired coach, a tour leader without a vehicle). */
+export const createTripSchema = tripFields.extend({
+  stops: z.array(coachStopItem()).max(100).optional(),
+}).superRefine((v, ctx) => {
+  if ((v.tripKind ?? 'transfer') === 'coach') return;
+  if (!v.vehicleId) ctx.addIssue({ code: 'custom', path: ['vehicleId'], message: 'Vehicle is required' });
+  if (!v.driverId) ctx.addIssue({ code: 'custom', path: ['driverId'], message: 'Driver is required' });
+});
+
+export const updateTripSchema = tripFields.partial();
 
 export const tripStatusSchema = z.object({
   status: z.enum(['accepted', 'en_route', 'started', 'completed', 'cancelled']),
@@ -175,6 +193,8 @@ export const tripListSchema = z.object({
   status: z.string().optional(),
   driverId: z.string().optional(),
   vehicleId: z.string().optional(),
+  tripKind: z.enum(['transfer', 'coach']).optional(),
+  departureId: z.string().optional(),
   leadId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -217,3 +237,44 @@ export const scheduleSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
 });
+
+// ── Coach trips (R145) ──────────────────────────────────────
+
+function coachStopItem() {
+  return z.object({
+    id: z.string().min(1).optional(),
+    name: z.string().trim().min(1).max(200),
+    address: z.string().max(500).nullable().optional(),
+    lat: z.number().min(-90).max(90).nullable().optional(),
+    lng: z.number().min(-180).max(180).nullable().optional(),
+    // A UTC instant, or a local time 'YYYY-MM-DDTHH:MM' that is read in the agency's time zone
+    scheduledAt: z.string().min(1).max(40).nullable().optional(),
+    documentsCheck: z.boolean().optional(),
+  });
+}
+
+export const tripStopsBodySchema = z.object({ stops: z.array(coachStopItem()).max(100) });
+
+export const stopWhereSchema = z.object({
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+
+export const addTripPassengerSchema = z.object({
+  tripStopId: z.string().min(1).nullable().optional(),
+  name: z.string().trim().min(1).max(200),
+  phone: z.string().max(40).nullable().optional(),
+  seats: z.number().int().min(1).max(60).optional(),
+  contactId: z.string().min(1).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+/** One tick from the desktop or the app. `opId` makes a retry safe; `at` is the clock time of the tick (offline ticks arrive late). */
+export const tickPassengerSchema = z
+  .object({
+    boarding: z.enum(['pending', 'boarded', 'no_show']).optional(),
+    documentsChecked: z.boolean().optional(),
+    opId: z.string().trim().min(1).max(100),
+    at: z.string().datetime({ offset: true }).optional(),
+  })
+  .refine((v) => v.boarding !== undefined || v.documentsChecked !== undefined, { message: 'Give boarding or documentsChecked' });

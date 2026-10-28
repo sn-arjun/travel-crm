@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { PLATFORM_DOMAIN } from '@/lib/domain';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Breadcrumb } from '@/components/layout/breadcrumb';
 import { StatCard } from '@/components/shared/stat-card';
 import { Button } from '@/components/ui/button';
@@ -9,46 +10,34 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
-import {
-  Users,
-  Globe,
-  CreditCard,
-  Ban,
-  RotateCcw,
-  Save,
-  ToggleLeft,
-} from 'lucide-react';
+import { Users, CreditCard, Ban, RotateCcw, LifeBuoy, Target, Receipt } from 'lucide-react';
 import { FeatureFlagsPanel } from '@/components/tenants/feature-flags-panel';
 import { UsageStatsPanel } from '@/components/tenants/usage-stats-panel';
 import { AiVoipPanel } from '@/components/tenants/ai-voip-panel';
+import { CallingPanel } from '@/components/tenants/calling-panel';
+import { WebsitePanel } from '@/components/tenants/website-panel';
+import { ImpersonationDialog } from '@/components/impersonation-dialog';
 
 interface TenantDetail {
   id: string;
-  company_name: string;
-  subdomain: string;
-  d1_database_id: string;
-  plan: string;
+  name: string;
+  email: string;
+  phone?: string;
   status: string;
-  max_users: number;
-  settings: string;
-  created_at: string;
-  updated_at: string;
-  owner_name: string;
-  owner_email: string;
-  owner_phone: string;
-  country: string;
-  timezone: string;
-  user_count: number;
-  sub_plan: string;
-  amount: number;
-  sub_status: string;
-  billing_cycle: string;
-  start_date: string;
-  next_billing_date: string;
-  wp_id: string | null;
-  wp_subdomain: string | null;
-  wp_status: string | null;
+  planId: string;
+  website?: string;
+  createdAt: string;
+  subscription: { plan: string; status: string; renewalDate?: string };
+  stats: { userCount: number; contactCount: number; leadCount: number; invoiceCount: number };
+}
+
+interface Provisioning {
+  slug: string;
+  tenantStatus: string;
+  provisioningStatus: string;
+  provisioningError: string | null;
+  dbBinding: string | null;
+  deployNeeded: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -56,61 +45,52 @@ const statusColors: Record<string, string> = {
   trial: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   suspended: 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-400',
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  provisioning: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
 };
 
 export default function TenantDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params.id as string;
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
+  const [prov, setProv] = useState<Provisioning | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ company_name: '', owner_email: '', owner_phone: '', country: '', timezone: '' });
+  const [message, setMessage] = useState('');
+  const [supportOpen, setSupportOpen] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/tenants/${id}`)
-      .then((r) => r.json() as Promise<TenantDetail>)
-      .then((data) => {
-        setTenant(data);
-        setEditForm({
-          company_name: data.company_name || '',
-          owner_email: data.owner_email || '',
-          owner_phone: data.owner_phone || '',
-          country: data.country || '',
-          timezone: data.timezone || '',
-        });
-        setLoading(false);
-      });
+  const load = useCallback(async () => {
+    const [detail, provisioning] = await Promise.all([
+      fetch(`/api/tenants/${id}`),
+      fetch(`/api/tenants/${id}/provisioning`),
+    ]);
+    setTenant(detail.ok ? ((await detail.json()) as TenantDetail) : null);
+    setProv(provisioning.ok ? ((await provisioning.json()) as Provisioning) : null);
+    setLoading(false);
   }, [id]);
 
-  const handleSave = async () => {
-    await fetch(`/api/tenants/${id}`, {
-      method: 'PUT',
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (path: string, body?: object) => {
+    setMessage('');
+    const res = await fetch(`/api/tenants/${id}/${path}`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editForm),
+      body: JSON.stringify(body ?? {}),
     });
-    setEditing(false);
-    // Reload
-    const res = await fetch(`/api/tenants/${id}`);
-    setTenant(await res.json() as TenantDetail);
+    if (!res.ok) setMessage(((await res.json()) as { error?: string }).error || 'The action failed');
+    await load();
   };
 
   const handleSuspend = async () => {
     const reason = prompt('Reason for suspension:');
     if (!reason) return;
-    await fetch(`/api/tenants/${id}/suspend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
-    });
-    const res = await fetch(`/api/tenants/${id}`);
-    setTenant(await res.json() as TenantDetail);
+    await act('suspend', { reason });
   };
 
-  const handleReactivate = async () => {
-    await fetch(`/api/tenants/${id}/reactivate`, { method: 'POST' });
-    const res = await fetch(`/api/tenants/${id}`);
-    setTenant(await res.json() as TenantDetail);
+  const handleRetry = async () => {
+    setMessage('');
+    const res = await fetch(`/api/tenants/${id}/retry`, { method: 'POST' });
+    if (!res.ok) setMessage(((await res.json()) as { error?: string }).error || 'Retry failed');
+    await load();
   };
 
   if (loading) {
@@ -129,97 +109,88 @@ export default function TenantDetailPage() {
     return <div className="p-8 text-center text-muted-foreground">Tenant not found</div>;
   }
 
+  const status = prov?.tenantStatus ?? tenant.status;
+  const live = status === 'active' || status === 'trial';
+
   return (
     <div className="space-y-6">
       <Breadcrumb items={[
         { label: 'Tenants', href: '/tenants' },
-        { label: tenant.company_name },
+        { label: tenant.name },
       ]} />
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{tenant.company_name}</h1>
-          <p className="text-muted-foreground">{tenant.subdomain}.travelcrmpro.com</p>
+          <h1 className="text-3xl font-bold tracking-tight">{tenant.name}</h1>
+          <p className="text-muted-foreground">{prov?.slug ? `${prov.slug}.${PLATFORM_DOMAIN}` : tenant.email}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className={statusColors[tenant.status] || ''}>
-            {tenant.status}
-          </Badge>
-          {tenant.status !== 'suspended' ? (
+          <Badge variant="outline" className={statusColors[status] || ''}>{status}</Badge>
+          {live && (
+            <Button variant="outline" size="sm" onClick={() => setSupportOpen(true)}>
+              <LifeBuoy className="mr-2 h-4 w-4" /> Support session
+            </Button>
+          )}
+          {live ? (
             <Button variant="outline" size="sm" onClick={handleSuspend}>
               <Ban className="mr-2 h-4 w-4" /> Suspend
             </Button>
-          ) : (
-            <Button variant="outline" size="sm" onClick={handleReactivate}>
+          ) : status === 'suspended' || status === 'cancelled' ? (
+            <Button variant="outline" size="sm" onClick={() => act('reactivate')}>
               <RotateCcw className="mr-2 h-4 w-4" /> Reactivate
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
+      {message && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{message}</div>}
+
+      {prov?.deployNeeded && (
+        <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 dark:bg-yellow-950/30 dark:text-yellow-200">
+          Deploy needed: this agency&apos;s database is created, but the backend must be deployed with its binding before it can sign in.
+        </div>
+      )}
+      {prov?.provisioningStatus === 'failed' && (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center justify-between">
+          <span>Provisioning failed{prov.provisioningError ? `: ${prov.provisioningError}` : ''}</span>
+          <Button size="sm" variant="outline" onClick={handleRetry}>Retry</Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Users" value={tenant.user_count} icon={<Users className="h-4 w-4" />} />
-        <StatCard title="Plan" value={tenant.plan || tenant.sub_plan || 'N/A'} icon={<CreditCard className="h-4 w-4" />} />
-        <StatCard
-          title="MRR"
-          value={tenant.amount ? `₹${tenant.amount.toLocaleString('en-IN')}` : '₹0'}
-          icon={<CreditCard className="h-4 w-4" />}
-        />
-        <StatCard title="WordPress" value={tenant.wp_status || 'None'} icon={<Globe className="h-4 w-4" />} />
+        <StatCard title="Users" value={tenant.stats.userCount} icon={<Users className="h-4 w-4" />} />
+        <StatCard title="Plan" value={tenant.planId || 'N/A'} icon={<CreditCard className="h-4 w-4" />} />
+        <StatCard title="Leads" value={tenant.stats.leadCount} icon={<Target className="h-4 w-4" />} />
+        <StatCard title="Invoices" value={tenant.stats.invoiceCount} icon={<Receipt className="h-4 w-4" />} />
       </div>
 
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="subscription">Subscription</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
+          <TabsTrigger value="usage">Usage &amp; add-ons</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
-          <TabsTrigger value="ai-voip">AI & VoIP</TabsTrigger>
-          <TabsTrigger value="wordpress">WordPress</TabsTrigger>
+          <TabsTrigger value="plan">Plan &amp; caps</TabsTrigger>
+          <TabsTrigger value="calling">Calling</TabsTrigger>
+          <TabsTrigger value="website">Website</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <CardTitle className="text-base">Tenant Information</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => setEditing(!editing)}>
-                {editing ? 'Cancel' : 'Edit'}
-              </Button>
             </CardHeader>
             <CardContent>
-              {editing ? (
-                <div className="space-y-3 max-w-md">
-                  <Field label="Company Name">
-                    <Input value={editForm.company_name} onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })} />
-                  </Field>
-                  <Field label="Owner Email">
-                    <Input value={editForm.owner_email} onChange={(e) => setEditForm({ ...editForm, owner_email: e.target.value })} />
-                  </Field>
-                  <Field label="Owner Phone">
-                    <Input value={editForm.owner_phone} onChange={(e) => setEditForm({ ...editForm, owner_phone: e.target.value })} />
-                  </Field>
-                  <Field label="Country">
-                    <Input value={editForm.country} onChange={(e) => setEditForm({ ...editForm, country: e.target.value })} />
-                  </Field>
-                  <Field label="Timezone">
-                    <Input value={editForm.timezone} onChange={(e) => setEditForm({ ...editForm, timezone: e.target.value })} />
-                  </Field>
-                  <Button onClick={handleSave}>
-                    <Save className="mr-2 h-4 w-4" /> Save Changes
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <InfoRow label="Company" value={tenant.company_name} />
-                  <InfoRow label="Subdomain" value={tenant.subdomain} />
-                  <InfoRow label="Owner" value={`${tenant.owner_name} (${tenant.owner_email})`} />
-                  <InfoRow label="Phone" value={tenant.owner_phone || '—'} />
-                  <InfoRow label="Country" value={tenant.country || '—'} />
-                  <InfoRow label="Timezone" value={tenant.timezone || '—'} />
-                  <InfoRow label="D1 Database" value={tenant.d1_database_id || 'Not provisioned'} />
-                  <InfoRow label="Created" value={tenant.created_at ? new Date(tenant.created_at).toLocaleString() : '—'} />
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <InfoRow label="Company" value={tenant.name} />
+                <InfoRow label="Subdomain" value={prov?.slug || '—'} />
+                <InfoRow label="Admin email" value={tenant.email} />
+                <InfoRow label="Phone" value={tenant.phone || '—'} />
+                <InfoRow label="Website" value={tenant.website || '—'} />
+                <InfoRow label="Database" value={prov?.dbBinding || 'Not bound'} />
+                <InfoRow label="Provisioning" value={prov?.provisioningStatus || '—'} />
+                <InfoRow label="Created" value={tenant.createdAt ? new Date(tenant.createdAt).toLocaleString() : '—'} />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -231,12 +202,9 @@ export default function TenantDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <InfoRow label="Plan" value={tenant.sub_plan || tenant.plan || '—'} />
-                <InfoRow label="Amount" value={tenant.amount ? `₹${tenant.amount}/mo` : '—'} />
-                <InfoRow label="Status" value={tenant.sub_status || '—'} />
-                <InfoRow label="Billing Cycle" value={tenant.billing_cycle || '—'} />
-                <InfoRow label="Start Date" value={tenant.start_date ? new Date(tenant.start_date).toLocaleDateString() : '—'} />
-                <InfoRow label="Next Billing" value={tenant.next_billing_date ? new Date(tenant.next_billing_date).toLocaleDateString() : '—'} />
+                <InfoRow label="Plan" value={tenant.subscription.plan || tenant.planId || '—'} />
+                <InfoRow label="Status" value={tenant.subscription.status || '—'} />
+                <InfoRow label="Renews" value={tenant.subscription.renewalDate ? new Date(tenant.subscription.renewalDate).toLocaleDateString() : '—'} />
               </div>
             </CardContent>
           </Card>
@@ -250,37 +218,19 @@ export default function TenantDetailPage() {
           <FeatureFlagsPanel tenantId={id} />
         </TabsContent>
 
-        <TabsContent value="ai-voip">
-          <AiVoipPanel tenantId={id} currentPlan={tenant.plan || 'trial'} />
+        <TabsContent value="plan">
+          <AiVoipPanel tenantId={id} currentPlan={tenant.planId || 'trial'} />
         </TabsContent>
 
-        <TabsContent value="wordpress">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">WordPress Site</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {tenant.wp_id ? (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <InfoRow label="Subdomain" value={`${tenant.wp_subdomain}.travelcrmpro.com`} />
-                  <InfoRow label="Status" value={tenant.wp_status || '—'} />
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No WordPress site provisioned for this tenant.</p>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="calling">
+          <CallingPanel tenantId={id} />
+        </TabsContent>
+        <TabsContent value="website">
+          <WebsitePanel tenantId={id} />
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}</label>
-      {children}
+      <ImpersonationDialog open={supportOpen} onOpenChange={setSupportOpen} tenantId={id} tenantName={tenant.name} />
     </div>
   );
 }

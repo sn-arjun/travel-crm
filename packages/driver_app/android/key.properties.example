@@ -1,0 +1,7 @@
+# Copy to android/key.properties (git-ignored) and fill in the real upload key.
+# storeFile is resolved relative to android/app/, so an absolute path is safest.
+# NEVER commit key.properties or the .jks/.keystore file.
+storeFile=C:/secure/travelcrm-driver-upload.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME

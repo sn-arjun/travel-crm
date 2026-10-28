@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { communicationsApi } from './communications';
+import { communicationsApi, isIncomingMessage, senderLabel } from './communications';
 
 describe('communicationsApi', () => {
   beforeEach(() => {
@@ -177,5 +177,30 @@ describe('communicationsApi', () => {
       await communicationsApi.getLog({ page: 2, limit: 50, dateFrom: '2026-01-01', dateTo: '2026-06-30' });
       expect(client.get).toHaveBeenCalledWith('/communications/log', { params: { page: 2, limit: 50, dateFrom: '2026-01-01', dateTo: '2026-06-30' } });
     });
+  });
+});
+
+describe('isIncomingMessage', () => {
+  it('recognises the stored value and the legacy alias', () => {
+    expect(isIncomingMessage({ direction: 'incoming' })).toBe(true);
+    expect(isIncomingMessage({ direction: 'inbound' })).toBe(true);
+  });
+
+  it('treats sent and undirected messages as outgoing', () => {
+    expect(isIncomingMessage({ direction: 'outgoing' })).toBe(false);
+    expect(isIncomingMessage({ direction: 'outbound' })).toBe(false);
+    expect(isIncomingMessage({})).toBe(false);
+  });
+});
+
+describe('senderLabel', () => {
+  it('shows the profile name with the address for a sender who is not a contact yet', () => {
+    expect(senderLabel({ fromAddress: '+919847061234', metadata: '{"from_name":"Meera Pillai","provider":"twilio"}' })).toBe('Meera Pillai · +919847061234');
+  });
+
+  it('falls back to the address, and to nothing', () => {
+    expect(senderLabel({ fromAddress: '+919847061234', metadata: null })).toBe('+919847061234');
+    expect(senderLabel({ fromAddress: '+919847061234', metadata: 'not json' })).toBe('+919847061234');
+    expect(senderLabel({ fromAddress: null, metadata: null })).toBeNull();
   });
 });

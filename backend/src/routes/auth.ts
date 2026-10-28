@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and } from 'drizzle-orm';
@@ -7,17 +7,45 @@ import type { AppContext } from '../types';
 import { tenantUsers, tenants } from '../db/master-schema';
 import { users, loginHistory } from '../db/tenant-schema';
 import { signAccessToken } from '../utils/jwt';
-import { comparePassword, hashPassword } from '../utils/password';
+import { comparePassword, hashPassword, validatePassword, PASSWORD_MAX_LENGTH } from '../utils/password';
 import { generateId } from '../utils/uuid';
 import { parseUserAgent } from '../utils/user-agent-parser';
 import { logActivity } from '../utils/activity-logger';
 import { rateLimit } from '../middleware/rate-limiter';
+import { limitMultiplier } from '../middleware/rate-limit';
 import { sendVerifyOtp, checkVerifyOtp } from '../services/twilio';
+import { isTestMode } from '../utils/test-mode';
+import { AllowanceExhausted, assertAllowance, meterUsage, refundUsage } from '../services/metering/meter';
+import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '../services/metering/otp-limits';
 import { sendEmail } from '../services/email';
-import { resetPasswordEmailHtml, accountLockedEmailHtml } from '../templates/reset-email';
+import { accountLockedEmailHtml } from '../templates/reset-email';
+import { appUrl } from '../utils/app-urls';
+import { sendTransactional } from '../services/mail/transactional';
 import { success, created, error } from '../utils/response';
+import { getTenantSummary } from '../utils/tenant-summary';
+import { isTrialExpired, trialExpiredResponse } from '../services/plans/trial';
+import { tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
+import { createChallenge, isTwoFactorRequired, issueSignIn } from '../services/two-factor';
+import twoFactorRoutes from './two-factor';
 
 const auth = new Hono<AppContext>();
+
+// R209: two-factor enrolment, the second sign-in step, recovery and the agency policy.
+auth.route('/2fa', twoFactorRoutes);
+
+/** The tenant's own database via the single resolver; null when its binding is missing (never MASTER_DB in multi mode). */
+function authTenantDb(env: AppContext['Bindings'], tenant: { dbBinding: string | null }): D1Database | null {
+  try {
+    return tenantDbFor(env, tenant);
+  } catch (e) {
+    if (e instanceof TenantDbUnavailableError) return null;
+    throw e;
+  }
+}
+
+function tenantDbUnavailable(c: any) {
+  return c.json({ success: false, error: { code: 'TENANT_DB_UNAVAILABLE', message: 'Tenant database is not available' } }, 503);
+}
 
 // ============================================================
 // POST /resolve-tenant — Look up tenants by email
@@ -100,41 +128,42 @@ auth.post(
     const { email, password, tenantId } = c.req.valid('json');
     const ip = c.get('clientIp');
 
-    // Rate limit: 1000 attempts per 15 minutes per IP+email (relaxed for local dev/testing)
-    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email}`, 1000, 900);
+    // Rate limits: 10 attempts per 15 minutes per IP+email, and 50 per hour per IP.
+    const mult = limitMultiplier(c.env);
+    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email.toLowerCase()}`, 10 * mult, 900);
     c.header('X-RateLimit-Remaining', String(rl.remaining));
     if (!rl.allowed) {
       c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
       return error(c, `Too many login attempts. Retry in ${rl.retryAfterSecs}s`, 429);
     }
+    const rlIp = await rateLimit(c.env.CACHE, `rate:login-ip:${ip}`, 50 * mult, 3600);
+    if (!rlIp.allowed) {
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rlIp.retryAfterSecs ?? 0)));
+      return error(c, `Too many login attempts. Retry in ${rlIp.retryAfterSecs}s`, 429);
+    }
 
-    // Check brute force lockout
+    // Brute force lockout: 10 consecutive failures lock the account for 15 minutes
     const lockKey = `failed_login:${tenantId}:${email.toLowerCase()}`;
     const lockEntry = await c.env.CACHE.get(lockKey, 'json') as { count: number; lastAt?: number } | null;
-    if (lockEntry && lockEntry.count >= 50) {
-      return error(c, 'Account temporarily locked due to too many failed attempts. Try again in 30 minutes.', 423);
+    if (lockEntry && lockEntry.count >= 10 * mult) {
+      return error(c, 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.', 423);
     }
 
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId, status: tenants.status, companyName: tenants.companyName })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan, companyName: tenants.companyName })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
 
+    if (tenant && (await isTrialExpired(c.env.MASTER_DB, tenantId, tenant))) return trialExpiredResponse(c);
     if (!tenant || (tenant.status !== 'active' && tenant.status !== 'trial')) {
       return error(c, 'Invalid tenant', 400);
     }
 
-    // Get tenant DB binding
-    let tenantDb: D1Database;
-    if (tenant.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const ua = parseUserAgent(c.req.header('User-Agent'));
@@ -161,74 +190,13 @@ auth.post(
     // Clear failed login counter
     await c.env.CACHE.delete(lockKey);
 
-    // Generate tokens
-    const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email },
-      c.env.JWT_SECRET
-    );
+    // R209: with two-factor sign-in on, no token is issued until the second step succeeds.
+    if (user.totpEnabled === 1) {
+      const challengeToken = await createChallenge(c.env, { userId: user.id, tenantId, method: 'password', ip });
+      return success(c, { requires2fa: true, challengeToken, methods: ['totp', 'recovery_code'] });
+    }
 
-    const refreshToken = generateId();
-    const sessionId = generateId();
-
-    // Store session in SESSIONS KV
-    await c.env.SESSIONS.put(
-      `refresh:${refreshToken}`,
-      JSON.stringify({ sessionId, userId: user.id, tenantId, device: ua.device, ip, loginAt: new Date().toISOString() }),
-      { expirationTtl: 604800 } // 7 days
-    );
-
-    await c.env.SESSIONS.put(
-      `session:${sessionId}`,
-      JSON.stringify({ refreshToken, userId: user.id, device: ua.device, browser: ua.browser, os: ua.os, ip, userAgent: c.req.header('User-Agent'), loginAt: new Date().toISOString() }),
-      { expirationTtl: 604800 }
-    );
-
-    // Update sessions index
-    const indexKey = `sessions_index:${user.id}`;
-    const existingIndex = await c.env.SESSIONS.get(indexKey, 'json') as string[] | null;
-    const sessionIds = existingIndex ? [...existingIndex, sessionId] : [sessionId];
-    await c.env.SESSIONS.put(indexKey, JSON.stringify(sessionIds));
-
-    // Update last_login_at
-    await db.update(users).set({ lastLoginAt: new Date().toISOString() }).where(eq(users.id, user.id));
-
-    // Record login history
-    await db.insert(loginHistory).values({
-      id: generateId(),
-      userId: user.id,
-      ipAddress: ip,
-      country: c.req.header('CF-IPCountry') || null,
-      city: (c.req.raw as unknown as { cf?: { city?: string } }).cf?.city || null,
-      browser: ua.browser,
-      os: ua.os,
-      device: ua.device,
-      userAgent: c.req.header('User-Agent') || null,
-      status: 'success',
-    });
-
-    // Log activity
-    await logActivity(db, {
-      userId: user.id,
-      action: 'login',
-      entityType: 'user',
-      entityId: user.id,
-      ipAddress: ip,
-    });
-
-    return success(c, {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
-        phone: user.phone,
-        department: user.department,
-        language: user.language,
-      },
-    });
+    return success(c, await issueSignIn(c, { db, tenantDb, tenantId, tenant, user, action: 'login' }));
   }
 );
 
@@ -256,6 +224,39 @@ auth.post(
       return error(c, `Too many OTP requests. Retry in ${rl.retryAfterSecs}s`, 429);
     }
 
+    // Only mobile numbers (no landlines, no premium-rate numbers); the same answer whatever the reason.
+    const mobile = checkMobileNumber(phone);
+    if (!mobile.ok) return error(c, mobile.message, 400);
+
+    // Abuse limits per number and per IP, identical whether or not the account exists (R110).
+    const hit = await checkAndRecordOtpRequest(c.env, { tenantId, e164: mobile.e164, ip, purpose: 'login' });
+    if (hit) {
+      c.header('Retry-After', String(hit.retryAfterSecs));
+      return error(c, hit.message, 429);
+    }
+
+    const capRefusal = () =>
+      c.json(
+        {
+          success: false,
+          code: 'ALLOWANCE_EXHAUSTED',
+          message: OTP_CAP_MESSAGE,
+          channel: 'otp',
+          passwordLogin: true,
+          error: { code: 'ALLOWANCE_EXHAUSTED', message: OTP_CAP_MESSAGE },
+        },
+        402,
+      );
+
+    // The agency's monthly login-code allowance. At the cap the person is told to use the password and the
+    // agency admins are alerted (usage-alerts). The check comes before the account lookup so both answers match.
+    try {
+      await assertAllowance(c.env, tenantId, 'otp');
+    } catch (err) {
+      if (err instanceof AllowanceExhausted) return capRefusal();
+      throw err;
+    }
+
     // Verify user exists with this phone in tenant
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenantUser] = await masterDb
@@ -264,16 +265,28 @@ auth.post(
       .where(and(eq(tenantUsers.phone, phone), eq(tenantUsers.tenantId, tenantId)))
       .limit(1);
 
-    if (!tenantUser) {
-      return error(c, 'No account found with this phone number', 404);
+    // Never reveal whether a phone exists: an unknown number gets the same answer and no code is sent.
+    const generic = { message: 'If this number belongs to an account, a login code has been sent.' };
+    if (!tenantUser) return success(c, generic);
+
+    try {
+      await meterUsage(c.env, tenantId, 'otp');
+    } catch (err) {
+      if (err instanceof AllowanceExhausted) return capRefusal();
+      throw err;
     }
+
+    // Local / e2e: the provider is never called under TEST_MODE.
+    if (isTestMode(c.env)) return success(c, generic);
 
     const result = await sendVerifyOtp(c.env, phone);
     if (!result.success) {
-      return error(c, result.error || 'Failed to send OTP', 500);
+      await refundUsage(c.env, tenantId, 'otp'); // a code that was not sent does not use the allowance
+      console.error('[auth] login code could not be sent');
+      return error(c, 'Failed to send OTP', 500);
     }
 
-    return success(c, { message: 'OTP sent successfully' });
+    return success(c, generic);
   }
 );
 
@@ -321,18 +334,15 @@ auth.post(
 
     // Resolve tenant DB
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    if (await isTrialExpired(c.env.MASTER_DB, tenantId, tenant)) return trialExpiredResponse(c);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const [user] = await db
@@ -345,71 +355,13 @@ auth.post(
       return error(c, 'Account is deactivated', 403);
     }
 
-    const ua = parseUserAgent(c.req.header('User-Agent'));
+    // R209: the phone code is the first step; an enrolled user still owes the authenticator code.
+    if (user.totpEnabled === 1) {
+      const challengeToken = await createChallenge(c.env, { userId: user.id, tenantId, method: 'otp', ip });
+      return success(c, { requires2fa: true, challengeToken, methods: ['totp', 'recovery_code'] });
+    }
 
-    // Generate tokens
-    const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email },
-      c.env.JWT_SECRET
-    );
-
-    const refreshToken = generateId();
-    const sessionId = generateId();
-
-    await c.env.SESSIONS.put(
-      `refresh:${refreshToken}`,
-      JSON.stringify({ sessionId, userId: user.id, tenantId, device: ua.device, ip, loginAt: new Date().toISOString() }),
-      { expirationTtl: 604800 }
-    );
-
-    await c.env.SESSIONS.put(
-      `session:${sessionId}`,
-      JSON.stringify({ refreshToken, userId: user.id, device: ua.device, browser: ua.browser, os: ua.os, ip, userAgent: c.req.header('User-Agent'), loginAt: new Date().toISOString() }),
-      { expirationTtl: 604800 }
-    );
-
-    const indexKey = `sessions_index:${user.id}`;
-    const existingIndex = await c.env.SESSIONS.get(indexKey, 'json') as string[] | null;
-    const sessionIds = existingIndex ? [...existingIndex, sessionId] : [sessionId];
-    await c.env.SESSIONS.put(indexKey, JSON.stringify(sessionIds));
-
-    await db.update(users).set({ lastLoginAt: new Date().toISOString() }).where(eq(users.id, user.id));
-
-    await db.insert(loginHistory).values({
-      id: generateId(),
-      userId: user.id,
-      ipAddress: ip,
-      country: c.req.header('CF-IPCountry') || null,
-      city: (c.req.raw as unknown as { cf?: { city?: string } }).cf?.city || null,
-      browser: ua.browser,
-      os: ua.os,
-      device: ua.device,
-      userAgent: c.req.header('User-Agent') || null,
-      status: 'success',
-    });
-
-    await logActivity(db, {
-      userId: user.id,
-      action: 'login_otp',
-      entityType: 'user',
-      entityId: user.id,
-      ipAddress: ip,
-    });
-
-    return success(c, {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
-        phone: user.phone,
-        department: user.department,
-        language: user.language,
-      },
-    });
+    return success(c, await issueSignIn(c, { db, tenantDb, tenantId, tenant, user, action: 'login_otp' }));
   }
 );
 
@@ -454,18 +406,18 @@ auth.post(
     // Resolve tenant DB and get user
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    if (await isTrialExpired(c.env.MASTER_DB, tokenData.tenantId, tenant)) return trialExpiredResponse(c);
+    if (tenant.status !== 'active' && tenant.status !== 'trial') {
+      return c.json({ success: false, error: { code: 'TENANT_INACTIVE', message: 'Tenant account is not active' } }, 403);
     }
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const [user] = await db
@@ -478,9 +430,11 @@ auth.post(
       return error(c, 'User account is deactivated', 401);
     }
 
-    // Generate new tokens
+    // Generate new tokens. A refresh token only exists after a complete sign-in (second step included), and a
+    // user the agency now requires to enrol keeps the setup-only restriction (R209).
+    const setupRequired = user.totpEnabled !== 1 && (await isTwoFactorRequired(db));
     const newAccessToken = await signAccessToken(
-      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email },
+      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email, db: tenant.dbBinding, mustChangePassword: user.mustChangePassword === 1, twoFactorSetupRequired: setupRequired },
       c.env.JWT_SECRET
     );
 
@@ -519,6 +473,9 @@ auth.post(
         department: user.department,
         language: user.language,
       },
+      tenant: await getTenantSummary(tenantDb, tokenData.tenantId, undefined, c.env, user.id),
+      mustChangePassword: user.mustChangePassword === 1,
+      twoFactorSetupRequired: setupRequired,
     });
   }
 );
@@ -564,13 +521,13 @@ auth.post(
         { expirationTtl: 3600 } // 1 hour
       );
 
-      const resetUrl = `https://app.travelcrm.pro/reset-password?token=${resetToken}`;
-      const html = resetPasswordEmailHtml(resetUrl, email);
+      const resetUrl = `${appUrl(c.env)}/reset-password?token=${resetToken}`;
 
-      await sendEmail(c.env, {
+      await sendTransactional(c.env, {
         to: email,
-        subject: 'Reset your TravelCRM Pro password',
-        html,
+        template: 'reset_password',
+        tenantId: results[0].tenantId,
+        data: { resetUrl, name: email },
       });
     }
 
@@ -584,7 +541,7 @@ auth.post(
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
-  password: z.string().min(8),
+  password: z.string().min(1).max(PASSWORD_MAX_LENGTH),
 });
 
 auth.post(
@@ -602,26 +559,27 @@ auth.post(
       return error(c, 'Invalid or expired reset token', 400);
     }
 
-    // Delete the token (single use)
-    await c.env.SESSIONS.delete(`reset:${token}`);
-
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
+
+    // R209: the password policy, checked before the link is spent so a rejected password can be retried.
+    const [target] = await db.select({ email: users.email }).from(users).where(eq(users.id, tokenData.userId)).limit(1);
+    const policyError = validatePassword(password, { email: target?.email });
+    if (policyError) return error(c, policyError, 400);
+
+    // Delete the token (single use)
+    await c.env.SESSIONS.delete(`reset:${token}`);
 
     // Hash and update password
     const passwordHash = await hashPassword(password);
@@ -667,7 +625,7 @@ auth.post(
 const setupAccountSchema = z.object({
   token: z.string().min(1),
   name: z.string().min(1),
-  password: z.string().min(8),
+  password: z.string().min(1).max(PASSWORD_MAX_LENGTH),
   phone: z.string().optional(),
 });
 
@@ -688,24 +646,24 @@ auth.post(
       return error(c, 'Invalid or expired invitation', 400);
     }
 
+    // R209: the password policy, checked before the invitation is spent so a rejected password can be retried.
+    const policyError = validatePassword(password, { email: inviteData.email });
+    if (policyError) return error(c, policyError, 400);
+
     // Delete invite token (single use)
     await c.env.SESSIONS.delete(`invite:${token}`);
 
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, inviteData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
 
@@ -798,6 +756,7 @@ auth.post(
         department: null,
         language: 'en',
       },
+      tenant: await getTenantSummary(tenantDb, inviteData.tenantId, undefined, c.env, userId),
     });
   }
 );
@@ -929,6 +888,94 @@ auth.delete('/sessions', async (c) => {
 });
 
 // ============================================================
+// POST /change-password — Signed-in user chooses a new password (R113)
+// Also the only way out of a first login with a temporary password (must_change_password).
+// ============================================================
+
+// The full policy (utils/password.ts validatePassword) runs in the handler once the user's email is known.
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password'),
+  newPassword: z.string().min(1, 'Enter a new password').max(PASSWORD_MAX_LENGTH, `Password must be at most ${PASSWORD_MAX_LENGTH} characters`),
+});
+
+auth.post(
+  '/change-password',
+  zValidator('json', changePasswordSchema),
+  async (c) => {
+    const { currentPassword, newPassword } = c.req.valid('json');
+    const userId = c.get('userId');
+    const tenantId = c.get('tenantId');
+    const tenantDb = c.get('tenantDb');
+    if (!userId || !tenantDb) return error(c, 'Missing or invalid authorization header', 401);
+
+    // The current password is checkable with a stolen token, so bound the guesses per user.
+    const mult = limitMultiplier(c.env);
+    const rl = await rateLimit(c.env.CACHE, `rate:change-password:${userId}`, 10 * mult, 900);
+    if (!rl.allowed) return error(c, `Too many attempts. Retry in ${rl.retryAfterSecs}s`, 429);
+
+    const db = drizzle(tenantDb);
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user || !user.isActive) return error(c, 'User account is deactivated', 401);
+
+    if (!(await comparePassword(currentPassword, user.passwordHash))) {
+      return error(c, 'Current password is incorrect', 401);
+    }
+    if (currentPassword === newPassword) {
+      return error(c, 'New password must be different from the current password', 400);
+    }
+    const policyError = validatePassword(newPassword, { email: user.email });
+    if (policyError) return error(c, policyError, 400);
+
+    const passwordHash = await hashPassword(newPassword);
+    await db
+      .update(users)
+      .set({ passwordHash, mustChangePassword: 0, updatedAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+
+    await c.env.CACHE.delete(`failed_login:${tenantId}:${user.email.toLowerCase()}`);
+
+    // Revoke every other session: keep only the one the caller's refresh token belongs to.
+    const keepRefresh = c.req.header('X-Refresh-Token');
+    const kept = keepRefresh
+      ? ((await c.env.SESSIONS.get(`refresh:${keepRefresh}`, 'json')) as { sessionId?: string; userId?: string } | null)
+      : null;
+    const keepSessionId = kept?.userId === userId ? kept.sessionId : undefined;
+    const indexKey = `sessions_index:${userId}`;
+    const sessionIds = ((await c.env.SESSIONS.get(indexKey, 'json')) as string[] | null) ?? [];
+    for (const sid of sessionIds) {
+      if (sid === keepSessionId) continue;
+      const sessionData = (await c.env.SESSIONS.get(`session:${sid}`, 'json')) as { refreshToken?: string } | null;
+      if (sessionData?.refreshToken) await c.env.SESSIONS.delete(`refresh:${sessionData.refreshToken}`);
+      await c.env.SESSIONS.delete(`session:${sid}`);
+    }
+    if (keepSessionId) await c.env.SESSIONS.put(indexKey, JSON.stringify([keepSessionId]));
+    else await c.env.SESSIONS.delete(indexKey);
+
+    await logActivity(db, {
+      userId,
+      action: 'password_changed',
+      entityType: 'user',
+      entityId: userId,
+      ipAddress: c.get('clientIp'),
+    });
+
+    await sendTransactional(c.env, {
+      to: user.email,
+      template: 'password_changed',
+      tenantId,
+      data: { name: user.name },
+    });
+
+    // The caller's old access token still says "must change"; hand back one that does not.
+    const accessToken = await signAccessToken(
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: c.get('jwtPayload')?.db },
+      c.env.JWT_SECRET,
+    );
+    return success(c, { message: 'Password changed', accessToken, mustChangePassword: false });
+  }
+);
+
+// ============================================================
 // POST /logout — Logout current session
 // ============================================================
 
@@ -989,7 +1036,7 @@ async function recordFailedLogin(
   await env.CACHE.put(
     lockKey,
     JSON.stringify({ count: newCount, lastAt: Date.now() }),
-    { expirationTtl: 1800 } // 30 minutes
+    { expirationTtl: 900 } // 15 minutes
   );
 
   // Record login history if user exists
@@ -1012,7 +1059,7 @@ async function recordFailedLogin(
         to: email,
         subject: 'Account Locked - TravelCRM Pro',
         html: accountLockedEmailHtml(email),
-      });
+      }, 'platform_system');
     } catch {
       // Non-critical — don't fail the request
     }

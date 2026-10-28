@@ -1,0 +1,100 @@
+---
+/** The demo form, drawn as a boarding pass. Field ids match the product film (desktop/e2e/showcase/films/website.spec.ts). */
+const title = 'Fill in your pass. We\'ll walk your enquiry through.';
+const finalChars = [...'FINAL CALL'];
+---
+<section id="enquire" class="dark" aria-labelledby="final-h">
+  <div class="wrap section">
+    <div class="flaps" aria-hidden="true">{finalChars.map((c, i) => <span class="tile" style={`animation-delay:${i * 60}ms`}>{c === ' ' ? ' ' : c}</span>)}</div>
+    <h2 id="final-h" class="h2" style="max-width:20ch">{title}</h2>
+    <p class="lede" style="margin-top:18px">A 20-minute demo. Bring one real enquiry with the name removed and watch it go from WhatsApp to voucher.</p>
+
+    <form id="enquiry-form" class="pass" novalidate aria-label="Book a demo">
+      <div class="main">
+        <div class="phead mono"><span>BOARDING PASS · DEMO CLASS</span><span class="brand">TRAVELCRM <span>PRO</span></span></div>
+        <div class="g3">
+          <label class="fld" for="f-name">PASSENGER<input id="f-name" name="name" autocomplete="name" required maxlength="120" placeholder="Your name"></label>
+          <label class="fld" for="f-company">AGENCY<input id="f-company" name="company" autocomplete="organization" maxlength="160" placeholder="Agency name"></label>
+          <label class="fld" for="f-email">EMAIL<input id="f-email" name="email" type="email" autocomplete="email" required maxlength="200" placeholder="you@agency.com"></label>
+        </div>
+        <div class="g3">
+          <label class="fld" for="f-phone">WHATSAPP (OPTIONAL)<input id="f-phone" name="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+44 7700 900123"></label>
+          <label class="fld" for="f-country">COUNTRY<input id="f-country" name="country" autocomplete="country-name" maxlength="80" placeholder="Where your agency is"></label>
+          <label class="fld" for="f-team">TEAM SIZE<select id="f-team" name="agentsCount"><option value="3">1–3 people</option><option value="10">4–10 people</option><option value="25">11–25 people</option><option value="50">More than 25</option></select></label>
+        </div>
+        <div class="route">
+          <label class="fld" for="f-from">FROM<select id="f-from" name="from"><option>Excel and WhatsApp</option><option>WhatsApp only</option><option>Another CRM</option><option>Paper and email</option></select></label>
+          <svg aria-hidden="true" viewBox="0 0 64 24" width="64" height="24"><path d="M2 12 H44" fill="none" stroke-width="2" stroke-dasharray="4 4"></path><path d="M46 5 L62 12 L46 19 L50 12 Z"></path></svg>
+          <div class="fld">TO<strong>TRAVELCRM PRO</strong></div>
+        </div>
+        <div class="g3 last">
+          <label class="fld" for="f-day">PREFERRED DEMO DAY<select id="f-day" name="day"><option>Next working day</option></select></label>
+          <label class="fld wide" for="f-message">ANYTHING WE SHOULD KNOW?<input id="f-message" name="message" maxlength="1800" placeholder="e.g. we run group tours to Rajasthan"></label>
+        </div>
+        <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <div id="turnstile-slot" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn btn--amber">Issue my boarding pass</button>
+          <p class="hint">We reply with a demo slot. No card needed. See our <a href="/legal/privacy.html">privacy policy</a>.</p>
+        </div>
+        <p id="enquiry-error" class="err" role="alert" hidden></p>
+        <p id="enquiry-success" class="ok" tabindex="-1" hidden>Your pass is issued. We will confirm your demo slot by email or WhatsApp.</p>
+      </div>
+      <div class="stub">
+        <span class="notch t" aria-hidden="true"></span><span class="notch b" aria-hidden="true"></span>
+        <div class="mono info">
+          <div class="full">PASSENGER<strong id="pass-name">YOUR NAME</strong></div>
+          <div>GATE<strong class="big">D1</strong></div>
+          <div>BOARDS IN<strong class="big">20M</strong></div>
+          <div class="full">SEAT<strong class="red">FOUNDING · −20%</strong></div>
+        </div>
+        <div class="barcode" aria-hidden="true"></div>
+      </div>
+      <span id="pass-stamp" class="booked mono" aria-hidden="true" hidden><span>TRAVELCRM PRO</span><strong>BOOKED</strong><span>GATE D1</span></span>
+    </form>
+  </div>
+</section>
+<style>
+  .flaps { display: flex; gap: 3px; margin-bottom: 20px; flex-wrap: wrap; }
+  .flaps .tile { width: 30px; height: 40px; border-radius: 4px; font-size: 22px; color: var(--amber); }
+  .pass { position: relative; margin-top: 40px; display: flex; flex-wrap: wrap; background: var(--pass); color: #15181B; border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  .main { flex: 1 1 620px; min-width: 0; padding: 24px clamp(18px, 3vw, 32px) 26px; }
+  .phead { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; letter-spacing: .14em; color: var(--passink); padding-bottom: 14px; border-bottom: 2px solid #15181B; }
+  .brand { color: #15181B; font-weight: 600; }
+  .brand span { background: #15181B; color: var(--amber); padding: 1px 5px; border-radius: 3px; }
+  .g3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 18px 24px; margin-top: 20px; }
+  .last { align-items: end; }
+  .wide { grid-column: span 2; }
+  @media (max-width: 640px) { .wide { grid-column: auto; } }
+  .fld { display: grid; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: var(--passink); min-width: 0; }
+  .fld input, .fld select { font: inherit; font-family: var(--body); font-size: 17px; letter-spacing: 0; color: #15181B; background: transparent; border: 0; border-bottom: 2px solid #15181B; border-radius: 0; padding: 8px 0; min-height: 44px; width: 100%; }
+  .fld input::placeholder { color: #8A7F66; }
+  .fld input[aria-invalid="true"] { border-bottom-color: var(--red); }
+  .fld strong { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 2.6vw, 34px); letter-spacing: .02em; line-height: 1.1; color: #15181B; border-bottom: 2px solid #15181B; padding: 6px 0; }
+  .route { display: grid; grid-template-columns: minmax(0,1fr) 64px minmax(0,1fr); gap: 14px; align-items: end; margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--passline); }
+  .route svg { margin-bottom: 12px; }
+  @media (max-width: 560px) { .route { grid-template-columns: minmax(0,1fr); } .route svg { display: none; } }
+  .route svg path:first-child { stroke: #15181B; }
+  .route svg path:last-child { fill: #15181B; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 22px; }
+  .actions .btn[disabled] { opacity: .8; cursor: default; }
+  .is-booked .actions .btn { background: var(--paid); }
+  .hint { margin: 0; font-size: 13px; color: #5C5340; }
+  .hint a { color: #15181B; }
+  .err { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #FBE3E1; color: #8C1D16; font-size: 14px; }
+  .ok { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #DDF3E6; color: #14532D; font-size: 14px; font-weight: 600; }
+  .stub { flex: 0 1 250px; min-width: 210px; position: relative; border-left: 2px dashed var(--passline); background: #FFEFC2; border-radius: 0 18px 18px 0; padding: 24px 22px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+  .notch { position: absolute; left: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--board); }
+  .notch.t { top: -12px; } .notch.b { bottom: -12px; }
+  .info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 10px; letter-spacing: .12em; color: var(--passink); }
+  .info strong { display: block; margin-top: 3px; font-size: 15px; letter-spacing: .04em; color: #15181B; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .info .full { grid-column: 1 / -1; }
+  .info .big { font-family: var(--display); font-size: 34px; }
+  .info .red { color: var(--red); }
+  .barcode { height: 56px; background: repeating-linear-gradient(90deg, #15181B 0 2px, transparent 2px 4px, #15181B 4px 5px, transparent 5px 8px, #15181B 8px 11px, transparent 11px 13px, #15181B 13px 14px, transparent 14px 17px); }
+  .booked { position: absolute; right: 270px; top: 34px; width: 156px; height: 156px; border: 5px double var(--red); color: var(--red); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 10px; letter-spacing: .12em; pointer-events: none; background: rgba(255,248,230,.35); transform: rotate(-14deg); animation: stampDown .5s cubic-bezier(.2,1.6,.4,1) both; }
+  .booked strong { font-family: var(--display); font-size: 42px; font-weight: 900; letter-spacing: .02em; line-height: 1; }
+  @keyframes stampDown { from { opacity: 0; transform: rotate(-30deg) scale(2.2); } to { opacity: .92; transform: rotate(-14deg) scale(1); } }
+  @media (max-width: 900px) { .booked { right: 16px; top: auto; bottom: 230px; width: 130px; height: 130px; } .booked strong { font-size: 34px; } .stub { border-left: 0; border-top: 2px dashed var(--passline); border-radius: 0 0 18px 18px; flex-basis: 100%; } .notch { display: none; } }
+</style>

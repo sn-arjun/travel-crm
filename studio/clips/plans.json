@@ -1,0 +1,237 @@
+{
+  "id": "plans",
+  "title": "Basic, Pro and Enterprise",
+  "voice": "af_heart",
+  "recording": "plans",
+  "scenes": [
+    {
+      "type": "logo",
+      "dur": 2.6
+    },
+    {
+      "type": "title",
+      "kicker": "Plans",
+      "title": "Basic, Pro and Enterprise",
+      "subtitle": "One yearly price per agency, with room to grow",
+      "chapter": "Introduction",
+      "short": false,
+      "narration": "TravelCRM Pro has three plans. You pay one yearly price for the whole agency, with users, allowances and packs on top when you need them."
+    },
+    {
+      "type": "plans",
+      "heading": "What each plan includes",
+      "chapter": "What is in each plan",
+      "short": false,
+      "rows": [
+        {
+          "label": "Leads, contacts, quotes, invoices, fleet, visas",
+          "plans": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Inbox: WhatsApp, email, SMS",
+          "plans": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Assistant and drafted replies",
+          "plans": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Calling (UK, US, Australia, Singapore)",
+          "plans": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "AI lead capture, scoring, document scan",
+          "plans": [
+            false,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Business intelligence and advanced reports",
+          "plans": [
+            false,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "WhatsApp campaigns",
+          "plans": [
+            false,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Website on your own domain",
+          "plans": [
+            false,
+            true,
+            true
+          ]
+        },
+        {
+          "label": "Website chat widget",
+          "plans": [
+            false,
+            false,
+            true
+          ]
+        }
+      ],
+      "narration": "Every plan has the full CRM, the shared inbox and the assistant, and calling where it is offered. Pro adds the AI tools, business intelligence, WhatsApp campaigns and your own website domain. Enterprise adds the website chat widget, more users and bigger allowances."
+    },
+    {
+      "type": "title",
+      "chapter": "Prices",
+      "short": false,
+      "kicker": "India, founder price per agency per year",
+      "title": "₹11,999 · ₹23,999 · ₹59,999",
+      "subtitle": "Basic 5 users · Pro 10 users · Enterprise 25 users. List price from April 2027: ₹14,999 · ₹29,999 · ₹74,999",
+      "narration": "In India the founder price is eleven thousand nine hundred and ninety-nine, twenty-three thousand nine hundred and ninety-nine, and fifty-nine thousand nine hundred and ninety-nine rupees a year, with five, ten and twenty-five users. Agencies that join before April 2027 keep the founder price for twenty-four months."
+    },
+    {
+      "type": "title",
+      "kicker": "United Kingdom, founder price per agency per year",
+      "title": "£359 · £719 · £1,439",
+      "subtitle": "Basic 3 users · Pro 5 users · Enterprise 10 users. List price from April 2027: £449 · £899 · £1,799",
+      "short": false,
+      "narration": "In the United Kingdom the founder price is three hundred and fifty-nine, seven hundred and nineteen, and fourteen hundred and thirty-nine pounds a year, with three, five and ten users."
+    },
+    {
+      "type": "title",
+      "kicker": "United States, founder price per agency per year",
+      "title": "$470 · $950 · $1,910",
+      "subtitle": "Basic 3 users · Pro 5 users · Enterprise 10 users. List price from April 2027: $590 · $1,190 · $2,390",
+      "short": false,
+      "narration": "In the United States the founder price is four hundred and seventy, nine hundred and fifty, and nineteen hundred and ten dollars a year, with three, five and ten users. Other countries are billed in their own currency."
+    },
+    {
+      "type": "screen",
+      "step": "basic-locked",
+      "chapter": "Basic: what is locked",
+      "narration": "Skyline Holidays is on Basic. Open WhatsApp campaigns or the website chat and you get a clear upgrade prompt, never an error.",
+      "lowerThird": {
+        "feature": "Upgrade prompt",
+        "role": "Agency admin",
+        "plan": "Basic"
+      },
+      "callout": {
+        "focus": "upgrade",
+        "label": "Upgrade, not an error"
+      },
+      "features": []
+    },
+    {
+      "type": "screen",
+      "step": "seat-limit",
+      "narration": "Basic in India includes five users. If you invite a sixth person, the app offers an upgrade, or an extra user, instead.",
+      "lowerThird": {
+        "feature": "Seat limit",
+        "role": "Agency admin",
+        "plan": "Basic"
+      },
+      "features": [
+        "team.seat-limit"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "billing",
+      "chapter": "Billing and packs",
+      "narration": "The billing page shows the plan, the renewal date, and how many users are in use. Each month you get allowances for AI, WhatsApp messages, email, login codes and call minutes. If one runs out, buy a pack or upgrade.",
+      "lowerThird": {
+        "feature": "Billing, allowances and packs",
+        "role": "Agency admin",
+        "plan": "All plans"
+      },
+      "callout": {
+        "focus": "buy-more",
+        "label": "Buy more"
+      },
+      "features": [
+        "billing.addons",
+        "billing.communication-caps"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "checkout",
+      "narration": "Paying online opens the payment page; here it is the test gateway. Once paid, the subscription invoice appears in the agency's currency.",
+      "lowerThird": {
+        "feature": "Online checkout",
+        "role": "Agency admin",
+        "plan": "All plans"
+      },
+      "features": [
+        "billing.checkout",
+        "billing.platform-invoices"
+      ]
+    },
+    {
+      "type": "title",
+      "kicker": "Pro",
+      "title": "Thames & Tide Travel, Bristol",
+      "subtitle": "Pro, billed in pounds",
+      "short": false,
+      "narration": "Now a Pro agency in the UK."
+    },
+    {
+      "type": "screen",
+      "step": "pro-uk",
+      "chapter": "Pro in the UK",
+      "narration": "On Pro, WhatsApp campaigns are open, and because the agency is in the UK, calling is available too. The website chat widget still asks for Enterprise.",
+      "lowerThird": {
+        "feature": "What Pro opens",
+        "role": "Agency admin",
+        "plan": "Pro"
+      },
+      "features": []
+    },
+    {
+      "type": "title",
+      "kicker": "Enterprise",
+      "title": "Desert Pearl Tours, Dubai",
+      "subtitle": "Enterprise, billed in US dollars",
+      "short": false,
+      "narration": "And an Enterprise agency in Dubai."
+    },
+    {
+      "type": "screen",
+      "step": "enterprise-uae",
+      "chapter": "Enterprise in the UAE",
+      "narration": "Enterprise opens everything, including the website chat. Calling is not offered in the Gulf, so it does not appear here.",
+      "lowerThird": {
+        "feature": "What Enterprise opens",
+        "role": "Agency admin",
+        "plan": "Enterprise"
+      },
+      "features": []
+    },
+    {
+      "type": "end",
+      "headline": "Start small. Grow into it.",
+      "cta": "Pick your plan",
+      "chapter": "Thank you",
+      "short": false,
+      "narration": "TravelCRM Pro. Start small, and grow into it."
+    }
+  ]
+}

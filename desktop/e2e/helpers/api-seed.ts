@@ -1,4 +1,6 @@
 import { getAuthToken, API_URL } from './auth';
+import { localDay } from './date-picker';
+import { invalidateAuthState } from '../fixtures';
 
 let token: string | null = null;
 
@@ -7,21 +9,52 @@ async function ensureToken(forceRefresh = false) {
   return token;
 }
 
+const IDEMPOTENT = new Set(['GET', 'HEAD', 'PUT', 'DELETE']);
+
+/** True for a dropped connection (wrangler dev closing a socket), never for an HTTP error status. */
+function isTransportError(e: unknown): boolean {
+  const msg = `${(e as Error)?.message ?? ''} ${(e as { cause?: Error })?.cause?.message ?? ''}`;
+  return /fetch failed|other side closed|socket|ECONNRESET|ECONNREFUSED|UND_ERR/i.test(msg);
+}
+
 export async function api(method: string, path: string, body?: any): Promise<any> {
+  const isReset = method === 'POST' && path.startsWith('/test/reset');
+  // A reset is safe to repeat; other POSTs are not (a retry could double-create a row).
+  const retryable = IDEMPOTENT.has(method) || isReset;
   let t = await ensureToken();
-  const makeReq = (tok: string) => fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${tok}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const makeReq = async (tok: string) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fetch(`${API_URL}${path}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${tok}`,
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch (e) {
+        // A POST is retried only when a reused keep-alive socket was already closed by the server
+        // (the request never reached a handler); other POST transport errors still surface.
+        const staleSocket = /other side closed|ECONNRESET/i.test(
+          `${(e as Error)?.message ?? ''} ${(e as { cause?: Error })?.cause?.message ?? ''}`,
+        );
+        if (attempt >= 2 || !isTransportError(e) || !(retryable || staleSocket)) throw e;
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+  };
   let res = await makeReq(t);
   // Retry once with a fresh token if we get a 401
   if (res.status === 401) {
     t = await ensureToken(true);
     res = await makeReq(t);
+  }
+  // A reset rebuilds the users table: a token minted before it names a user row that no longer
+  // exists, so any write that records created_by fails its foreign key (the old "contact.id undefined").
+  if (isReset) {
+    token = null;
+    invalidateAuthState(); // browser sessions minted before the reset are stale too
   }
   return res.json();
 }
@@ -35,7 +68,11 @@ export async function seedContact(overrides: Record<string, any> = {}) {
     ...overrides,
   };
   const res = await api('POST', '/contacts', data);
-  return res.data ?? res;
+  if (!res?.data?.id) {
+    // Fail here with the server's answer instead of handing back an object without an id.
+    throw new Error(`seedContact failed: ${JSON.stringify(res).slice(0, 500)}`);
+  }
+  return res.data;
 }
 
 export async function seedLead(contactId: string, overrides: Record<string, any> = {}) {
@@ -43,7 +80,7 @@ export async function seedLead(contactId: string, overrides: Record<string, any>
     contactId,
     title: `E2E Lead ${Date.now()}`,
     destinations: ['Bali'],
-    travelDate: new Date().toISOString().split('T')[0],
+    travelDate: localDay(new Date()),
     tripType: 'domestic',
     source: 'website',
     ...overrides,
@@ -104,8 +141,8 @@ export async function seedVoucher(leadId: string, overrides: Record<string, any>
     details: {
       guestNames: ['E2E Guest'],
       hotelName: 'E2E Hotel',
-      checkIn: new Date().toISOString().split('T')[0],
-      checkOut: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      checkIn: localDay(new Date()),
+      checkOut: localDay(new Date(Date.now() + 86400000 * 3)),
       roomType: 'standard',
       roomCount: 1,
       mealPlan: 'EP',
@@ -196,8 +233,10 @@ export async function seedRateCard(overrides: Record<string, any> = {}) {
     sellingPrice: 7500,
     currency: 'INR',
     unit: 'per_person',
-    validFrom: new Date().toISOString().split('T')[0],
-    validTo: new Date(Date.now() + 86400000 * 365).toISOString().split('T')[0],
+    // Yesterday, not today: the server compares validity against the UTC date, which still
+    // lags the local date for the first hours after local midnight (e.g. IST).
+    validFrom: localDay(new Date(Date.now() - 86400000)),
+    validTo: localDay(new Date(Date.now() + 86400000 * 365)),
     isActive: 1,
     ...overrides,
   };
@@ -249,7 +288,7 @@ export async function seedPayment(invoiceId: string, overrides: Record<string, a
   const data = {
     invoiceId,
     amount: 5000,
-    date: new Date().toISOString().split('T')[0],
+    date: localDay(new Date()),
     method: 'transfer',
     reference: `TEST-PAY-${Date.now()}`,
     ...overrides,
@@ -282,6 +321,18 @@ export async function seedCampaign(overrides: Record<string, any> = {}) {
   };
   const res = await api('POST', '/campaigns', data);
   return res.data ?? res;
+}
+
+/**
+ * Reset the E2E test tenant to a known state via the TEST_MODE-gated
+ * POST /test/reset endpoint. Every other slice depends on this for
+ * deterministic seeding between spec files.
+ */
+export async function resetTestData(): Promise<void> {
+  const res = await api('POST', '/test/reset');
+  if (res?.success === false) {
+    throw new Error(`Test data reset failed: ${JSON.stringify(res)}`);
+  }
 }
 
 export async function seedEmailTemplate(overrides: Record<string, any> = {}) {

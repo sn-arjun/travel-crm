@@ -7,20 +7,25 @@ copyright: Copyright © 2026 TravelCRM
 
 directories:
   output: release
-  buildResources: public
+  buildResources: build-resources
 
 files:
   - electron/dist/**
-  - .next/**
-  - public/**
   - package.json
+
+# The Next standalone server must run from real files, so it ships outside the asar.
+extraResources:
+  - from: .next/standalone
+    to: app-server
+  - from: build-resources/tray.png
+    to: tray.png
 
 win:
   target:
     - target: nsis
       arch:
         - x64
-  icon: public/icon.ico
+  icon: build-resources/icon.png
 
 mac:
   target:
@@ -28,7 +33,7 @@ mac:
       arch:
         - x64
         - arm64
-  icon: public/icon.icns
+  icon: build-resources/icon.png
   category: public.app-category.business
 
 linux:
@@ -36,7 +41,7 @@ linux:
     - target: AppImage
       arch:
         - x64
-  icon: public/icon.png
+  icon: build-resources/icon.png
   category: Office
 
 nsis:
@@ -45,7 +50,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
 
+# Update feed: a generic provider (R2 bucket behind downloads.<domain> at go-live).
+# Set TRAVELCRM_UPDATE_URL when building; the packaged app also reads it at runtime.
 publish:
-  provider: github
-  owner: your-org
-  repo: travel-crm
+  provider: generic
+  url: ${env.TRAVELCRM_UPDATE_URL}

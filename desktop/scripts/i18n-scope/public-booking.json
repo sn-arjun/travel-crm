@@ -1,0 +1,4 @@
+[
+  "src/app/(public)/book",
+  "src/lib/booking-form.ts"
+]

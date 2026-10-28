@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useI18n } from '@/lib/i18n';
+import { LANGUAGES, useI18n } from '@/lib/i18n';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,12 +17,10 @@ interface LanguageSwitcherProps {
 }
 
 export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
 
-  const languages = [
-    { code: 'en', label: 'English', flag: '🇬🇧' },
-    { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
-  ] as const;
+  // Only enabled languages are offered; each is named in its own language.
+  const languages = LANGUAGES.filter((lang) => lang.enabled);
 
   const currentLanguage = languages.find((lang) => lang.code === locale);
 
@@ -33,25 +31,19 @@ export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
           variant="ghost"
           size="sm"
           className={cn('gap-2', className)}
-          aria-label="Select language"
+          aria-label={t('ui.languageSwitch.label')}
         >
           <Globe className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs font-medium">
-            {currentLanguage?.flag} {currentLanguage?.label}
-          </span>
-          <span className="inline sm:hidden text-xs font-medium">
-            {currentLanguage?.flag}
-          </span>
+          <span className="text-xs font-medium">{currentLanguage?.label}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
-        {languages.map((lang: any) => (
+        {languages.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
             onClick={() => setLocale(lang.code)}
             className={cn('cursor-pointer', locale === lang.code && 'bg-accent')}
           >
-            <span className="mr-2 text-lg">{lang.flag}</span>
             <span>{lang.label}</span>
           </DropdownMenuItem>
         ))}

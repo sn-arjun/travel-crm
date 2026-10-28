@@ -7,20 +7,20 @@ const fleetReports: ReportDefinition[] = [
         name: 'Fleet Utilization',
         category: 'fleet',
         description: 'Vehicle active trips and utilization over time.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['type'],
         allowedGroupBy: ['type'],
         defaultSort: { column: 'trip_count', order: 'desc' },
         dateColumn: 't.created_at',
         baseQuery: `
       SELECT
-        v.registration_no as vehicle_reg,
+        v.registration_number as vehicle_reg,
         v.type,
         COUNT(t.id) as trip_count,
         0 as estimated_revenue
       FROM vehicles v
       LEFT JOIN trip_assignments t ON t.vehicle_id = v.id
-      WHERE v.status = 'active' {DATE_FILTER}
+      WHERE v.is_deleted = 0 {DATE_FILTER}
       GROUP BY v.id
       {ORDER_BY}
     `,
@@ -36,7 +36,7 @@ const fleetReports: ReportDefinition[] = [
         name: 'Driver Performance',
         category: 'fleet',
         description: 'Trip counts and ratings per driver.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'trip_count', order: 'desc' },
@@ -65,20 +65,22 @@ const fleetReports: ReportDefinition[] = [
         name: 'Fleet Availability',
         category: 'fleet',
         description: 'Vehicle availability status and maintenance schedule.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['status', 'type'],
         allowedGroupBy: ['status', 'type'],
         defaultSort: { column: 'type', order: 'asc' },
+        // An "as of today" report: the date range never narrows it, so bind the filter to today.
+        ignoreDateRange: true,
         baseQuery: `
       SELECT
         type,
         status,
         COUNT(id) as vehicle_count,
-        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as available,
-        SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as in_maintenance,
-        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive
+        SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+        SUM(CASE WHEN status = 'under_maintenance' THEN 1 ELSE 0 END) as in_maintenance,
+        SUM(CASE WHEN status = 'out_of_service' THEN 1 ELSE 0 END) as inactive
       FROM vehicles
-      WHERE 1 = 1 {DATE_FILTER}
+      WHERE is_deleted = 0 {DATE_FILTER}
       GROUP BY type, status
       {ORDER_BY}
     `,
@@ -96,7 +98,7 @@ const fleetReports: ReportDefinition[] = [
         name: 'Trip Cost Analysis',
         category: 'fleet',
         description: 'Cost breakdown per trip type and route.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'trip_count', order: 'desc' },
@@ -105,11 +107,11 @@ const fleetReports: ReportDefinition[] = [
       SELECT
         t.trip_type,
         COUNT(t.id) as trip_count,
-        COALESCE(AVG(t.distance_km), 0) as avg_distance_km,
-        COALESCE(AVG(t.amount), 0) as avg_trip_cost,
-        COALESCE(SUM(t.amount), 0) as total_cost
+        COALESCE(AVG(COALESCE(t.actual_distance_km, t.estimated_distance_km)), 0) as avg_distance_km,
+        COALESCE(AVG(COALESCE(t.actual_cost, t.estimated_cost)), 0) as avg_trip_cost,
+        COALESCE(SUM(COALESCE(t.actual_cost, t.estimated_cost)), 0) as total_cost
       FROM trip_assignments t
-      WHERE 1 = 1 {DATE_FILTER}
+      WHERE t.is_deleted = 0 {DATE_FILTER}
       GROUP BY t.trip_type
       {ORDER_BY}
     `,

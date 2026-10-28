@@ -1,0 +1,193 @@
+{
+  "batch": "B31",
+  "tree": "ui-remake @ f31de0f (B38/B39 included) + B31 commits 83241e8..b3e3e84",
+  "stack": "slot 1 (API 8797, web 3110), fresh --reset-db before every run",
+  "e2eRuns": [
+    {
+      "run": "B",
+      "passed": 766,
+      "failed": 0,
+      "flaky": 0,
+      "skipped": 38,
+      "didNotRun": 0,
+      "minutes": 22.1
+    },
+    {
+      "run": "C",
+      "passed": 766,
+      "failed": 0,
+      "flaky": 0,
+      "skipped": 38,
+      "didNotRun": 0,
+      "minutes": 23.6
+    },
+    {
+      "run": "D",
+      "passed": 766,
+      "failed": 0,
+      "flaky": 0,
+      "skipped": 38,
+      "didNotRun": 0,
+      "minutes": 23,
+      "note": "after the sticky-note spec fix b3e3e84"
+    }
+  ],
+  "e2eRunsEarlier": [
+    {
+      "run": "post-rebase A",
+      "passed": 765,
+      "failed": 1,
+      "skipped": 38,
+      "failure": "dashboard.spec.ts:81 sticky note delete hit another note's button (fixed b3e3e84)"
+    },
+    {
+      "run": "pre-rebase 1",
+      "passed": 751,
+      "failed": 13,
+      "skipped": 30,
+      "didNotRun": 8
+    },
+    {
+      "run": "pre-rebase 2",
+      "passed": 761,
+      "failed": 3,
+      "skipped": 38
+    },
+    {
+      "run": "pre-rebase 3",
+      "passed": 763,
+      "failed": 1,
+      "skipped": 38
+    },
+    {
+      "run": "pre-rebase 4",
+      "passed": 761,
+      "failed": 3,
+      "skipped": 38
+    },
+    {
+      "run": "pre-rebase 5",
+      "passed": 764,
+      "failed": 0,
+      "skipped": 38
+    },
+    {
+      "run": "pre-rebase 6",
+      "passed": 757,
+      "failed": "see note",
+      "skipped": 38,
+      "didNotRun": 6,
+      "note": "superseded by the rebase; not triaged"
+    }
+  ],
+  "skips": {
+    "ai-intelligence.spec.ts": "14 - ai_intelligence is not enabled for the demo tenant/plan; the specs assert the disabled state or skip",
+    "chatbot.spec.ts": "8 - ai_chatbot is not on the pro plan the test stack uses",
+    "marketing-social.spec.ts": "8 - posts can only be created by AI generation and this stack has no AI provider (503 AI_UNAVAILABLE)",
+    "super-admin.spec.ts": "8 - needs a super-admin account the stack does not have"
+  },
+  "gates": {
+    "desktopTsc": {
+      "status": "pass",
+      "errors": 0
+    },
+    "desktopUnit": {
+      "status": "pass",
+      "files": 59,
+      "tests": 1258
+    },
+    "desktopLint": {
+      "status": "pass",
+      "errorsInSrc": 0,
+      "note": "e2e/showcase ts-nocheck errors also gone (baseline 3 -> 0)"
+    },
+    "desktopBuild": {
+      "status": "pass"
+    },
+    "backendVitest": {
+      "status": "pass",
+      "tests": 1180
+    },
+    "backendTsc": {
+      "status": "pass",
+      "errors": 0
+    },
+    "layoutProbe": {
+      "status": "pass",
+      "routes": "ALL",
+      "runs": 628,
+      "note": "608 ok in the first pass; the last 20 (dark 1920x1080, from /super-admin/system on) failed only because the probe's injected 15-minute token expired mid-run and redirected to /login; re-probed those 20 routes x 4 combos with a fresh session: 80 runs, 0 failing"
+    },
+    "flutterAnalyze": {
+      "status": "pass",
+      "issues": 0
+    },
+    "flutterTest": {
+      "status": "pass",
+      "tests": 95
+    },
+    "driverSmokeIntegration": {
+      "status": "not run",
+      "reason": "emulator/adb off limits (showcase agent recording)"
+    }
+  },
+  "fr": {
+    "FR-1": {
+      "status": "pass",
+      "evidence": "slot 1: created driver +919876543210, POST /driver/login 200 (testMode), POST /driver/login/verify otp 123456 -> 200 with accessToken"
+    },
+    "FR-2": {
+      "status": "partial",
+      "evidence": "emulator part not run; driver flutter test 95 pass, analyze clean; driver-app-api.spec.ts passes in every run"
+    },
+    "FR-2b": {
+      "status": "pass",
+      "evidence": "packages/driver_app/lib/features/auth/presentation/screens/phone_input_screen.dart:189 key: const Key('send-otp')"
+    },
+    "FR-3": {
+      "status": "pass",
+      "evidence": "sidebar user menu reads the signed-in user (sidebar.tsx SidebarUserMenu); auth-shell.spec user menu test passes"
+    },
+    "FR-4": {
+      "status": "pass",
+      "evidence": "packages/driver_app/pubspec.yaml:52 integration_test"
+    },
+    "FR-5": {
+      "status": "pass",
+      "evidence": "no [Destination]/[Amount] placeholders anywhere in src; itineraries.spec.ts:432 and :449 pass"
+    },
+    "FR-6": {
+      "status": "pass",
+      "evidence": "itineraries.spec.ts:409 rate-card picker shows real name and prices, no N/A; passes"
+    },
+    "FR-7": {
+      "status": "pass",
+      "evidence": "trip-form.tsx Trip type select (required); leads/[id]/page.tsx Book transfer -> /fleet/trips/new?leadId=..&tripType=airport_pickup (code check; fleet-trips specs pass)"
+    },
+    "FR-8": {
+      "status": "pass",
+      "evidence": "trip-format.ts TRIP_EVENT_LABELS check_in -> 'Checked in', used by tripEventLabel in trips/[id]/page.tsx"
+    },
+    "FR-9": {
+      "status": "pass",
+      "evidence": "top-navbar.tsx router.push(routeForNotification(n)); notifications.spec.ts:330 navigates to the lead"
+    },
+    "FR-10": {
+      "status": "pass",
+      "evidence": "itineraries/templates/page.tsx 'New template' button; itinerary-templates.spec.ts:244 passes"
+    },
+    "FR-11": {
+      "status": "pass",
+      "evidence": "token-refresh.spec.ts (expired access token, session survives) passes in every run"
+    }
+  },
+  "pipeline": {
+    "verify:travellers": "ok",
+    "cleanup": "ok",
+    "showcase": "left for the orchestrator",
+    "jobsOk": "104 of 105"
+  },
+  "unresolved": [
+    "None needing backend action. The rate-cards lookup UTC-date issue seen before the rebase is fixed by B37 (tenantToday at rate-cards.ts:111); the yesterday-default in seedRateCard is now just a safety margin."
+  ]
+}

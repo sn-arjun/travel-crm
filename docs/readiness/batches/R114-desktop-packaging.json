@@ -1,0 +1,129 @@
+{
+  "id": "R114",
+  "tier": 1,
+  "title": "Desktop installer that works: Next server inside Electron, runtime API URL, icons, auto-update",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Produce a Windows installer whose app actually opens its screens, talks to a configurable server address and can update itself.",
+  "why": "desktop/electron/main.ts loads .next/server/app/index.html (not produced by a standalone build) and falls back to localhost:3000 with nothing serving it; electron-builder.yml packs .next/** without the standalone server and points icons at desktop/public/ which does not exist; publish owner is your-org; no electron-updater; NEXT_PUBLIC_API_URL is baked in at build (src/lib/api/config.ts); tray icon is empty.",
+  "featuresToWorks": [
+    "desktop.app"
+  ],
+  "dependsOn": [],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R101"
+  ],
+  "size": "L",
+  "newDependencies": [
+    "electron-updater (desktop dependency, exact version pinned, MIT)"
+  ],
+  "files": {
+    "edit": [
+      "desktop/electron/main.ts",
+      "desktop/electron/preload.ts",
+      "desktop/electron/tsconfig.json",
+      "desktop/electron-builder.yml",
+      "desktop/package.json",
+      "desktop/src/lib/api/config.ts",
+      "desktop/src/lib/api/client.ts",
+      "desktop/src/lib/api/index.ts",
+      "desktop/src/lib/api/chatbot.ts",
+      "desktop/src/components/providers/realtime-provider.tsx",
+      "desktop/src/app/(app)/itineraries/[id]/page.tsx",
+      "desktop/src/app/(app)/itineraries/[id]/pdf/page.tsx",
+      "desktop/src/app/(app)/itineraries/_components/day-images.tsx",
+      "desktop/src/app/(app)/settings/company/page.tsx",
+      "desktop/src/app/(app)/settings/integrations/page.tsx",
+      "desktop/src/app/(auth)/login/page.tsx",
+      "desktop/src/lib/api/config.test.ts",
+      ".gitignore"
+    ],
+    "create": [
+      "desktop/build-resources/icon.svg",
+      "desktop/scripts/make-icons.mjs",
+      "desktop/scripts/prepare-standalone.mjs",
+      "desktop/electron/next-server.ts",
+      "desktop/electron/runtime-config.ts",
+      "desktop/electron/updater.ts",
+      "desktop/e2e-electron/smoke.spec.ts",
+      "desktop/playwright.electron.config.ts",
+      "desktop/scripts/serve-update-feed.mjs"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "super-admin/**",
+      "packages/**",
+      "desktop/src/app/(app)/!(itineraries|settings)/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Follow READINESS-PLAN 4.5 exactly. electron/next-server.ts: startNextServer({ serverDir }) finds a free port (net.createServer().listen(0, \"127.0.0.1\")), spawns process.execPath with env ELECTRON_RUN_AS_NODE=1, PORT, HOSTNAME=127.0.0.1, NODE_ENV=production running server.js, pipes output to app.getPath(\"logs\")/next-server.log, polls GET /login until 200 (30 s timeout), returns { url, stop }. stop() uses taskkill /PID <pid> /T /F on Windows, SIGTERM elsewhere.",
+    "electron/main.ts: requestSingleInstanceLock; in production start the server from path.join(process.resourcesPath, \"app-server\", <relative path to server.js inside standalone; Next nests it under the workspace path, e.g. desktop/server.js — detect by searching for server.js at depth <= 3>) and loadURL(url); on failure show an error dialog with the log path; stop the server on before-quit and window-all-closed. Development keeps DEV_URL. Tray uses nativeImage.createFromPath(build-resources/icon.png).",
+    "electron/runtime-config.ts: apiUrl from userData/config.json, else electron/dist/build-config.json (written at build from TRAVELCRM_API_URL), else http://localhost:8787/api/v1. ipcMain.on(\"config:get\") returns it synchronously; ipcMain.handle(\"config:setApiUrl\") validates (http/https URL ending in /api/v1) and writes config.json then relaunches. preload.ts exposes window.travelcrmConfig = ipcRenderer.sendSync(\"config:get\") and electronAPI.setApiUrl.",
+    "src/lib/api/config.ts: replace the API_BASE_URL constant with getApiBaseUrl() (window.travelcrmConfig?.apiUrl ?? process.env.NEXT_PUBLIC_API_URL ?? default) and keep `export const API_BASE_URL` only as a deprecated getter-backed value if removing it breaks too much; update all 24 references (grep API_BASE_URL in desktop/src) to call getApiBaseUrl() at use time, not at module load. Avoid rendering the URL during SSR to prevent hydration mismatch (use it inside effects/handlers).",
+    "Login page: an \"Advanced\" disclosure with \"Server address\" visible only when window.electronAPI exists; saving calls setApiUrl.",
+    "scripts/prepare-standalone.mjs: after next build copy .next/static to .next/standalone/<app dir>/.next/static and public/ (if any) next to server.js. scripts/make-icons.mjs: render build-resources/icon.svg to build-resources/icon.png 1024x1024 with Playwright chromium (already installed for e2e), and 256 px tray png.",
+    "electron-builder.yml: directories.buildResources build-resources; files electron/dist/** and package.json only; extraResources [{ from: .next/standalone, to: app-server }]; win/mac/linux icon build-resources/icon.png; publish { provider: generic, url: ${env.TRAVELCRM_UPDATE_URL} } (remove github your-org). package.json: build:electron = next build && node scripts/prepare-standalone.mjs && tsc -p electron/tsconfig.json; build:desktop = npm run build:electron && node scripts/make-icons.mjs && electron-builder --config electron-builder.yml.",
+    "electron/updater.ts: electron-updater autoUpdater with logger to file, checkForUpdates on start (skip when !app.isPackaged or TRAVELCRM_UPDATE_URL unset) and every 6 hours, downloaded -> notify renderer (\"Restart to update\") via ipc.",
+    "Playwright Electron smoke (desktop/playwright.electron.config.ts, testDir e2e-electron): installs release/*.exe silently with `/S /D=<tmp dir>` (NSIS), launches the installed exe with _electron.launch({ executablePath }) and env TRAVELCRM_API_URL pointing at the slot 1 API, writes config via the UI or config.json, logs in as admin@demo.com, sees the dashboard, then closes and asserts the next-server child exited (no process listening on the recorded port). Update check test: serve-update-feed.mjs serves a folder with a latest.yml declaring a higher version; the app logs \"update-available\" (read the log file)."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/src/lib/api/config.test.ts: getApiBaseUrl prefers window.travelcrmConfig, then env, then default.",
+    "desktop/e2e-electron/smoke.spec.ts as described (installer, login, child process stops, update-available)."
+  ],
+  "acceptance": [
+    "`npm run build:desktop` produces release/TravelCRM Pro Setup <version>.exe on this machine.",
+    "The installed app logs in against a local API whose address was set at runtime.",
+    "Closing the app leaves no node/electron child listening.",
+    "Unit, typecheck and lint gates green; the web build used by fix-stack still works (NEXT_PUBLIC_API_URL path)."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && npm run build",
+    "cd desktop && npm run build:desktop",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --no-build",
+    "cd desktop && E2E_API_URL=http://localhost:8797/api/v1 npx playwright test -c playwright.electron.config.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/auth-shell.spec.ts e2e/itineraries.spec.ts e2e/settings-company.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "e2e/auth-shell.spec.ts",
+      "e2e/itineraries.spec.ts",
+      "e2e/settings-company.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "OV/EV code-signing certificate (Azure Trusted Signing is not open to Indian organisations per COST-MODEL); signed installer passes SmartScreen; update feed on R2 behind downloads.<domain>; macOS DMG on a Mac runner."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md: ds-* indigo tokens only (no raw palette classes or hex), archetypes (ListPage/EntityForm/DetailPage or PageContainer + PageHeader), FilterBar + useInfiniteScroll for lists, RelationCombobox for relations, PhoneInput for phones, useConfirm instead of window.confirm, graceful degradation when an env key is missing. lint-gate must not rise for any file you touch.",
+    "fix-stack uses `next start` on the web build; keep `npm run build` (web) unchanged so the e2e harness keeps working.",
+    "electron-builder downloads NSIS and Electron binaries on first run (network). If the machine is offline, report it rather than vendoring binaries.",
+    "Install the new dependency in the main checkout only (orchestrator), never inside a worktree with junctioned node_modules.",
+    "R101 runs in parallel and does not touch desktop/; R113 later edits the login page: keep your login change small and isolated (one component)."
+  ]
+}

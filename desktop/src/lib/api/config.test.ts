@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { API_ENDPOINTS } from './config';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { API_ENDPOINTS, getApiBaseUrl } from './config';
 
 describe('API_ENDPOINTS', () => {
   describe('Auth endpoints', () => {
@@ -111,13 +111,27 @@ describe('API_ENDPOINTS', () => {
       expect(API_ENDPOINTS.stickyNotes.byId('n1')).toBe('/sticky-notes/n1');
     });
   });
+});
 
-  describe('Admin endpoints', () => {
-    it('should define tenant management', () => {
-      expect(API_ENDPOINTS.admin.tenants).toBe('/admin/tenants');
-      expect(API_ENDPOINTS.admin.tenantById('t1')).toBe('/admin/tenants/t1');
-      expect(API_ENDPOINTS.admin.tenantActivate('t1')).toBe('/admin/tenants/t1/activate');
-      expect(API_ENDPOINTS.admin.tenantSuspend('t1')).toBe('/admin/tenants/t1/suspend');
-    });
+describe('getApiBaseUrl', () => {
+  afterEach(() => {
+    delete window.travelcrmConfig;
+    vi.unstubAllEnvs();
+  });
+
+  it('prefers the runtime config injected by Electron', () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://env.example/api/v1');
+    window.travelcrmConfig = { apiUrl: 'https://runtime.example/api/v1' };
+    expect(getApiBaseUrl()).toBe('https://runtime.example/api/v1');
+  });
+
+  it('falls back to NEXT_PUBLIC_API_URL', () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://env.example/api/v1');
+    expect(getApiBaseUrl()).toBe('https://env.example/api/v1');
+  });
+
+  it('falls back to the localhost default', () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiBaseUrl()).toBe('http://localhost:8787/api/v1');
   });
 });

@@ -1,0 +1,109 @@
+{
+  "id": "B25",
+  "title": "Marketing + campaigns: festivals restyle, campaign template picker, themed confirms",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17",
+    "B02",
+    "B12"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 32,
+  "goal": "Marketing pages are contract-clean and festival/campaign flows work end to end now that the backend tables and routes exist.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: marketing/festivals uses saturated gradient banners, emoji and a gray-800 title on dark (1.26:1) (BUG-050 part); the festivals API now works (B02 migration 0035). campaigns/new/page.tsx:225 is a raw ID input (BUG-057 part) -> RelationCombobox (templates via GET /templates which now returns 200). campaigns/[id]/page.tsx:94,123,134 use window.confirm (BUG-045 part); recipients tab works after B12. marketing/page.tsx and festivals have nested scroll wrappers (BUG-048 part). 108 raw palette sites in marketing/. W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Festivals: ds-token cards, readable titles in both themes, no emoji; list/create/edit through the API with RBAC errors handled.",
+    "campaigns/new: template field -> RelationCombobox over message templates (read-only use of src/lib/api/templates.ts); segment/contact pickers likewise.",
+    "campaigns/[id]: send/cancel/delete via useConfirm; recipients tab loads.",
+    "Flyers, segments, social, whatsapp, opted-out, branding pages swept.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /marketing,/marketing/festivals,/marketing/flyers,/marketing/flyers/templates,/marketing/segments,/marketing/social,/marketing/whatsapp,/marketing/opted-out,/marketing/branding,/marketing/campaigns,/campaigns,/campaigns/new,/campaigns/<campaignId> --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests.",
+    "From the B17 triage: marketing-social.spec.ts:301 (:333) - the festival card toggle locator (text=<festival> + ../../..) no longer contains the Activate/Deactivate button. Give the festival card a stable test id / accessible structure (role=article with aria-label, toggle button with accessible name) while restyling, and update the spec to use it. marketing-social.spec.ts must pass."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/marketing/**",
+    "desktop/src/app/(app)/campaigns/**",
+    "desktop/src/components/domain/marketing/**",
+    "desktop/src/lib/api/{marketing,campaigns,whatsapp-campaigns}.ts",
+    "desktop/e2e/{marketing-campaigns,marketing-flyers,marketing-opt-out,marketing-segments,marketing-social}.spec.ts (behaviour changed here only)",
+    "desktop/audit/fix/requests/B25.md",
+    "desktop/e2e/marketing-social.spec.ts"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "/marketing/festivals loads (no 500) and is readable in dark.",
+    "campaigns/new has no raw ID input.",
+    "No window.confirm in marketing/campaigns.",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/marketing/**",
+      "src/app/(app)/campaigns/**",
+      "src/components/domain/marketing/**",
+      "src/lib/api/{marketing,campaigns,whatsapp-campaigns}.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/marketing-campaigns.spec.ts",
+      "desktop/e2e/marketing-flyers.spec.ts",
+      "desktop/e2e/marketing-opt-out.spec.ts",
+      "desktop/e2e/marketing-segments.spec.ts",
+      "desktop/e2e/marketing-social.spec.ts",
+      "desktop/e2e/whatsapp-campaigns.spec.ts",
+      "desktop/e2e/campaigns.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/marketing",
+      "/marketing/festivals",
+      "/marketing/flyers",
+      "/marketing/flyers/templates",
+      "/marketing/segments",
+      "/marketing/social",
+      "/marketing/whatsapp",
+      "/marketing/opted-out",
+      "/marketing/branding",
+      "/marketing/campaigns",
+      "/campaigns",
+      "/campaigns/new",
+      "/campaigns/<campaignId>"
+    ]
+  },
+  "notes": "Contributes to BUG-045/048/050/057/072 (owned by B30)."
+}

@@ -1,21 +1,19 @@
+# Operator console, built with OpenNext for Cloudflare Workers (`npm run deploy`).
+# It has no database or storage bindings: all data comes from the backend's /admin API.
+# Secrets are never written here. Set SUPER_ADMIN_JWT_SECRET with `wrangler secret put SUPER_ADMIN_JWT_SECRET`
+# (the same value as the backend's) and see .dev.vars.example for local development.
 name = "travelcrm-super-admin"
+main = ".open-next/worker.js"
 compatibility_date = "2026-02-20"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".vercel/output/static"
 
-[[d1_databases]]
-binding = "MASTER_DB"
-database_name = "travelcrm-master"
-database_id = "a0000000-0000-0000-0000-000000000001"
-
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "travelcrm-assets"
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
-JWT_SECRET = "change-this-to-a-real-secret-in-production"
-SUPER_ADMIN_EMAIL = "admin@travelcrm.com"
-SUPER_ADMIN_PASSWORD = "SuperAdmin@123"
-CF_ACCOUNT_ID = ""
-CF_API_TOKEN = ""
+# The backend API address. Production default comes from src/lib/domain.ts.
+# BACKEND_API_URL is derived: https://api.<PLATFORM_DOMAIN>/api/v1 (src/lib/domain.ts, the single placeholder).
+# Set it here only to point the console at a different API (e.g. a staging workers.dev address).
+# BACKEND_API_URL = "https://api.YOUR-DOMAIN.example/api/v1"

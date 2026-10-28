@@ -1,0 +1,130 @@
+{
+  "id": "R144",
+  "tier": 4,
+  "step": 5,
+  "title": "Group departures, part 3: desktop screens for tours, departures, seat bookings, waitlist and passengers, the Group tours settings page and the agency switch",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Staff switch group tours on, set the rules, create tours and departures, and run seat bookings (hold, confirm with one click or in bulk, waitlist, offer, move, cancel, passengers) from the desktop. Agencies that do not switch it on see nothing new.",
+  "why": "Gap 1 needs screens on top of R139 and R143. Design: TOUR-OPERATOR-DESIGN.md sections 2, 4.1, 5.1, 5.2.",
+  "featuresToWorks": ["tours.list", "tours.edit", "departures.list", "departures.detail", "departures.seats", "departures.waitlist", "settings.group-tours"],
+  "featureKeys": ["group_departures"],
+  "dependsOn": ["R143"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R145"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/app/(app)/settings/page.tsx (hub card only)",
+      "desktop/src/components/domain/command-palette.tsx (new commands only)",
+      "desktop/src/messages/en/departures.json",
+      "desktop/src/messages/nl/departures.json",
+      "desktop/src/messages/en/tours.json",
+      "desktop/src/messages/nl/tours.json",
+      "desktop/src/messages/en/groupTours.json",
+      "desktop/src/messages/nl/groupTours.json",
+      "desktop/src/messages/en/nav.json",
+      "desktop/src/messages/nl/nav.json"
+    ],
+    "create": [
+      "desktop/src/lib/api/departures.ts",
+      "desktop/src/lib/api/tours.ts",
+      "desktop/src/hooks/use-group-tours.ts",
+      "desktop/src/app/(app)/tours/page.tsx",
+      "desktop/src/app/(app)/tours/new/page.tsx",
+      "desktop/src/app/(app)/tours/[id]/page.tsx",
+      "desktop/src/app/(app)/tours/[id]/edit/page.tsx",
+      "desktop/src/app/(app)/departures/page.tsx",
+      "desktop/src/app/(app)/departures/new/page.tsx",
+      "desktop/src/app/(app)/departures/[id]/page.tsx",
+      "desktop/src/app/(app)/departures/_components/*.tsx (seats bar, booking drawer, hold-seats dialog, passengers editor, waitlist panel, status menu, vehicles editor, stops editor, prices editor, costs editor)",
+      "desktop/src/app/(app)/settings/group-tours/page.tsx",
+      "desktop/src/lib/departures.ts (pure helpers: seats summary text, status labels, effective settings)",
+      "desktop/src/lib/departures.test.ts",
+      "desktop/scripts/i18n-scope/departures.json",
+      "desktop/e2e/departures.spec.ts",
+      "desktop/e2e/group-tours-settings.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/app/(app)/fleet/**",
+      "desktop/src/lib/api/fleet.ts",
+      "desktop/src/app/(app)/leads/**",
+      "desktop/src/app/(app)/itineraries/**",
+      "desktop/src/app/(app)/calendar/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R144-1",
+      "what": "Gate and agency switch",
+      "steps": [
+        "GatedFeature already has the six keys (R143); use-group-tours.ts returns {available (plan), enabled (agency switch), loading, settings}.",
+        "Sidebar: an Operations entry 'Departures' (and 'Tours' beneath it) only when available and enabled; Settings hub card 'Group tours' when available (the card shows the switch when off).",
+        "Settings > Group tours page: the switch and every field of design 4.1 in sections (Seats and holds, Confirmation, Waitlist, Booking rules, Passenger fields with a custom-field builder, Room types, Preferred seat, Seats shown to customers, Deposit, Public booking terms, Crew); save through PUT /departures/settings (admin only; others read-only)."
+      ]
+    },
+    {
+      "id": "R144-2",
+      "what": "Tours",
+      "steps": [
+        "List page per CONTRACT archetype: FilterBar (status, destination, q), useInfiniteScroll, detail drawer, empty state with 'Create your first tour', skeletons.",
+        "Form: title, code, destination, template (RelationCombobox over itinerary templates, never a raw id), duration, currency, capacity, overrides (cut-offs, hold hours, confirm mode, deposit), terms; tabs for Stops (ordered editor with AddressAutocomplete and manual fallback, local time, day offset, documents check), Prices (age bands from the agency or template list; room supplements; seat surcharge; other), Extras (catalogue editor; behaviour wired in R150 — this batch saves the rows).",
+        "Detail: summary, upcoming departures with seats bars, 'Add departures' (several dates at once)."
+      ]
+    },
+    {
+      "id": "R144-3",
+      "what": "Departures",
+      "steps": [
+        "List: FilterBar (tour, status, date range, 'has seats'), infinite scroll, rows with a seats bar (confirmed / held / left of capacity, waitlist count), hover actions (Open, Hold seats, Change status), drawer, empty state, skeletons.",
+        "Detail page tabs: Overview (dates, status menu with the legal transitions, tour leader picked with RelationCombobox over drivers with crew role and users, vehicles editor with capacity, cut-offs), Bookings (FilterBar by status; rows with contact, lead link, seats, status chip, hold expiry countdown; bulk Confirm; row actions Confirm, Cancel with reason, Move to another departure (RelationCombobox), Offer for waitlisted, Edit passengers), Waitlist (ordered, Offer), Stops, Prices, Costs, Manifest (placeholder link; R146 fills it).",
+        "Hold seats dialog: contact and lead by RelationCombobox (or quick-create contact with PhoneInput), seats, optional passengers; shows seats left live and the waitlist outcome when full (409 SEATS_UNAVAILABLE handled as a message, never a crash).",
+        "Passengers editor: rows per passenger with the agency's passenger fields (custom ones too), band computed from DOB/age, pickup point select from the departure stops, room type and sharing, seat number when preferredSeat is on, meal, documents status; link to an existing traveller (RelationCombobox) or 'create traveller'.",
+        "Every action uses useConfirm where destructive and toasts outcomes; realtime refresh on seat_booking events if the shell's realtime hook exposes them, else refetch after actions."
+      ]
+    }
+  ],
+  "tests": [
+    "desktop vitest: lib/departures.ts helpers (seats text, effective settings merge, status transitions offered per status).",
+    "e2e/group-tours-settings.spec.ts: a Basic agency sees no Departures entry and no hub card; a Pro agency sees the card, switches group tours on, saves hold hours and confirm mode; the sidebar entry appears.",
+    "e2e/departures.spec.ts: create a tour with stops and prices, add two departures with a vehicle, hold seats for a lead, confirm, fill passengers, fill the departure to full, a further hold goes to the waitlist, cancel one booking, offer to the waitlisted party, move a booking to the other departure; seats bars match at each step."
+  ],
+  "acceptance": [
+    "Seat bookings can be run end to end from the desktop with no raw ids typed anywhere.",
+    "An agency with the switch off sees nothing new; a plan without the feature sees nothing new."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/departures.spec.ts e2e/group-tours-settings.spec.ts e2e/auth-shell.spec.ts e2e/itinerary-templates.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/departures.spec.ts", "e2e/group-tours-settings.spec.ts", "e2e/auth-shell.spec.ts", "e2e/itinerary-templates.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: group_departures (useFeatureGate) and the agency switch group_tours.enabled; nothing renders or calls the API when either is off.",
+    "Desktop: CONTRACT.md archetypes; list pages FilterBar + useInfiniteScroll + detail drawer + empty state + skeletons; relations through RelationCombobox (never raw ids); phones through PhoneInput; addresses through AddressAutocomplete with fallback; outbound messages only through SendMessageDialog; every string through t() with en and nl keys in departures.json, tours.json, groupTours.json and nav.json; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts.",
+    "Add desktop/scripts/i18n-scope/departures.json listing the new folders so i18n-check enforces them.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 2, 4.1, 5, 6.1, desktop/audit/remake/CONTRACT.md, an existing list page that follows the contract (contacts or leads) and the itinerary templates pages.",
+    "R145 runs in parallel and owns fleet pages and lib/api/fleet.ts; do not edit them."
+  ],
+  "goLiveVerify": []
+}

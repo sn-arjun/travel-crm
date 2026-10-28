@@ -1,0 +1,92 @@
+{
+  "id": "B30",
+  "title": "Shared sweep: ESLint to zero, cross-cutting contract checks, all-route layout probe",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W7",
+  "dependsOn": [
+    "B18",
+    "B19",
+    "B20",
+    "B21",
+    "B22",
+    "B23",
+    "B24",
+    "B25",
+    "B26",
+    "B27",
+    "B28",
+    "B29"
+  ],
+  "parallelGroup": "W7",
+  "bugIds": [
+    "BUG-045",
+    "BUG-048",
+    "BUG-050",
+    "BUG-057",
+    "BUG-058",
+    "BUG-072",
+    "BUG-073",
+    "BUG-074"
+  ],
+  "fixReqs": [],
+  "estFiles": 60,
+  "goal": "`npm run lint` exits 0 for the whole desktop app, every cross-cutting contract rule is verifiably satisfied, and the layout probe is clean on every route.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. W6 batches cleaned their own files and wrote shared-file requests to desktop/audit/fix/requests/B18.md ... B29.md. Remaining lint errors live in components/ui (beyond B06), components/domain shared files, components/layout/providers/electron, hooks, stores, lib (non-owned api files: auth, config, index, client leftovers), app root files, plus anything W6 could not finish. Cross-cutting bugs owned here: BUG-045 (window.confirm), BUG-048 (nested scrollers), BUG-050 (dark palette/gradients), BUG-057 (raw ID inputs), BUG-058 (native date / raw money inputs), BUG-072 (palette/hex), BUG-073 (aria-labels, duplicate ids), BUG-074 (pages off the archetypes).",
+  "steps": [
+    "FIRST: process every shared-change request the page batches left in desktop/audit/fix/requests/*.md (B18: typed reports client if B24 has not done it; B20: widen leads assignedTo to string | null and add priority to leadsApi.list params, then remove the local casts in the lead pages; any others). Implement each in the shared file, remove the local workarounds, and note each request as done in your report.",
+    "Backend fields now available (B35, merged) - remove the desktop workarounds: (a) invoices: POST/PUT accept issueDate (YYYY-MM-DD) and terms; GET returns issue_date and terms (snake_case like the other raw invoice fields - map them in src/lib/api/invoices.ts) -> invoice detail shows the real issue date, edit form saves both. (b) GET /reports/dashboard accepts date_from/date_to/date_preset -> dashboard-data.ts can pass the selected range instead of computing everything from separate report calls where that is simpler. (c) report responses carry previous_period_rows (full previous-period rows) and meta.total (real count) + meta.hasMore -> report-page-template Compare can use previous_period_rows instead of a second request, and report tables can show a more-rows indicator. (d) GET /follow-ups?status=pending|completed|cancelled|missed|all (composes with contactId) -> contact detail Last Interaction and the follow-ups list can include completed items. (e) fleet_availability, birthday_upcoming, dormant_customers ignore the date range server-side.",
+    "Backend (merged): GET /activity-logs?action=<verb> now matches the exact action AND the whole verb group (update -> update, update_user, ...). Remove the client-side per-page action filtering workaround in settings/activity-log/page.tsx and pass the action group to the fetcher via ListPage filters (requests/B27.md).",
+    "Apply every request in desktop/audit/fix/requests/*.md (shared primitives/archetypes), re-running the specs named in each request.",
+    "Drive `npm run lint` to 0 errors: types instead of any, unused code removed, no raw values. Then flip any rule that was temporarily warn (if any) back to error and regenerate lint-baseline.json (should be empty).",
+    "Grep gates (all must be 0 in desktop/src outside design-system and tests): `window.confirm|[^.\\w]confirm\\(`; `type=\"date\"`; `mailto:|wa\\.me|tel:`; raw palette (lint already); `id=\"relation-error\"`. Money inputs: list every `type=\"number\"` and convert money ones to CurrencyInput.",
+    "Archetype check script (scratchpad): every src/app/(app)/**/page.tsx root renders ListPage/EntityForm/DetailPage or PageContainer (redirect-only pages excepted) - fix stragglers.",
+    "aria: icon-only Buttons (size icon/icon-sm) have aria-label - write a quick AST/grep check and fix.",
+    "Full probe: enumerate every route under src/app/(app) (replace [id] with seeded ids from the API) and run layout-probe at 1366x768 + 1920x1080, light + dark; fix everything (expect only shared-component issues by now)."
+  ],
+  "filesAllowlist": [
+    "desktop/src/**",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/** (only for behaviour changed here)",
+    "desktop/src/lib/api/**"
+  ],
+  "mustNotTouch": [
+    "backend/**",
+    "packages/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "`npm run lint` exits 0.",
+    "All grep gates 0.",
+    "Archetype check passes.",
+    "Probe on all routes: 0 failures (warnings listed).",
+    "tsc, vitest, build green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/**"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/dashboard.spec.ts",
+      "desktop/e2e/contacts.spec.ts",
+      "desktop/e2e/leads.spec.ts",
+      "desktop/e2e/invoices.spec.ts",
+      "desktop/e2e/itineraries.spec.ts"
+    ],
+    "layoutProbe": [
+      "ALL"
+    ]
+  },
+  "notes": "Runs alone. If this batch exceeds one session, the orchestrator may split it by directory (components/ui+layout | lib+hooks+stores | verification)."
+}

@@ -19,13 +19,13 @@ function EmptyState({ className, icon, title, description, action, ...props }: E
       {...props}
     >
       {icon && (
-        <div className="mb-4 rounded-full bg-[var(--color-bg-muted)] p-4 text-[var(--color-text-muted)] animate-float">
+        <div className="mb-4 rounded-full bg-ds-surface-sunken p-4 text-ds-foreground-muted">
           {icon}
         </div>
       )}
-      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1 animate-slide-up">{title}</h3>
+      <h3 className="text-lg font-semibold text-ds-foreground mb-1 animate-slide-up">{title}</h3>
       {description && (
-        <p className="text-sm text-[var(--color-text-secondary)] max-w-sm mb-4 animate-slide-up" style={{ animationDelay: '50ms' }}>
+        <p className="text-sm text-ds-foreground-muted max-w-sm mb-4 animate-slide-up" style={{ animationDelay: '50ms' }}>
           {description}
         </p>
       )}

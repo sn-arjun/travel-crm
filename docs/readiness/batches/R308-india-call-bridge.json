@@ -1,0 +1,88 @@
+{
+  "id": "R308",
+  "tier": 3,
+  "title": "India call-bridge: the agent's own phone rings first, then the customer (provider per G1 addendum)",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Let Indian agencies call customers through the platform by ringing the agent's mobile and then the customer, which fits India's rules.",
+  "why": "ADR-001: India launches with call-bridge only (both legs on the Indian phone network) pending legal confirmation; the owner could not sign up with Plivo (2026-10-14) and the ADR addendum will name the India provider; nothing implements the bridge.",
+  "featuresToWorks": [
+    "calls.dial",
+    "calls.inbound-routing"
+  ],
+  "dependsOn": [
+    "R303",
+    "R304",
+    "R305"
+  ],
+  "blockedOnOwner": "DROPPED for v1 (owner 2026-10-15: no calling for Indian agencies at launch)",
+  "parallelSafeWith": [],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/calls.ts",
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/services/voip-provider.ts",
+      "backend/src/routes/users.ts",
+      "desktop/src/app/(app)/settings/profile/page.tsx",
+      "desktop/src/components/domain/click-to-call-button.tsx"
+    ],
+    "create": [
+      "backend/test/call-bridge.test.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/lib/softphone/**",
+      "backend/src/services/voip/metering.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Each agent stores a verified mobile number (profile; verified by a login-code style check from R110).",
+    "Outbound in bridge mode: placeCall({ mode: bridge, agentNumber, to }) rings the agent first, plays a short whisper (\"Connecting you to <contact>\"), then dials the customer with the agency's Indian number as caller ID; events and recording as in R302/R303/R306.",
+    "Inbound in bridge mode: the routed agent's mobile rings (no softphone); the desktop screen pop appears at the same time (R303).",
+    "Country policy (R304) decides bridge for IN; a not-yet-confirmed softphone in India stays hidden."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/call-bridge.test.ts: outbound bridge places the agent leg first then the customer leg (mock provider order); unverified agent mobile -> 409; inbound bridge dials the agent mobile; metering counts both legs per the provider records."
+  ],
+  "acceptance": [
+    "Bridge flows pass with the mock provider (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "An Indian provider account per the ADR-001 addendum (Twilio has no domestic Indian calling), KYC, written confirmation on sub-accounts, telecom lawyer opinion (ADR 9a items 2, 3, 10)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
+    "Blocked on G1: the ADR-001 addendum (provider) must be signed first."
+  ],
+  "dropped": true
+}

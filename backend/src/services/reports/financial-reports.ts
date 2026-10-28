@@ -71,14 +71,116 @@ const financialReports: ReportDefinition[] = [
         SUM(total) as total_revenue,
         COALESCE(SUM(total_tax) * 100.0 / NULLIF(SUM(total), 0), 0) as effective_tax_rate
       FROM invoices
-      WHERE type = 'tax_invoice' AND status IN ('paid', 'partially_paid', 'sent') {DATE_FILTER}
+      WHERE type = 'tax_invoice' AND status IN ('paid', 'partially_paid', 'sent') AND COALESCE(tax_regime, 'gst') != 'margin' {DATE_FILTER}
       {ORDER_BY}
     `,
         columns: [
             { name: 'total_tax', type: 'currency' },
             { name: 'total_revenue', type: 'currency' },
             { name: 'effective_tax_rate', type: 'percentage' },
-        ]
+        ],
+        // Margin-scheme invoices carry no tax line: they are left out above and pointed to here (R152).
+        summarize: async ({ db, bounds }) => {
+            const range = bounds ? ' AND created_at BETWEEN ? AND ?' : '';
+            const row = await db
+                .prepare(`SELECT COUNT(*) AS n FROM invoices WHERE type = 'tax_invoice' AND tax_regime = 'margin' AND status IN ('paid', 'partially_paid', 'sent')${range}`)
+                .bind(...(bounds ? [bounds.from, bounds.to] : []))
+                .first<{ n: number }>();
+            const n = row?.n ?? 0;
+            return n > 0 ? { pointer: { reportId: 'margin_scheme_report', invoices: n } } : {};
+        },
+    },
+    {
+        id: 'margin_scheme_report',
+        name: 'Margin Scheme Report',
+        category: 'financial',
+        description: 'Invoices issued under the margin scheme: total, cost, margin and, when your VAT rate is set, the VAT on the margin.',
+        featureKey: 'margin_scheme',
+        noCache: true,
+        requiredRole: ['admin', 'accountant'],
+        allowedFilters: [],
+        allowedGroupBy: [],
+        dateColumn: "COALESCE(i.issue_date, SUBSTR(i.created_at, 1, 10))",
+        dateColumnType: 'date',
+        defaultSort: { column: 'invoice_date', order: 'desc' },
+        // The VAT rate is the one stored on the invoice, else the agency's current rate; never a default.
+        baseQuery: `
+      SELECT
+        i.id as invoice_id,
+        i.invoice_number,
+        c.name as contact_name,
+        COALESCE(i.issue_date, SUBSTR(i.created_at, 1, 10)) as invoice_date,
+        i.currency,
+        i.status,
+        i.total as total_amount,
+        i.margin_cost as cost,
+        CASE WHEN i.margin_cost IS NULL THEN NULL ELSE ROUND(i.total - i.margin_cost, 2) END as margin,
+        COALESCE(i.margin_vat_rate, ms.rate) as vat_rate,
+        CASE
+          WHEN i.margin_cost IS NULL OR COALESCE(i.margin_vat_rate, ms.rate) IS NULL THEN NULL
+          WHEN i.total - i.margin_cost <= 0 THEN 0
+          ELSE ROUND(ROUND((i.total - i.margin_cost) * 100) * COALESCE(i.margin_vat_rate, ms.rate) / (100 + COALESCE(i.margin_vat_rate, ms.rate))) / 100.0
+        END as vat_on_margin,
+        CASE WHEN i.margin_cost IS NULL THEN 'costs_missing' ELSE 'complete' END as completeness
+      FROM invoices i
+      LEFT JOIN contacts c ON i.contact_id = c.id
+      LEFT JOIN (
+        SELECT CASE WHEN json_valid(value) THEN CAST(json_extract(value, '$.vatRate') AS REAL) END as rate
+        FROM settings WHERE key = 'margin_scheme'
+      ) ms ON 1 = 1
+      WHERE i.tax_regime = 'margin' AND i.type = 'tax_invoice' AND i.status NOT IN ('draft', 'cancelled', 'void') {DATE_FILTER}
+      {ORDER_BY}
+    `,
+        columns: [
+            { name: 'invoice_number', type: 'text' },
+            { name: 'contact_name', type: 'text' },
+            { name: 'invoice_date', type: 'date' },
+            { name: 'total_amount', type: 'currency' },
+            { name: 'cost', type: 'currency' },
+            { name: 'margin', type: 'currency' },
+            { name: 'vat_rate', type: 'percentage' },
+            { name: 'vat_on_margin', type: 'currency' },
+            { name: 'completeness', type: 'status' },
+        ],
+        summarize: async ({ db, rows, bounds }) => {
+            // Totals cover complete rows only (cost recorded), per currency; the incomplete ones are counted, not guessed.
+            const minor = (n: number) => Math.round(Number((n * 100).toPrecision(12)));
+            const byCurrency = new Map<string, { currency: string; invoices: number; total: number; cost: number; margin: number; vatOnMargin: number | null }>();
+            let incomplete = 0;
+            let rateMissing = 0;
+            for (const r of rows) {
+                if (r.cost === null || r.cost === undefined) { incomplete += 1; continue; }
+                if (r.vat_on_margin === null || r.vat_on_margin === undefined) rateMissing += 1;
+                const cur = String(r.currency ?? '');
+                const t = byCurrency.get(cur) ?? { currency: cur, invoices: 0, total: 0, cost: 0, margin: 0, vatOnMargin: 0 };
+                t.invoices += 1;
+                t.total += minor(r.total_amount);
+                t.cost += minor(r.cost);
+                t.margin += minor(r.margin ?? 0);
+                if (r.vat_on_margin === null || r.vat_on_margin === undefined) t.vatOnMargin = null;
+                else if (t.vatOnMargin !== null) t.vatOnMargin += minor(r.vat_on_margin);
+                byCurrency.set(cur, t);
+            }
+            const totals = [...byCurrency.values()].map((t) => ({
+                currency: t.currency, invoices: t.invoices, total: t.total / 100, cost: t.cost / 100, margin: t.margin / 100,
+                vatOnMargin: t.vatOnMargin === null ? null : t.vatOnMargin / 100,
+            }));
+            // Credit notes against margin invoices are listed, not netted: the accountant decides how they reduce the margin.
+            const range = bounds ? " AND COALESCE(issue_date, SUBSTR(created_at, 1, 10)) BETWEEN ?1 AND ?2" : '';
+            const cn = await db
+                .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE type = 'credit_note' AND tax_regime = 'margin' AND status NOT IN ('draft', 'cancelled', 'void')${range}`)
+                .bind(...(bounds ? [bounds.from, bounds.to] : []))
+                .first<{ n: number; total: number }>();
+            return {
+                notice: 'For your accountant: figures are computed from the costs recorded in TravelCRM',
+                complete: rows.length - incomplete,
+                incomplete,
+                // Complete rows whose VAT is blank because the agency has not entered its VAT rate
+                rateMissing,
+                totals,
+                creditNotes: { count: cn?.n ?? 0, total: cn?.total ?? 0 },
+            };
+        },
     },
     {
         id: 'outstanding_receivables',
@@ -89,6 +191,7 @@ const financialReports: ReportDefinition[] = [
         allowedFilters: [],
         allowedGroupBy: [],
         dateColumn: 'due_date',
+        dateColumnType: 'date',
         defaultSort: { column: 'balance_due', order: 'desc' },
         baseQuery: `
       SELECT
@@ -98,12 +201,12 @@ const financialReports: ReportDefinition[] = [
         i.balance_due,
         i.due_date,
         i.status,
-        CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue,
+        CAST(julianday('{TODAY}') - julianday(i.due_date) AS INTEGER) as days_overdue,
         CASE
-          WHEN julianday('now') - julianday(i.due_date) <= 0 THEN 'current'
-          WHEN julianday('now') - julianday(i.due_date) <= 30 THEN '1-30 days'
-          WHEN julianday('now') - julianday(i.due_date) <= 60 THEN '31-60 days'
-          WHEN julianday('now') - julianday(i.due_date) <= 90 THEN '61-90 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 0 THEN 'current'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 30 THEN '1-30 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 60 THEN '31-60 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 90 THEN '61-90 days'
           ELSE '90+ days'
         END as ageing_bucket
       FROM invoices i

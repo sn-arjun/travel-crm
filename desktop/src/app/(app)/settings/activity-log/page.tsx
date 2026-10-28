@@ -1,313 +1,203 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  Loader2,
-  Activity,
-  Filter,
-  Search,
-  User,
-  FileText,
-  Settings,
-  Trash2,
-  Plus,
-  Pencil,
-  LogIn,
-  LogOut,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Activity, LogIn, LogOut, Pencil, Plus, Settings, Trash2, FileText } from 'lucide-react';
+import { ListPage, type ListFilter } from '@/components/domain/list-page';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useApiQuery } from '@/hooks/use-api';
-import { client, type ApiResponse, type PaginatedResponse } from '@/lib/api/client';
-import { API_ENDPOINTS } from '@/lib/api/config';
-import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { activityLogsApi, type ActivityLogEntry } from '@/lib/api/users';
 
-interface ActivityLogEntry {
-  id: string;
-  userId: string;
-  userName?: string;
-  action: string;
-  entityType: string;
-  entityId?: string;
-  entityName?: string;
-  details?: string;
-  ipAddress?: string;
-  userAgent?: string;
-  createdAt: string;
-}
-
-const actionIcons: Record<string, React.ReactNode> = {
-  create: <Plus className="h-3.5 w-3.5 text-green-600" />,
-  update: <Pencil className="h-3.5 w-3.5 text-blue-600" />,
-  delete: <Trash2 className="h-3.5 w-3.5 text-red-600" />,
-  login: <LogIn className="h-3.5 w-3.5 text-purple-600" />,
-  logout: <LogOut className="h-3.5 w-3.5 text-gray-600" />,
-  view: <FileText className="h-3.5 w-3.5 text-gray-500" />,
-  settings: <Settings className="h-3.5 w-3.5 text-amber-600" />,
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  create: <Plus aria-hidden="true" className="size-3.5" />,
+  update: <Pencil aria-hidden="true" className="size-3.5" />,
+  delete: <Trash2 aria-hidden="true" className="size-3.5" />,
+  login: <LogIn aria-hidden="true" className="size-3.5" />,
+  logout: <LogOut aria-hidden="true" className="size-3.5" />,
+  view: <FileText aria-hidden="true" className="size-3.5" />,
+  settings: <Settings aria-hidden="true" className="size-3.5" />,
 };
 
-const actionColors: Record<string, string> = {
-  create: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  update: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  delete: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  login: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  logout: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
-};
+const ACTION_OPTIONS = ['create', 'update', 'delete', 'login', 'logout'];
+const ENTITY_OPTIONS = ['contact', 'lead', 'invoice', 'task', 'user', 'settings'];
 
 function formatDate(iso: string) {
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try {
+    return formatLocaleDateTime(iso);
+  } catch {
+    return iso;
+  }
+}
+
+function initialsOf(name?: string) {
+  return (name || 'U')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export default function ActivityLogPage() {
   const router = useRouter();
-  const [actionFilter, setActionFilter] = React.useState<string>('all');
-  const [entityFilter, setEntityFilter] = React.useState<string>('all');
-  const [search, setSearch] = React.useState('');
-  const [dateFrom, setDateFrom] = React.useState('');
-  const [dateTo, setDateTo] = React.useState('');
-  const [page, setPage] = React.useState(1);
+  const searchParams = useSearchParams();
+  const presetUserId = searchParams?.get('userId') ?? undefined;
 
-  const { data: logsResponse, loading } = useApiQuery(
-    () => client.get<ApiResponse<PaginatedResponse<ActivityLogEntry>>>(API_ENDPOINTS.activityLogs.list, {
-      params: {
-        page,
-        limit: 25,
-        ...(actionFilter !== 'all' ? { action: actionFilter } : {}),
-        ...(entityFilter !== 'all' ? { entityType: entityFilter } : {}),
-        ...(search ? { search } : {}),
-        ...(dateFrom ? { fromDate: dateFrom } : {}),
-        ...(dateTo ? { toDate: dateTo } : {}),
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      },
-    }),
-    [page, actionFilter, entityFilter, search, dateFrom, dateTo],
-  );
+  const [action, setAction] = React.useState('all');
+  const [entityType, setEntityType] = React.useState('all');
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
 
-  const entries: ActivityLogEntry[] = React.useMemo(() => {
-    if (!logsResponse || !('data' in logsResponse)) return [];
-    const d = logsResponse.data as any;
-    return d?.data ?? d ?? [];
-  }, [logsResponse]);
+  const filters: ListFilter[] = React.useMemo(() => {
+    const list: ListFilter[] = [];
+    if (action !== 'all') list.push({ id: 'action', label: 'Action', value: action });
+    if (entityType !== 'all') list.push({ id: 'entityType', label: 'Entity', value: entityType });
+    if (presetUserId) list.push({ id: 'userId', label: 'User', value: presetUserId });
+    return list;
+  }, [action, entityType, presetUserId]);
 
-  const pagination = React.useMemo(() => {
-    if (!logsResponse || !('data' in logsResponse)) return null;
-    return (logsResponse.data as any)?.pagination ?? null;
-  }, [logsResponse]);
-
-  if (loading && page === 1) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const columns: DataTableColumn<ActivityLogEntry>[] = [
+    {
+      key: 'user',
+      header: 'User',
+      cell: (e) => (
+        <div className="flex items-center gap-ds-2">
+          <Avatar className="size-7">
+            <AvatarFallback className="text-xs">{initialsOf(e.userName)}</AvatarFallback>
+          </Avatar>
+          <span className="text-sm">{e.userName ?? e.userId}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'action',
+      header: 'Action',
+      cell: (e) => (
+        <Badge variant="secondary" className="gap-ds-1 capitalize">
+          {ACTION_ICONS[e.action] ?? ACTION_ICONS.view}
+          {e.action}
+        </Badge>
+      ),
+    },
+    {
+      key: 'entity',
+      header: 'Entity',
+      cell: (e) => (
+        <div>
+          <span className="text-sm capitalize">{e.entityType}</span>
+          {e.entityName && <p className="text-xs text-ds-foreground-muted">{e.entityName}</p>}
+        </div>
+      ),
+    },
+    {
+      key: 'details',
+      header: 'Details',
+      cell: (e) => <span className="max-w-60 truncate text-sm text-ds-foreground-muted">{e.details ?? '—'}</span>,
+    },
+    { key: 'ipAddress', header: 'IP address', cell: (e) => <span className="font-mono text-xs">{e.ipAddress ?? '—'}</span> },
+    { key: 'createdAt', header: 'Timestamp', sortable: true, cell: (e) => formatDate(e.createdAt) },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Activity Log</h1>
-          <p className="text-muted-foreground mt-1">Track all actions performed in the system</p>
-        </div>
-      </div>
+    <>
+    <ListPage<ActivityLogEntry>
+      title="Activity log"
+      description="Track all actions performed in the system."
+      getRowId={(e) => e.id}
+      fetcher={async ({ page, limit, search }) => {
+        const res = await activityLogsApi.list({
+          page,
+          limit,
+          // The server matches the exact action and the whole verb group (update, update_user, ...).
+          ...(action !== 'all' ? { action } : {}),
+          ...(entityType !== 'all' ? { entityType } : {}),
+          ...(presetUserId ? { userId: presetUserId } : {}),
+        });
+        // The backend has no free-text search, so the search term narrows each fetched page here.
+        const term = search.trim().toLowerCase();
+        const rows = (res as unknown as { data?: ActivityLogEntry[] })?.data;
+        if (!term || !Array.isArray(rows)) return res;
+        const matches = rows.filter((e) =>
+          [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
+            (v ?? '').toLowerCase().includes(term),
+          ),
+        );
+        return { ...(res as object), data: matches };
+      }}
+      extractItems={(r) => {
+        const data = (r as { data?: unknown })?.data;
+        return Array.isArray(data) ? (data as ActivityLogEntry[]) : [];
+      }}
+      extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
+      columns={columns}
+      searchPlaceholder="Search user or entity…"
+      filters={filters}
+      onOpenFilters={() => setFiltersOpen(true)}
+      onRemoveFilter={(id) => {
+        if (id === 'action') setAction('all');
+        if (id === 'entityType') setEntityType('all');
+        if (id === 'userId') router.push('/settings/activity-log');
+      }}
+      onClearFilters={() => {
+        setAction('all');
+        setEntityType('all');
+        router.push('/settings/activity-log');
+      }}
+      emptyIcon={<Activity aria-hidden="true" className="size-10" />}
+      emptyTitle="No activity logs found"
+      emptyDescription="Actions taken across the system will show up here."
+    />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Search user or entity..."
-                className="pl-9 w-56"
-              />
-            </div>
-            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Action" />
+    <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Filter activity log</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-ds-4 py-ds-2">
+          <div className="flex flex-col gap-ds-1">
+            <Label>Action</Label>
+            <Select value={action} onValueChange={setAction}>
+              <SelectTrigger>
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="create">Create</SelectItem>
-                <SelectItem value="update">Update</SelectItem>
-                <SelectItem value="delete">Delete</SelectItem>
-                <SelectItem value="login">Login</SelectItem>
-                <SelectItem value="logout">Logout</SelectItem>
+                <SelectItem value="all">All actions</SelectItem>
+                {ACTION_OPTIONS.map((a) => (
+                  <SelectItem key={a} value={a} className="capitalize">
+                    {a}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Entity" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Entities</SelectItem>
-                <SelectItem value="contact">Contact</SelectItem>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="invoice">Invoice</SelectItem>
-                <SelectItem value="task">Task</SelectItem>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="settings">Settings</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="w-36"
-            />
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="w-36"
-            />
-            {(actionFilter !== 'all' || entityFilter !== 'all' || search || dateFrom || dateTo) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setActionFilter('all');
-                  setEntityFilter('all');
-                  setSearch('');
-                  setDateFrom('');
-                  setDateTo('');
-                  setPage(1);
-                }}
-              >
-                Clear
-              </Button>
-            )}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Activity Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Activity Log
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {entries.length === 0 ? (
-            <div className="text-center py-12">
-              <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No activity logs found</p>
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Entity</TableHead>
-                    <TableHead>Details</TableHead>
-                    <TableHead>IP Address</TableHead>
-                    <TableHead>Timestamp</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries.map((entry) => {
-                    const initials = (entry.userName ?? 'U')
-                      .split(' ')
-                      .map((w) => w[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase();
-                    return (
-                      <TableRow key={entry.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-7 w-7">
-                              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm">{entry.userName ?? entry.userId}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn('gap-1 capitalize', actionColors[entry.action] ?? actionColors.update)}>
-                            {actionIcons[entry.action] ?? actionIcons.view}
-                            {entry.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <span className="text-sm capitalize">{entry.entityType}</span>
-                            {entry.entityName && (
-                              <p className="text-xs text-muted-foreground">{entry.entityName}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                          {entry.details ?? '-'}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{entry.ipAddress ?? '-'}</TableCell>
-                        <TableCell className="text-sm">{formatDate(entry.createdAt)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-
-              {/* Pagination */}
-              {pagination && pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= pagination.totalPages}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          <div className="flex flex-col gap-ds-1">
+            <Label>Entity</Label>
+            <Select value={entityType} onValueChange={setEntityType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All entities</SelectItem>
+                {ENTITY_OPTIONS.map((e) => (
+                  <SelectItem key={e} value={e} className="capitalize">
+                    {e}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setFiltersOpen(false)}>Apply</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

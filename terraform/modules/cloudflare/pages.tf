@@ -1,51 +1,30 @@
-# ─── Cloudflare Pages Projects ───────────────────────────────
+# ─── Cloudflare Pages: the static landing page ───────────────
+#
+# The landing site is plain static files. landing/scripts/build.mjs assembles landing/dist with
+# landing/public/ published at the site root; the landing workflow (or `wrangler pages deploy landing/dist
+# --project-name <name>`) uploads it. There is no Pages build command: deploys are direct uploads.
 
-# CRM Flutter Web App
-resource "cloudflare_pages_project" "crm_web" {
+resource "cloudflare_pages_project" "landing" {
   account_id        = var.cloudflare_account_id
-  name              = "${var.project_name}-web"
-  production_branch = "main"
+  name              = "${var.project_name}-landing"
+  production_branch = "master"
 
   build_config {
-    build_command   = "cd packages/crm_app && flutter build web --release --web-renderer canvaskit"
-    destination_dir = "packages/crm_app/build/web"
-  }
-
-  deployment_configs {
-    production {
-      environment_variables = {
-        FLUTTER_VERSION = "3.41.1"
-      }
-    }
-    preview {
-      environment_variables = {
-        FLUTTER_VERSION = "3.41.1"
-      }
-    }
+    build_command   = ""
+    destination_dir = "landing/dist"
+    root_dir        = ""
   }
 }
 
-# Super Admin Next.js Portal
-resource "cloudflare_pages_project" "admin" {
-  account_id        = var.cloudflare_account_id
-  name              = "${var.project_name}-admin"
-  production_branch = "main"
+# Root domain and www serve the landing page.
+resource "cloudflare_pages_domain" "landing_root" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.landing.name
+  domain       = var.zone_name
+}
 
-  build_config {
-    build_command   = "cd super-admin && npx @cloudflare/next-on-pages"
-    destination_dir = "super-admin/.vercel/output/static"
-  }
-
-  deployment_configs {
-    production {
-      environment_variables = {
-        NODE_VERSION = "20"
-      }
-    }
-    preview {
-      environment_variables = {
-        NODE_VERSION = "20"
-      }
-    }
-  }
+resource "cloudflare_pages_domain" "landing_www" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.landing.name
+  domain       = "www.${var.zone_name}"
 }

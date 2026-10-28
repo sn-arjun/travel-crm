@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, like, count } from 'drizzle-orm';
@@ -13,8 +13,13 @@ import {
 } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
+import { isValidCurrency, loadLocaleContext } from '../utils/money';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, paginated, error, notFound } from '../utils/response';
+import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
+import { PER_PERSON, bandsFor, bandsFromColumn, fillQuantities, loadAgencyBands, parseBands, type AgeBand } from '../services/pricing/age-bands';
+import { paxFromAges } from '../services/pricing/quote-fill';
 
 const templateRoutes = new Hono<AppContext>();
 
@@ -43,6 +48,9 @@ const createFromTemplateSchema = z.object({
   templateId: z.string().min(1),
   leadId: z.string().min(1),
   title: z.string().optional(),
+  // R149: fill the band quantities on creation (ignored while age_band_pricing is off).
+  adults: z.number().int().min(0).max(200).optional(),
+  ages: z.array(z.number().min(0).max(120)).max(100).optional(),
 });
 
 // ============================================================
@@ -103,6 +111,7 @@ templateRoutes.get('/:id', requirePermission('itineraries', 'view'), async (c) =
 
   return success(c, {
     ...template,
+    ageBands: bandsFromColumn(template.ageBands),
     templateData: template.templateData ? JSON.parse(template.templateData) : null,
     isSystem: !!template.isSystem,
   });
@@ -209,6 +218,7 @@ templateRoutes.post('/from-itinerary', requirePermission('itineraries', 'create'
     durationDays: days.length,
     category: body.category || null,
     templateData,
+    ageBands: itin.ageBands,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -243,6 +253,25 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
   if (!lead) return notFound(c, 'Lead');
 
   const data = template.templateData ? JSON.parse(template.templateData) : { days: [] };
+
+  // R149: quantities from the party, when the caller says who is travelling and the feature is on.
+  let bandsSnapshot: string | null = template.ageBands;
+  let paxAges: string | null = null;
+  if ((body.ages !== undefined || body.adults !== undefined) && (await resolveFeature(c.env, c.get('tenantId'), 'age_band_pricing')).enabled) {
+    const bands: AgeBand[] = bandsFor(bandsFromColumn(template.ageBands), await loadAgencyBands(c.get('tenantDb')));
+    const pax = paxFromAges(body.adults ?? lead.paxAdults ?? 1, body.ages ?? []);
+    const lines: Array<{ id: string; paxType: string | null; quantity: number | null }> = [];
+    (data.days || []).forEach((day: any, di: number) => (day.items || []).forEach((item: any, ii: number) => lines.push({ id: `${di}:${ii}`, paxType: item.paxType ?? null, quantity: item.quantity ?? null })));
+    for (const change of fillQuantities(lines, bands, pax)) {
+      const [di, ii] = change.id.split(':').map(Number);
+      data.days[di].items[ii].quantity = change.to;
+    }
+    bandsSnapshot = template.ageBands ?? JSON.stringify(bands);
+    paxAges = JSON.stringify({ adults: pax.adults ?? 0, ages: pax.ages ?? [], children: 0, infants: 0, source: 'ages' });
+  }
+
+  // The quote follows the template's own currency, else the agency's.
+  const currency = isValidCurrency(data.currency) ? data.currency.toUpperCase() : (await loadLocaleContext(c.get('tenantDb'))).currency;
   const itineraryId = generateId();
   const now = new Date().toISOString();
 
@@ -250,7 +279,7 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
   let totalCost = 0, totalSelling = 0, totalTax = 0;
   for (const day of data.days || []) {
     for (const item of day.items || []) {
-      const qty = item.quantity || 1;
+      const qty = item.quantity ?? 1;
       totalCost += (item.costPrice || 0) * qty;
       const selling = (item.sellingPrice || 0) * qty;
       totalSelling += selling;
@@ -267,13 +296,15 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
     inclusions: data.inclusions ? JSON.stringify(data.inclusions) : null,
     exclusions: data.exclusions ? JSON.stringify(data.exclusions) : null,
     termsConditions: data.termsConditions || null,
-    currency: 'INR',
+    currency,
     totalCost,
     totalSelling,
     totalTax,
     grandTotal: totalSelling + totalTax,
     markupType: data.markupType || null,
     markupValue: data.markupValue || null,
+    ageBands: bandsSnapshot,
+    paxAges,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -306,7 +337,7 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
         sellingPrice: item.sellingPrice || 0,
         taxRate: item.taxRate || 0,
         taxAmount: (item.sellingPrice || 0) * ((item.taxRate || 0) / 100),
-        quantity: item.quantity || 1,
+        quantity: item.quantity ?? 1,
         paxType: item.paxType || null,
         timeStart: item.timeStart || null,
         timeEnd: item.timeEnd || null,
@@ -327,6 +358,52 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
   });
 
   return created(c, { id: itineraryId, title: body.title || template.title });
+});
+
+// ============================================================
+// PUT /:id/age-bands — The template's own age bands and which band each line is priced by (R149, design 14)
+// ============================================================
+
+const templateAgeBandsSchema = z.object({
+  // null = use the agency's bands.
+  ageBands: z.array(z.object({ key: z.string().max(30).optional(), label: z.string().trim().max(40).optional(), minAge: z.number() })).max(8).nullable().optional(),
+  // paxType: a band key of the bands in force, per_person, or null for a fixed quantity.
+  lines: z.array(z.object({ day: z.number().int().min(0), item: z.number().int().min(0), paxType: z.string().regex(/^[a-z0-9_]{1,30}$/).nullable() })).max(500).optional(),
+});
+
+templateRoutes.put('/:id/age-bands', requireFeature('age_band_pricing'), requirePermission('itineraries', 'edit'), zValidator('json', templateAgeBandsSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const db = drizzle(tenantDb);
+  const body = c.req.valid('json');
+  const [template] = await db.select().from(itineraryTemplates).where(eq(itineraryTemplates.id, c.req.param('id')));
+  if (!template) return notFound(c, 'Template');
+
+  let ageBandsColumn = template.ageBands;
+  if (body.ageBands !== undefined) {
+    if (body.ageBands === null || body.ageBands.length === 0) ageBandsColumn = null;
+    else {
+      const parsed = parseBands(body.ageBands);
+      if (parsed.error) return error(c, parsed.error, 400);
+      ageBandsColumn = JSON.stringify(parsed.bands);
+    }
+  }
+
+  let templateData = template.templateData;
+  if (body.lines?.length) {
+    const bands = bandsFor(bandsFromColumn(ageBandsColumn), await loadAgencyBands(tenantDb));
+    const allowed = new Set<string>([PER_PERSON, ...bands.map((b) => b.key)]);
+    const data = templateData ? JSON.parse(templateData) : { days: [] };
+    for (const line of body.lines) {
+      const item = data.days?.[line.day]?.items?.[line.item];
+      if (!item) return error(c, 'A line of the template was not found', 400, { code: 'LINE_NOT_FOUND', line });
+      if (line.paxType !== null && !allowed.has(line.paxType)) return error(c, `"${line.paxType}" is not one of the age bands`, 400, { code: 'UNKNOWN_BAND' });
+      item.paxType = line.paxType;
+    }
+    templateData = JSON.stringify(data);
+  }
+
+  await db.update(itineraryTemplates).set({ ageBands: ageBandsColumn, templateData, updatedAt: new Date().toISOString() }).where(eq(itineraryTemplates.id, template.id));
+  return success(c, { id: template.id, ageBands: bandsFromColumn(ageBandsColumn) });
 });
 
 // ============================================================

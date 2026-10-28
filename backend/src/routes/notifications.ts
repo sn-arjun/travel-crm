@@ -3,6 +3,7 @@ import type { AppContext } from '../types';
 import { success, notFound, error, forbidden, created } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { broadcastToTenant } from '../utils/realtime';
+import { tenantToday } from '../utils/tz';
 
 const notificationsRoutes = new Hono<AppContext>();
 
@@ -17,10 +18,12 @@ notificationsRoutes.get('/', async (c) => {
   const tenantDb = c.get('tenantDb');
   const userId = c.get('userId');
   const page = Math.max(1, parseInt(c.req.query('page') ?? '1'));
-  const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 100);
+  const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 500);
   const offset = (page - 1) * limit;
-  const unreadOnly = c.req.query('unread') === 'true';
+  const unreadOnly = c.req.query('unread') === 'true' || c.req.query('unreadOnly') === 'true';
   const countOnly = c.req.query('count') === 'true';
+  const type = c.req.query('type');
+  const search = c.req.query('search')?.trim();
 
   if (countOnly) {
     const row = await tenantDb
@@ -30,20 +33,29 @@ notificationsRoutes.get('/', async (c) => {
     return success(c, { count: row?.count ?? 0 });
   }
 
-  const whereClause = unreadOnly
-    ? `WHERE user_id = ? AND is_read = 0`
-    : `WHERE user_id = ?`;
+  const conditions = ['user_id = ?'];
+  const params: (string | number)[] = [userId];
+  if (unreadOnly) conditions.push('is_read = 0');
+  if (type) {
+    conditions.push('type = ?');
+    params.push(type);
+  }
+  if (search) {
+    conditions.push('(title LIKE ? OR message LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`);
+  }
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   const [countResult, listResult] = await Promise.all([
     tenantDb
       .prepare(`SELECT COUNT(*) AS total FROM notifications ${whereClause}`)
-      .bind(userId)
+      .bind(...params)
       .first<{ total: number }>(),
     tenantDb
       .prepare(
         `SELECT * FROM notifications ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       )
-      .bind(userId, limit, offset)
+      .bind(...params, limit, offset)
       .all(),
   ]);
 
@@ -59,11 +71,15 @@ notificationsRoutes.get('/', async (c) => {
     createdAt: n.created_at,
   }));
 
+  const total = countResult?.total ?? 0;
   return success(c, {
     items,
-    total: countResult?.total ?? 0,
+    total,
     page,
     limit,
+    // Shape consumed by the desktop PaginatedResponse
+    data: items,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 });
 
@@ -205,9 +221,9 @@ notificationsRoutes.get('/badge-counts', async (c) => {
         SELECT COUNT(*) AS count FROM invoices
         WHERE created_by = ?
         AND status NOT IN ('paid', 'cancelled')
-        AND due_date < date('now')
+        AND due_date < ?
       `)
-      .bind(userId)
+      .bind(userId, (await tenantToday(c)).today)
       .first<{ count: number }>();
 
     return success(c, {
@@ -242,6 +258,7 @@ notificationsRoutes.post('/announce', async (c) => {
     title: string;
     body: string;
     target?: 'all' | string; // 'all' or 'role:admin' or comma-separated user IDs
+    targetRole?: string; // desktop sends a bare role name
   }>();
 
   if (!body.title || !body.body) {
@@ -249,7 +266,7 @@ notificationsRoutes.post('/announce', async (c) => {
   }
 
   try {
-    const target = body.target || 'all';
+    const target = body.target || (body.targetRole ? `role:${body.targetRole}` : 'all');
     let targetUserIds: string[] = [];
 
     if (target === 'all') {
@@ -289,6 +306,7 @@ notificationsRoutes.post('/announce', async (c) => {
       await c.env.PUSH_NOTIFICATION_QUEUE.send({
         type: 'push',
         data: {
+          tenantId: c.get('tenantId'),
           userId: targetUserId,
           title: body.title,
           body: body.body,

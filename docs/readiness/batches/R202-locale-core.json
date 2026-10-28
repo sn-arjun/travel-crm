@@ -1,0 +1,113 @@
+{
+  "id": "R202",
+  "tier": 2,
+  "title": "Locale core: currency, locale and time zone from tenant and user settings in backend and desktop helpers",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Show money, dates and times in each agency's own currency and format, and each user's own time zone, through one set of helpers.",
+  "why": "desktop/src/lib/utils.ts formatCurrency defaults to INR/en-IN (73 call sites); backend hardcodes ₹ in routes/invoices.ts, routes/payments.ts and services/exports/excel-export.ts; backend/src/utils/tz.ts defaults to Asia/Kolkata with no per-user zone; services/exchange-rate.ts falls back to INR-only constants and stores nothing.",
+  "featuresToWorks": [
+    "finance.currency",
+    "finance.exchange-rates"
+  ],
+  "dependsOn": [
+    "R201"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "desktop/src/lib/utils.ts",
+      "desktop/src/lib/dates.ts",
+      "desktop/src/lib/utils.test.ts",
+      "desktop/src/lib/dates.test.ts",
+      "desktop/src/lib/api/auth.ts",
+      "desktop/src/lib/api/settings.ts",
+      "backend/src/utils/tz.ts",
+      "backend/src/utils/tenant-summary.ts",
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/payments.ts",
+      "backend/src/services/exports/excel-export.ts",
+      "backend/src/services/exchange-rate.ts",
+      "backend/src/routes/users.ts",
+      "backend/src/routes/settings.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/master-schema.ts"
+    ],
+    "create": [
+      "backend/src/utils/money.ts",
+      "desktop/src/lib/locale.ts",
+      "desktop/src/lib/locale.test.ts",
+      "backend/drizzle/master/0019_exchange_rates.sql",
+      "backend/drizzle/tenant/0046_user_locale_timezone.sql",
+      "backend/test/locale-money.test.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/app/**",
+      "desktop/src/messages/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Backend utils/money.ts formatMoney(amount, currency, locale) via Intl.NumberFormat; replace the ₹ literals in invoices.ts, payments.ts, excel-export.ts (currency from the document row, locale from tenant settings).",
+    "Settings keys locale (default en-IN), date_format, country, phone_default_country added to the settings allow-list and validation; tenant 0046 users ADD locale TEXT, timezone TEXT; users/me PUT accepts them. tenant-summary returns { currency, locale, timezone, country, phoneDefaultCountry } with user overrides applied.",
+    "utils/tz.ts: tenantTz(settings, user?) prefers the user zone; existing \"tenant-local today\" helpers (B37) keep working.",
+    "Exchange rates: master 0019 exchange_rates (base, quote, rate REAL, as_of TEXT, source); services/exchange-rate.ts fetches daily (daily cron job set, R105 dispatch) and reads the latest stored rate, falling back to the last stored value instead of INR constants; never throws to the caller.",
+    "Desktop lib/locale.ts: a module store { currency, locale, timeZone } with setLocaleContext() called from the auth/session layer after login and after settings saves (lib/api/auth.ts or where tenant summary is stored), and useLocale() hook. formatCurrency(amount, currency?, locale?) defaults to the store (not INR/en-IN); compact lakh/crore only when locale is en-IN; formatDisplayDate in lib/dates.ts uses the store locale and timeZone."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0019_exchange_rates.sql",
+    "backend/drizzle/tenant/0046_user_locale_timezone.sql"
+  ],
+  "tests": [
+    "backend/test/locale-money.test.ts: GBP en-GB invoice email/export shows £; AED ar-AE formatting; user timezone overrides tenant; exchange rate fallback uses the stored last value.",
+    "desktop locale.test.ts and utils.test.ts: defaults come from the store; en-IN compact lakh only for en-IN; dates render in the user zone."
+  ],
+  "acceptance": [
+    "No ₹ literal in backend/src outside tests and India-specific templates (grep).",
+    "formatCurrency has no INR default (grep)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/dashboard.spec.ts e2e/invoices.spec.ts e2e/payments.spec.ts e2e/reports.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/dashboard.spec.ts",
+      "e2e/invoices.spec.ts",
+      "e2e/payments.spec.ts",
+      "e2e/reports.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "The e2e demo tenant is Indian; formats there must not change (en-IN, INR, Asia/Kolkata).",
+    "Page-level literals are R203's; do not edit desktop/src/app/** here."
+  ]
+}

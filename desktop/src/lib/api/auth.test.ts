@@ -5,11 +5,15 @@ const mockGetState = vi.fn();
 vi.mock('@/stores/auth-store', () => ({
   useAuthStore: {
     getState: () => mockGetState(),
+    setState: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    persist: { rehydrate: vi.fn() },
   },
 }));
 
 vi.mock('./config', () => ({
   API_BASE_URL: 'http://localhost:8787/api/v1',
+  getApiBaseUrl: () => 'http://localhost:8787/api/v1',
   API_ENDPOINTS: {
     auth: {
       resolveTenant: '/auth/resolve-tenant',
@@ -20,12 +24,20 @@ vi.mock('./config', () => ({
       refreshToken: '/auth/refresh-token',
       forgotPassword: '/auth/forgot-password',
       resetPassword: '/auth/reset-password',
+      changePassword: '/auth/change-password',
       sessions: '/auth/sessions',
+      twoFactorVerify: '/auth/2fa/verify',
+      twoFactorStatus: '/auth/2fa/status',
+      twoFactorSetup: '/auth/2fa/setup',
+      twoFactorEnable: '/auth/2fa/enable',
+      twoFactorDisable: '/auth/2fa/disable',
+      twoFactorRecoveryCodes: '/auth/2fa/recovery-codes',
+      twoFactorPolicy: '/auth/2fa/policy',
     },
   },
 }));
 
-const { authApi } = await import('./auth');
+const { authApi, passwordPolicyError, isTwoFactorChallenge } = await import('./auth');
 
 describe('Auth API Module', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -58,12 +70,12 @@ describe('Auth API Module', () => {
 
       const result = await authApi.resolveTenant({ email: 'admin@test.com' });
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/resolve-tenant');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-      expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ email: 'admin@test.com' }));
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+      expect(fetchMock.mock.calls[0]![1].body).toBe(JSON.stringify({ email: 'admin@test.com' }));
       expect(result.data.tenants).toHaveLength(1);
-      expect(result.data.tenants[0].companyName).toBe('Acme');
+      expect(result.data.tenants[0]?.companyName).toBe('Acme');
     });
   });
 
@@ -88,15 +100,39 @@ describe('Auth API Module', () => {
         tenantId: 'tenant-1',
       });
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/login');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.email).toBe('admin@test.com');
       expect(body.password).toBe('password123');
       expect(body.tenantId).toBe('tenant-1');
+      if (isTwoFactorChallenge(result.data)) throw new Error('unexpected two-factor challenge');
       expect(result.data.accessToken).toBe('jwt-token');
       expect(result.data.user.role).toBe('admin');
+    });
+
+    it('returns a two-factor challenge, not tokens, when the account has 2FA on', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { requires2fa: true, challengeToken: 'c'.repeat(64), methods: ['totp', 'recovery_code'] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+      const result = await authApi.login({ email: 'a@b.test', password: 'x', tenantId: 't' });
+      expect(isTwoFactorChallenge(result.data)).toBe(true);
+      if (!isTwoFactorChallenge(result.data)) return;
+      expect(result.data.challengeToken).toHaveLength(64);
+      expect('accessToken' in result.data).toBe(false);
+    });
+
+    it('posts the challenge and the code to /auth/2fa/verify', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { accessToken: 'jwt', refreshToken: 'r', usedRecoveryCode: false, recoveryCodesRemaining: 10 } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+      const result = await authApi.twoFactorVerify({ challengeToken: 'tok', code: '123456' });
+      expect(fetchMock.mock.calls[0]![0] as string).toContain('/auth/2fa/verify');
+      expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ challengeToken: 'tok', code: '123456' });
+      expect(result.data.accessToken).toBe('jwt');
     });
 
     it('should reject with error on invalid credentials', async () => {
@@ -123,7 +159,7 @@ describe('Auth API Module', () => {
 
       await authApi.sendOtp({ phone: '+919876543210', tenantId: 'tenant-1' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.phone).toBe('+919876543210');
       expect(body.tenantId).toBe('tenant-1');
     });
@@ -141,7 +177,7 @@ describe('Auth API Module', () => {
 
       await authApi.verifyOtp({ phone: '+919876543210', otp: '123456', tenantId: 'tenant-1' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.otp).toBe('123456');
     });
   });
@@ -159,7 +195,7 @@ describe('Auth API Module', () => {
 
       const result = await authApi.refreshToken({ refreshToken: 'old-refresh' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.refreshToken).toBe('old-refresh');
       expect(result.data.accessToken).toBe('new-jwt');
       expect(result.data.refreshToken).toBe('new-refresh');
@@ -176,7 +212,7 @@ describe('Auth API Module', () => {
 
       await authApi.forgotPassword({ email: 'user@test.com' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.email).toBe('user@test.com');
     });
   });
@@ -195,7 +231,7 @@ describe('Auth API Module', () => {
         confirmPassword: 'NewPass123',
       });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.token).toBe('reset-token');
       expect(body.password).toBe('NewPass123');
     });
@@ -211,9 +247,9 @@ describe('Auth API Module', () => {
 
       await authApi.logout();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/logout');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
     });
   });
 
@@ -232,10 +268,38 @@ describe('Auth API Module', () => {
 
       const result = await authApi.getSessions();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/sessions');
-      expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+      expect(fetchMock.mock.calls[0]![1].method).toBe('GET');
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  // ─── Change password (R113) ───────────────────────────────────
+  describe('changePassword', () => {
+    it('should call POST /auth/change-password with both passwords', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { message: 'Password changed', accessToken: 'fresh', mustChangePassword: false } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+
+      const result = await authApi.changePassword({ currentPassword: 'Temp0rary1234', newPassword: 'Chosen2026pw' });
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url as string).toContain('/auth/change-password');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ currentPassword: 'Temp0rary1234', newPassword: 'Chosen2026pw' });
+      expect(result.data.accessToken).toBe('fresh');
+    });
+  });
+
+  describe('passwordPolicyError', () => {
+    it('mirrors the API rule: 12+ characters with a letter and a digit', () => {
+      expect(passwordPolicyError('short1A')).toMatch(/at least 12/);
+      expect(passwordPolicyError('Chosen2026')).toMatch(/at least 12/); // 10 characters passed the old rule
+      expect(passwordPolicyError('onlyletterspassword')).toMatch(/digit/);
+      expect(passwordPolicyError('12345678901234')).toMatch(/letter/);
+      expect(passwordPolicyError('Chosen2026pw')).toBeNull();
     });
   });
 });

@@ -1,0 +1,68 @@
+{
+  "slice": "communication-inbox",
+  "title": "Communication Inbox",
+  "status": "existing",
+  "showcaseOrder": 25,
+  "endpoints": [
+    "GET /api/v1/communications/bulk-send/:batchId/status",
+    "GET /api/v1/communications/history",
+    "GET /api/v1/communications/log",
+    "POST /api/v1/communications/bulk-send",
+    "POST /api/v1/communications/send",
+    "POST /api/v1/communications/send-document",
+    "POST /api/v1/communications/send-template"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/communications.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/communication/page.tsx",
+    "desktop/src/app/(app)/communication/[contactId]/page.tsx",
+    "desktop/src/app/(app)/communication/compose/page.tsx",
+    "desktop/src/app/(app)/communication/bulk-send/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-m8-communication.spec.ts",
+    "desktop/e2e/12-communication.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/communication-inbox.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/communication/page.tsx",
+    "desktop/src/app/(app)/communication/[contactId]/**",
+    "desktop/src/app/(app)/communication/compose/**",
+    "desktop/src/app/(app)/communication/bulk-send/**",
+    "desktop/src/lib/api/communications.ts",
+    "desktop/src/components/communication/**",
+    "desktop/e2e/communication-inbox.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Bulk-send's fake hardcoded segments were removed — recipients now come from real contactsApi.getTags()/list({tag}) or a manual contact picker, since no segment-resolution endpoint exists. The attachment/CC/BCC UI on compose was removed rather than kept as a non-functional stub: the backend send endpoint has no upload/multi-recipient support. Contact thread header now pulls real contact info via contactsApi.getById. phoneInput/addressAutocomplete/currencyInput/datePicker are n/a — this slice has no phone/address/money/date form fields.",
+  "showcaseScript": [
+    "Open the Communication Inbox",
+    "Open a contact thread and see the real message history",
+    "Compose an email from a template and send it",
+    "Bulk-send a WhatsApp message to a segment and watch the batch status"
+  ]
+}

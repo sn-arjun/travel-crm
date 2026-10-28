@@ -1,0 +1,129 @@
+{
+  "id": "B07",
+  "title": "App shell: page gutter, sidebar (real user, super-admin gating, single active item), top bar (theme, search, titles), Escape loop, notification click",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W2",
+  "dependsOn": [
+    "B00"
+  ],
+  "parallelGroup": "W2",
+  "bugIds": [
+    "BUG-016",
+    "BUG-017",
+    "BUG-018",
+    "BUG-019",
+    "BUG-020",
+    "BUG-021",
+    "BUG-022",
+    "BUG-047",
+    "BUG-049",
+    "BUG-071",
+    "BUG-075"
+  ],
+  "fixReqs": [
+    "FR-3",
+    "FR-9"
+  ],
+  "estFiles": 16,
+  "goal": "Every archetype page has a consistent gutter and max width, the sidebar shows the real user and exactly one active item, the top bar has working theme/search/titles, Escape no longer recurses, and clicking a notification navigates.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: app-shell.tsx:38 <main className=\"flex-1 flex flex-col overflow-auto\"> has no padding and ListPage (list-page.tsx:176), DetailPage (detail-page.tsx:101) and EntityForm (entity-form.tsx:119) roots are bare -> 101/187 routes have h1 at x=0 and the sidebar collapse toggle (absolute -right-3) covers subtitles. Non-archetype pages already pad themselves (W6 batches migrate them to PageContainer). Electron: app-shell.tsx:21-23 draws a fixed full-width h-8 drag strip over the sidebar logo. sidebar.tsx: NavItemLink active = `pathname === href || startsWith(href + '/')` (line ~240) -> parent+child both active on 49 routes; footer hard-codes \"AS / Arjun S / arjun@travelcrm.io\" (358-362); Super Admin shown when `user.role === 'admin'` (299) although super admins are a MASTER_DB registry (backend middleware/require-super-admin.ts) -> tenant admins see a link to a 403 page; logo tile uses undefined `from-primary-400 via-primary-500 to-primary-600` -> blank white tile in light mode; fixed bottom block (Help, Settings, ConnectionStatus green dot, user card) leaves ~10 nav items visible at 1366x768. top-navbar.tsx: theme toggle keeps its own state and toggles the .dark class (328-334) bypassing next-themes (ThemeProvider is in src/app/layout.tsx) -> not persisted; Search button dispatches a keydown on `document` (348) but CommandPalette listens on `window` (command-palette.tsx:85); getPageTitle() (line 29) returns \"\" for 23 routes (credit/debit notes, travellers, reports/{customer,team,visa}, super-admin/*, help, import, onboarding); handleNotificationClick (191-207) only navigates when n.actionUrl exists - the backend notifications table has reference_type/reference_id (tenant-schema.ts:866-880), so clicks do nothing (FR-9). keyboard-shortcuts-provider.tsx:62-77 Escape handler re-dispatches an Escape keydown on document which the same listener handles again -> \"Maximum call stack size exceeded\" (6 page errors per keypress). dashboard/page.tsx:774 and components/domain/ai-daily-briefing.tsx:24 greet \"Arjun\". Orphans: /fleet/rate-cards not in nav; /campaigns*, /reports/{customer,team,visa}, /onboarding highlight nothing. Super-admin detection uses a NEW backend endpoint added by B12 (W3): GET /api/v1/admin/whoami -> 200 {success:true,data:{isSuperAdmin:boolean}} for any authenticated user; until it exists the call 404s and the link must stay hidden silently.",
+  "steps": [
+    "Create src/components/layout/page-container.tsx: `PageContainer({ children, className, width = 'default' })` rendering `<div data-slot=\"page-container\" className={cn('mx-auto flex w-full min-w-0 flex-col gap-ds-4 px-ds-6 py-ds-5', width === 'default' && 'max-w-screen-2xl', width === 'narrow' && 'max-w-5xl', className)}>`; export from components/layout/index.ts.",
+    "Wrap the archetype roots (ONLY the root element, no other logic): ListPage root -> PageContainer (keep its existing classes on an inner element or pass className); DetailPage root -> PageContainer; EntityForm: PageContainer width=\"narrow\" around the <form>.",
+    "app-shell.tsx: remove the fixed Electron drag strip; make the top navbar header the drag region (`electron-drag` on the header, `electron-no-drag` on its interactive children) and only pad the sidebar logo row if the Electron window uses an overlay title bar (check desktop/electron/main config; do not edit electron/ unless required and then only the title bar option). Add id=\"main-content\" tabIndex={-1} to <main>.",
+    "Move the nav definition (groups, bottomNav, superAdminNav) into src/components/layout/nav-config.ts and export `findActiveHref(pathname)`: longest-prefix match over ALL hrefs (exact or startsWith(href + '/')) plus an alias map for routes without their own item (e.g. '/campaigns' -> the campaigns/marketing item that exists in the config, '/reports/<x>' -> '/reports', '/onboarding' -> '/dashboard'). NavItemLink uses activeHref === item.href. Add a nav item for /fleet/rate-cards in the fleet group.",
+    "Sidebar footer: real user from useAuthStore (name, email, initials via getInitials from @/lib/utils -> \"Demo Admin\" -> \"DA\"); clicking opens a DropdownMenu (Profile -> /settings/profile, Help -> /help, Settings -> /settings, Super Admin (only if super admin), Sign out using the same logout flow as the top-bar user menu). Fold Help/Settings/ConnectionStatus into this compact footer so at 1366x768 at least 14 nav items are visible; ConnectionStatus dot gets aria-label + Tooltip text (\"Live updates connected\"/\"Reconnecting...\").",
+    "Create src/hooks/use-is-super-admin.ts: GET /admin/whoami via the api client once per session (module cache + sessionStorage), returns {isSuperAdmin:false} on ANY error (404/401/403/network) without toast or console.error. Sidebar shows the Super Admin entry only when true. Delete the role==='admin' heuristic.",
+    "Logo tile: `bg-ds-primary text-ds-primary-foreground rounded-ds-md`. Replace px/palette classes in sidebar.tsx (w-[240px] -> w-60, collapsed w-16 or w-(--sidebar-collapsed), text-[13px] -> text-sm, text-[11px] -> text-xs). Collapse toggle gets aria-label + aria-expanded.",
+    "top-navbar.tsx theme: `const { resolvedTheme, setTheme } = useTheme()` from next-themes, render the icon only after mount; aria-label \"Switch to dark theme\"/\"Switch to light theme\".",
+    "Search: command-palette.tsx listens for `window` event 'travelcrm:open-command-palette' (in addition to Ctrl/Cmd+K) and opens; the top-bar button dispatches `window.dispatchEvent(new Event('travelcrm:open-command-palette'))`.",
+    "getPageTitle(pathname): derive from nav-config (findActiveHref + item title) and an explicit map for subpages/new/edit/detail (e.g. \"New invoice\", \"Edit lead\", \"Credit notes\", \"Debit notes\", \"Travellers\", \"Customer report\", \"Team report\", \"Visa report\", \"Super Admin - Tenants\", \"Help Center\", \"Import\", \"Onboarding\"); never return an empty string (fallback: title-case of the last static segment).",
+    "FR-9: handleNotificationClick navigates to `n.actionUrl ?? routeForReference(type, id)` where type/id are read from referenceType/reference_type and referenceId/reference_id (the API may return either casing until B11 normalises it): lead -> /leads/:id, contact -> /contacts/:id, invoice -> /invoices/:id, payment -> /payments/:id, task -> /tasks/:id, itinerary -> /itineraries/:id, trip -> /fleet/trips/:id, follow_up -> /follow-ups; anything else -> /notifications. Put routeForReference in src/lib/notifications/route.ts (new) so the notifications page can reuse it. The bell button gets aria-label \"Notifications\"; the user menu shows the real user name.",
+    "keyboard-shortcuts-provider.tsx: delete the synthetic Escape re-dispatch (Radix dialogs/sheets handle Escape themselves). If use-keyboard-shortcuts.ts (line ~43) needs a guard, ignore events with `isTrusted === false`. Add a unit test that one Escape keydown calls the handler at most once and does not throw.",
+    "BUG-020: dashboard/page.tsx greeting (~774) and ai-daily-briefing.tsx (~24) use the auth user first name (fallback \"there\"). Edit only those lines in those two files. `grep -rn \"Arjun\\|arjun@\" src --include=*.tsx` (excluding tests) -> 0.",
+    "BUG-021: super-admin/layout.tsx - make sure the top-bar title is set (via getPageTitle map) and the no-access panel (data-testid super-admin-no-access) uses ds tokens.",
+    "Do NOT edit any e2e spec in this batch (B09 codemods all spec imports in parallel). The expected spec breakages (auth-shell.spec.ts:154 user name, super-admin.spec.ts:55 link now hidden for tenant admins) are fixed by B17 - list them in your report."
+  ],
+  "filesAllowlist": [
+    "desktop/src/components/layout/{app-shell,sidebar,top-navbar,page-container,nav-config,index,connection-status}.tsx",
+    "desktop/src/components/layout/nav-config.ts",
+    "desktop/src/components/layout/page-container.tsx",
+    "desktop/src/components/domain/{list-page,detail-page,entity-form}.tsx (root wrapper only)",
+    "desktop/src/components/domain/keyboard-shortcuts-provider.tsx",
+    "desktop/src/hooks/use-keyboard-shortcuts.ts",
+    "desktop/src/hooks/use-keyboard-shortcuts.test.ts",
+    "desktop/src/hooks/use-is-super-admin.ts",
+    "desktop/src/hooks/use-is-super-admin.test.ts",
+    "desktop/src/lib/notifications/route.ts",
+    "desktop/src/components/ui/command-palette.tsx",
+    "desktop/src/app/(app)/dashboard/page.tsx (greeting line only)",
+    "desktop/src/components/domain/ai-daily-briefing.tsx (user name only)",
+    "desktop/src/app/(app)/super-admin/layout.tsx",
+    "desktop/src/app/(app)/layout.tsx",
+    "desktop/electron/main.ts (title bar option only, if required)"
+  ],
+  "mustNotTouch": [
+    "desktop/src/app/globals.css (B06)",
+    "desktop/src/components/ui/** except command-palette.tsx",
+    "desktop/src/components/layout/page-header.tsx (B06)",
+    "desktop/e2e/**",
+    "backend/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Probe: on all listed routes at 1366 and 1920, h1 left gutter >= 16px from <main>, no horizontal overflow, exactly one `aside [aria-current=page]`, non-empty `header h2`.",
+    "Sidebar footer shows \"Demo Admin\" / admin@demo.com for the e2e admin (FR-3: shows whoever is logged in).",
+    "Super Admin link hidden for admin@demo.com; navigating to /super-admin directly still shows the no-access panel.",
+    "Theme toggle persists across reload (localStorage theme updated).",
+    "Clicking the top-bar \"Search...\" opens the command palette.",
+    "Pressing Escape produces no page errors.",
+    "Clicking a notification with referenceType lead navigates to /leads/<id> (FR-9).",
+    "lint-gate --zero passes for the shell files."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/components/layout/{app-shell,sidebar,top-navbar,page-container,nav-config}.{ts,tsx}",
+      "src/components/domain/keyboard-shortcuts-provider.tsx",
+      "src/hooks/use-is-super-admin.ts",
+      "src/lib/notifications/route.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/dashboard.spec.ts",
+      "desktop/e2e/notifications.spec.ts",
+      "desktop/e2e/auth-shell.spec.ts",
+      "desktop/e2e/super-admin.spec.ts"
+    ],
+    "allowedSpecFailures": [
+      "auth-shell.spec.ts:154 (user menu name - B17)",
+      "super-admin.spec.ts:55 (link now hidden for tenant admins - B17)",
+      "notifications.spec.ts:378 (preferences heading - B27)"
+    ],
+    "layoutProbe": [
+      "/dashboard",
+      "/leads/new",
+      "/invoices/new",
+      "/travellers",
+      "/follow-ups",
+      "/communication",
+      "/marketing/flyers/templates",
+      "/itineraries/templates",
+      "/super-admin",
+      "/credit-notes",
+      "/help",
+      "/reports/customer",
+      "/campaigns"
+    ]
+  },
+  "notes": "Runs in parallel with B06 (disjoint files). The archetype files are touched again by B14/B16 - keep your edit to the root wrapper so their diffs stay small."
+}

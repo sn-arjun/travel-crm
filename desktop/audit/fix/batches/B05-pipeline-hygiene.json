@@ -1,0 +1,55 @@
+{
+  "id": "B05",
+  "title": "Remake pipeline hygiene: output tails, backendFrozen on verify, scoped git add, ignores",
+  "lane": "pipeline",
+  "backend": false,
+  "wave": "W1",
+  "dependsOn": [],
+  "parallelGroup": "W1",
+  "bugIds": [
+    "BUG-068",
+    "BUG-085"
+  ],
+  "fixReqs": [],
+  "estFiles": 2,
+  "goal": "The remake pipeline stores the END of failing gate output (where the cause is), blocks verify jobs from editing the backend, never commits test artefacts, and can mark jobs resolved.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. scripts/remake-pipeline.js (1264 lines): helpers head()/tail() at lines 141-142; state.json error stored as `String(error).slice(0, 300)` (line 170); gate output trimmed with `.slice(0, 1500)` (~385) and printed with the first 8 lines (~406) - repair runs never saw the real failure (showcase: session expiry happened first). Job definitions with gates arrays at ~267, ~290, ~317 - identify which is the verify job and ensure it includes 'backendFrozen' (verify jobs made ~29 unapproved backend changes). Find every `git add` and scope it to the job's paths (never commit test-results/, playwright-report/, .wrangler*). desktop/.gitignore already has test-results/; root .gitignore needs repo-wide patterns.",
+  "steps": [
+    "Replace head-based trimming of gate output/errors with tail-based trimming (last ~60 lines / 4000 chars) in state.json writes and console summaries (lines ~170, ~385, ~406 and any similar).",
+    "Add 'backendFrozen' to the verify job gates (and any other non-backend job type that lacks it).",
+    "Scope git add: stage only the job's allowlisted paths (or desktop/ + docs for UI jobs) and explicitly exclude **/test-results/**, **/playwright-report/**, backend/.wrangler*/, *.webm/*.zip artefacts.",
+    "Add CLI `--mark-ok <jobId> [--note \"...\"]` that sets a job's state to ok with the note and timestamp (used by B31 for verify:travellers, cleanup, showcase) if no equivalent exists.",
+    "Root .gitignore: add `**/test-results/`, `**/playwright-report/`, `backend/.wrangler-e2e.toml`, `backend/.wrangler-test.toml` (check what is already present).",
+    "Validate: `node --check scripts/remake-pipeline.js`; run its status/help mode (no agents launched) and a dry `--mark-ok` against a copy of state.json in your scratchpad."
+  ],
+  "filesAllowlist": [
+    "scripts/remake-pipeline.js",
+    ".gitignore"
+  ],
+  "mustNotTouch": [
+    "desktop/audit/remake/state.json (B31 marks jobs)",
+    "desktop/**",
+    "backend/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "`node --check scripts/remake-pipeline.js` passes.",
+    "Verify job gates include backendFrozen.",
+    "No `git add -A`/`git add .` remains unscoped.",
+    "--mark-ok works on a scratch copy of state.json."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Tiny batch; can run anytime."
+}

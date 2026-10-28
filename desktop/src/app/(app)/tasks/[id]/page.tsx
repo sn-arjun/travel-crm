@@ -3,138 +3,101 @@
 import * as React from 'react';
 import { use } from 'react';
 import {
-  ArrowLeft, Calendar, CheckSquare, Flag, Link2, MessageSquare,
-  Send, Loader2, Trash2, Plus, AlertCircle, User,
-  Activity, Edit,
+  CheckSquare, Link2, MessageSquare, Send, Loader2, Trash2, Plus, AlertCircle, Edit,
 } from 'lucide-react';
+import { DetailPage, RelationCombobox } from '@/components/domain';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tag } from '@/components/ui/tag';
+import { SectionCard } from '@/components/ui/section-card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
+import type { TimelineItem } from '@/components/ui/timeline';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { tasksApi, type Task, type Subtask, type TaskComment } from '@/lib/api/tasks';
+import { tasksApi, type Task, type Subtask, type TaskComment, type UpdateTaskRequest } from '@/lib/api/tasks';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString, parseLocalDate } from '@/lib/dates';
+import type { Lead, User } from '@travelcrm/shared';
+import { usersApi } from '@/lib/api/users';
+import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const REF_DATE = Date.now();
+const STATUS_LABELS: Record<string, string> = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high: 'text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400',
-  medium: 'text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400',
-  low: 'text-blue-700 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  todo: 'To Do', in_progress: 'In Progress', done: 'Done',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  todo: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  done: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-};
-
-function normalizeTask(t: any): Task {
+/** The tasks client already returns camelCase rows; only the status needs narrowing. */
+function normalizeTask(t: Task): Task {
   return {
     ...t,
-    dueDate: t.dueDate || t.due_date,
-    assignedTo: t.assignedTo || t.assigned_to,
-    assignee_name: t.assignee_name,
-    leadId: t.leadId || t.related_lead_id,
-    lead_title: t.lead_title,
-    related_lead_id: t.related_lead_id || t.leadId,
-    createdBy: t.createdBy || t.created_by,
-    createdAt: t.createdAt || t.created_at || '',
-    updatedAt: t.updatedAt || t.updated_at || '',
-    subtask_count: t.subtask_count ?? 0,
-    completed_subtask_count: t.completed_subtask_count ?? 0,
     status: (t.status === 'done' ? 'done' : t.status === 'in_progress' ? 'in_progress' : 'todo') as Task['status'],
   };
 }
 
 function formatDate(date: string | undefined): string {
-  if (!date) return '--';
-  return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date ? formatDisplayDate(date) || '--' : '--';
 }
 
-function formatRelativeDate(date: string | undefined): string {
-  if (!date) return '';
-  const d = new Date(date);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) {
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours === 0) {
-      const diffMins = Math.floor(diffMs / (1000 * 60));
-      return diffMins <= 1 ? 'just now' : `${diffMins} minutes ago`;
-    }
-    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
-  }
-  if (diffDays === 1) return 'yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  return formatDate(date);
+/** Initials from the first letter of the first and last name ("Demo Admin" -> "DA"). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last) return '?';
+  if (first === last) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
 }
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
 
-  // Fetch task
   const { data: taskResp, loading: taskLoading, error: taskError, refetch: refetchTask } = useApiQuery(
     () => tasksApi.getById(id),
     [id],
   );
   const task = React.useMemo(() => {
-    const raw = (taskResp as any)?.data;
+    const raw = taskResp?.data;
     return raw ? normalizeTask(raw) : null;
   }, [taskResp]);
 
-  // Fetch subtasks
-  const { data: subtasksResp, refetch: refetchSubtasks } = useApiQuery(
-    () => tasksApi.getSubtasks(id),
-    [id],
-  );
+  const { data: subtasksResp, refetch: refetchSubtasks } = useApiQuery(() => tasksApi.getSubtasks(id), [id]);
   const subtasks: Subtask[] = React.useMemo(() => {
-    const raw = (subtasksResp as any)?.data;
+    const raw = subtasksResp?.data;
     return Array.isArray(raw) ? raw : [];
   }, [subtasksResp]);
 
-  // Fetch comments
-  const { data: commentsResp, refetch: refetchComments } = useApiQuery(
-    () => tasksApi.getComments(id),
-    [id],
-  );
+  const { data: commentsResp, refetch: refetchComments } = useApiQuery(() => tasksApi.getComments(id), [id]);
   const comments: TaskComment[] = React.useMemo(() => {
-    const raw = (commentsResp as any)?.data?.data ?? (commentsResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
+    return commentsResp ? unwrapList<TaskComment>(commentsResp).data : [];
   }, [commentsResp]);
 
-  // State
   const [commentText, setCommentText] = React.useState('');
   const [newSubtask, setNewSubtask] = React.useState('');
   const [showSubtaskInput, setShowSubtaskInput] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [editingCommentId, setEditingCommentId] = React.useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = React.useState('');
-  const [activeTab, setActiveTab] = React.useState('details');
+  const [editForm, setEditForm] = React.useState<{
+    title: string; description: string; priority: string; category: string;
+    dueDate: Date | undefined; assignedTo: string; leadId: string;
+  } | null>(null);
 
-  // Mutations
   const updateStatusMutation = useApiMutation((status: string) =>
     tasksApi.updateStatus(id, { status: status as 'todo' | 'in_progress' | 'done' }),
   );
+  const updateTaskMutation = useApiMutation((data: UpdateTaskRequest) => tasksApi.update(id, data));
   const deleteMutation = useApiMutation(() => tasksApi.delete(id));
   const createCommentMutation = useApiMutation((content: string) => tasksApi.createComment(id, content));
   const updateCommentMutation = useApiMutation(({ commentId, content }: { commentId: string; content: string }) =>
@@ -142,11 +105,48 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   );
   const deleteCommentMutation = useApiMutation((commentId: string) => tasksApi.deleteComment(id, commentId));
   const createSubtaskMutation = useApiMutation((title: string) =>
-    tasksApi.create({ title, parent_task_id: id, status: 'todo', priority: task?.priority || 'medium' }),
+    tasksApi.create({ title, parentTaskId: id, status: 'todo', priority: task?.priority || 'medium' }),
   );
   const updateSubtaskStatusMutation = useApiMutation(({ subtaskId, status }: { subtaskId: string; status: string }) =>
     tasksApi.updateStatus(subtaskId, { status: status as 'todo' | 'in_progress' | 'done' }),
   );
+
+  const openEdit = () => {
+    if (!task) return;
+    setEditForm({
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority,
+      category: task.category || 'general',
+      dueDate: task.dueDate ? parseLocalDate(task.dueDate) : undefined,
+      assignedTo: task.assignedTo || '',
+      leadId: task.leadId || '',
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm || !editForm.title.trim()) {
+      toast.error('Task title is required');
+      return;
+    }
+    try {
+      await updateTaskMutation.mutate({
+        title: editForm.title,
+        description: editForm.description || undefined,
+        priority: editForm.priority as 'low' | 'medium' | 'high',
+        category: editForm.category,
+        dueDate: editForm.dueDate ? toLocalDateString(editForm.dueDate) : undefined,
+        assignedTo: editForm.assignedTo || undefined,
+        relatedLeadId: editForm.leadId || undefined,
+      });
+      toast.success('Task updated');
+      setEditDialogOpen(false);
+      refetchTask();
+    } catch {
+      toast.error('Failed to update task');
+    }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
     try {
@@ -172,16 +172,15 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     if (!commentText.trim()) return;
     try {
       const result = await createCommentMutation.mutate(commentText.trim());
-      // Check if the API returned an error in the response body
-      if (result && (result as any).error) {
-        toast.error((result as any).message || 'Failed to add comment');
+      if (!result) {
+        toast.error('Failed to add comment');
         return;
       }
       setCommentText('');
       toast.success('Comment added');
       refetchComments();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add comment');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add comment');
     }
   };
 
@@ -232,579 +231,309 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  // Loading state
   if (taskLoading) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-8 w-8 rounded" />
-            <div className="space-y-2">
-              <Skeleton className="h-6 w-64" />
-              <Skeleton className="h-4 w-40" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="h-8 w-20" />
+      <div className="flex flex-col gap-ds-4">
+        <div className="flex items-center gap-ds-4">
+          <Skeleton className="h-8 w-8 rounded-ds-sm" />
+          <div className="space-y-ds-2">
+            <Skeleton className="h-6 w-64" />
+            <Skeleton className="h-4 w-40" />
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-4 px-6 py-4 border-b">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
-        </div>
-        <div className="p-6 space-y-4">
-          <Skeleton className="h-10 w-80" />
-          <Skeleton className="h-48 rounded-lg" />
-          <Skeleton className="h-48 rounded-lg" />
+        <div className="grid grid-cols-2 gap-ds-4 lg:grid-cols-2">
+          <Skeleton className="h-48 rounded-ds-md" />
+          <Skeleton className="h-48 rounded-ds-md" />
         </div>
       </div>
     );
   }
 
-  // Error state
   if (taskError || !task) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="h-12 w-12 text-destructive" />
-        <p className="text-muted-foreground">Task not found</p>
-        <Button variant="outline" onClick={() => router.push('/tasks')}>Back to Tasks</Button>
+      <div className="flex min-h-64 flex-col items-center justify-center gap-ds-4">
+        <AlertCircle className="size-12 text-ds-danger" />
+        <p className="text-ds-foreground-muted">Task not found</p>
+        <Button variant="outline" onClick={() => router.push('/tasks')}>Back to tasks</Button>
       </div>
     );
   }
 
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-  const isOverdue = dueDate && dueDate < new Date(REF_DATE) && task.status !== 'done';
-  const daysUntilDue = dueDate ? Math.ceil((dueDate.getTime() - REF_DATE) / (1000 * 60 * 60 * 24)) : null;
-  const assigneeName = task.assignee_name || task.assignedTo || 'Unassigned';
-  const leadDisplay = task.lead_title || (task.leadId ? `Lead #${task.leadId.slice(0, 8)}` : null);
+  const isOverdue = !!dueDate && dueDate < new Date() && task.status !== 'done';
   const subtaskCompleted = subtasks.filter((s) => s.status === 'done').length;
   const subtaskProgress = subtasks.length > 0 ? Math.round((subtaskCompleted / subtasks.length) * 100) : 0;
 
-  // Build activity timeline from available data
-  const timelineEvents: Array<{
-    id: string;
-    icon: React.ReactNode;
-    title: string;
-    description?: string;
-    date: string;
-    color: string;
-  }> = [];
-
-  // Task creation
+  const timelineItems: TimelineItem[] = [];
   if (task.createdAt) {
-    timelineEvents.push({
-      id: 'created',
-      icon: <Plus className="h-4 w-4" />,
-      title: 'Task Created',
-      description: `"${task.title}" was created`,
-      date: task.createdAt,
-      color: 'border-primary bg-primary/10',
+    timelineItems.push({
+      id: 'created', icon: <Plus className="size-4" />, title: 'Task created',
+      description: `"${task.title}" was created`, timestamp: task.createdAt,
     });
   }
-
-  // Comments as timeline events
   comments.forEach((comment) => {
-    const commentDate = comment.createdAt || comment.created_at || '';
-    const userName = comment.user_name || comment.createdBy || comment.created_by || 'User';
-    timelineEvents.push({
-      id: `comment-${comment.id}`,
-      icon: <MessageSquare className="h-4 w-4" />,
+    const commentDate = comment.createdAt || '';
+    const userName = comment.userName || comment.createdBy || 'User';
+    timelineItems.push({
+      id: `comment-${comment.id}`, icon: <MessageSquare className="size-4" />,
       title: `${userName} commented`,
       description: comment.content.length > 100 ? comment.content.slice(0, 100) + '...' : comment.content,
-      date: commentDate,
-      color: 'border-blue-500 bg-blue-50 dark:bg-blue-900/20',
+      timestamp: commentDate,
     });
   });
-
-  // Task completed
-  if (task.completedAt || task.completed_at) {
-    timelineEvents.push({
-      id: 'completed',
-      icon: <CheckSquare className="h-4 w-4" />,
-      title: 'Task Completed',
-      date: (task.completedAt || task.completed_at) as string,
-      color: 'border-green-500 bg-green-50 dark:bg-green-900/20',
+  if (task.completedAt) {
+    timelineItems.push({
+      id: 'completed', icon: <CheckSquare className="size-4" />, title: 'Task completed',
+      timestamp: task.completedAt as string,
     });
   }
-
-  // Last updated (if different from created)
   if (task.updatedAt && task.updatedAt !== task.createdAt) {
-    timelineEvents.push({
-      id: 'updated',
-      icon: <Edit className="h-4 w-4" />,
-      title: 'Task Updated',
-      date: task.updatedAt,
-      color: 'border-amber-500 bg-amber-50 dark:bg-amber-900/20',
+    timelineItems.push({
+      id: 'updated', icon: <Edit className="size-4" />, title: 'Task updated', timestamp: task.updatedAt,
     });
   }
-
-  // Sort by date descending (most recent first)
-  timelineEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  timelineItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                {task.title}
-              </h1>
-              <Badge className={cn('text-xs capitalize', STATUS_COLORS[task.status])}>
-                {STATUS_LABELS[task.status]}
-              </Badge>
-              <Badge className={cn('text-[10px]', PRIORITY_COLORS[task.priority])}>
-                <Flag className="h-2.5 w-2.5 mr-1" />
-                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-              </Badge>
-              {isOverdue && <Badge variant="destructive" className="text-[10px]">OVERDUE</Badge>}
-            </div>
-            {task.description && (
-              <p className="text-sm text-muted-foreground mt-0.5 max-w-2xl">{task.description}</p>
-            )}
+    <>
+      <DetailPage<Task>
+        entity={task}
+        title={task.title}
+        subtitle={task.description}
+        onBack={() => router.push('/tasks')}
+        status={
+          <div className="flex items-center gap-ds-2">
+            <Select value={task.status} onValueChange={handleStatusChange}>
+              <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todo">To Do</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
+            {isOverdue && <Tag tone="danger">Overdue</Tag>}
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={task.status} onValueChange={handleStatusChange}>
-            <SelectTrigger className="h-8 w-36 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todo">To Do</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="done">Done</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-8"
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+        }
+        primaryActions={
+          <Button variant="outline" size="sm" onClick={openEdit} className="gap-ds-2">
+            <Edit className="size-4" /> Edit
           </Button>
-        </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-4 border-b">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Calendar className="h-5 w-5 mx-auto text-blue-500 mb-1" />
-            <p className={cn('text-lg font-bold', isOverdue && 'text-red-600')}>
-              {dueDate
-                ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                : 'No date'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {isOverdue && daysUntilDue != null
-                ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? '' : 's'}`
-                : daysUntilDue === 0 ? 'Due Today'
-                : daysUntilDue != null && daysUntilDue > 0 ? `${daysUntilDue} days left`
-                : 'Due Date'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <User className="h-5 w-5 mx-auto text-purple-500 mb-1" />
-            <p className="text-lg font-bold truncate">{assigneeName}</p>
-            <p className="text-xs text-muted-foreground">Assignee</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <CheckSquare className="h-5 w-5 mx-auto text-green-500 mb-1" />
-            <p className="text-lg font-bold">{subtaskProgress}%</p>
-            <p className="text-xs text-muted-foreground">
-              {subtasks.length > 0 ? `${subtaskCompleted}/${subtasks.length} subtasks` : 'No subtasks'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <MessageSquare className="h-5 w-5 mx-auto text-amber-500 mb-1" />
-            <p className="text-lg font-bold">{comments.length}</p>
-            <p className="text-xs text-muted-foreground">Comments</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="px-6 pt-3 border-b">
-          <TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="subtasks">
-              Subtasks {subtasks.length > 0 && `(${subtaskCompleted}/${subtasks.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="comments">
-              Comments {comments.length > 0 && `(${comments.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          </TabsList>
-        </div>
-
-        <div className="flex-1 overflow-auto p-6">
-          {/* Details Tab */}
-          <TabsContent value="details" className="mt-0">
-            <div className="max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader><CardTitle className="text-base">Task Information</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
+        }
+        actions={[
+          { label: 'Delete', icon: <Trash2 className="size-4" />, onSelect: () => setDeleteDialogOpen(true), destructive: true },
+        ]}
+        overview={
+          <div className="grid grid-cols-1 gap-ds-4 lg:grid-cols-2">
+            <SectionCard title="Task information">
+              <div className="space-y-ds-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-ds-foreground-muted">Status</span>
+                  <Tag tone={task.status === 'done' ? 'success' : task.status === 'in_progress' ? 'info' : 'neutral'}>
+                    {STATUS_LABELS[task.status]}
+                  </Tag>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-ds-foreground-muted">Priority</span>
+                  <span className="text-sm font-medium capitalize">{task.priority}</span>
+                </div>
+                {task.category && (
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Title</span>
-                    <span className="text-sm font-medium text-right max-w-[60%]">{task.title}</span>
+                    <span className="text-sm text-ds-foreground-muted">Category</span>
+                    <Tag tone="neutral">{task.category.replace('_', ' ')}</Tag>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Status</span>
-                    <Badge className={cn('text-xs capitalize', STATUS_COLORS[task.status])}>
-                      {STATUS_LABELS[task.status]}
-                    </Badge>
+                )}
+                {task.description && (
+                  <div className="border-t border-ds-border pt-ds-2">
+                    <p className="mb-ds-1 text-xs font-medium text-ds-foreground-muted">Description</p>
+                    <p className="whitespace-pre-wrap text-sm">{task.description}</p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Priority</span>
-                    <Badge className={cn('text-[10px]', PRIORITY_COLORS[task.priority])}>
-                      <Flag className="h-2.5 w-2.5 mr-1" />
-                      {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                    </Badge>
-                  </div>
-                  {task.category && (
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Category</span>
-                      <Badge variant="outline" className="text-[10px] capitalize">{task.category.replace('_', ' ')}</Badge>
-                    </div>
-                  )}
-                  {task.description && (
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-muted-foreground font-medium mb-1">Description</p>
-                      <p className="text-sm whitespace-pre-wrap">{task.description}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                )}
+              </div>
+            </SectionCard>
 
-              <Card>
-                <CardHeader><CardTitle className="text-base">Assignment & Schedule</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Assigned To</span>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium">{assigneeName}</span>
-                    </div>
+            <SectionCard title="Assignment & schedule">
+              <div className="space-y-ds-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-ds-foreground-muted">Assigned to</span>
+                  <div className="flex items-center gap-ds-2">
+                    <Avatar className="size-6">
+                      <AvatarFallback className="text-xs">
+                        {task.assigneeName ? initialsOf(task.assigneeName) : '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">{task.assigneeName || 'Unassigned'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Due Date</span>
-                    <span className={cn('text-sm font-medium', isOverdue && 'text-red-600')}>
-                      {dueDate ? formatDate(task.dueDate) : '--'}
-                    </span>
-                  </div>
-                  {leadDisplay && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Linked Lead</span>
-                      <Link
-                        href={`/leads/${task.leadId || task.related_lead_id}`}
-                        className="text-sm text-primary hover:underline flex items-center gap-1"
-                      >
-                        <Link2 className="h-3.5 w-3.5" /> {leadDisplay}
-                      </Link>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-2">
-                <CardHeader><CardTitle className="text-base">Metadata</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p>Created {formatDate(task.createdAt)}</p>
-                  <p>Last updated {formatDate(task.updatedAt)}</p>
-                  {(task.completedAt || task.completed_at) && (
-                    <p>Completed {formatDate(task.completedAt || task.completed_at)}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Subtasks Tab */}
-          <TabsContent value="subtasks" className="mt-0">
-            <div className="max-w-2xl space-y-4">
-              {/* Progress bar */}
-              {subtasks.length > 0 && (
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Progress</span>
-                      <span className="text-sm text-muted-foreground">{subtaskCompleted}/{subtasks.length} completed</span>
-                    </div>
-                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full transition-all"
-                        style={{ width: `${subtaskProgress}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Subtask list */}
-              <Card>
-                <CardHeader className="pb-3">
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-ds-foreground-muted">Due date</span>
+                  <span className={cn('text-sm font-medium', isOverdue && 'text-ds-danger')}>
+                    {dueDate ? formatDate(task.dueDate) : '--'}
+                  </span>
+                </div>
+                {task.leadTitle && (
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CheckSquare className="h-4 w-4" />
-                      Subtasks
-                    </CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setShowSubtaskInput(true)}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                    <span className="text-sm text-ds-foreground-muted">Linked lead</span>
+                    <Link href={`/leads/${task.leadId}`} className="flex items-center gap-ds-1 text-sm text-ds-primary hover:underline">
+                      <Link2 className="size-3.5" /> {task.leadTitle}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Subtasks" className="lg:col-span-2" actions={
+              <Button variant="ghost" size="sm" onClick={() => setShowSubtaskInput(true)} className="gap-ds-1">
+                <Plus className="size-3.5" /> Add
+              </Button>
+            }>
+              <div className="space-y-ds-2">
+                {subtasks.length > 0 && (
+                  <div className="mb-ds-2 flex items-center gap-ds-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-ds-full bg-ds-surface-sunken">
+                      <div className="h-full rounded-ds-full bg-ds-primary transition-all" style={{ width: `${subtaskProgress}%` }} />
+                    </div>
+                    <span className="text-xs text-ds-foreground-muted">{subtaskCompleted}/{subtasks.length}</span>
+                  </div>
+                )}
+
+                {subtasks.map((subtask) => (
+                  <div key={subtask.id} className="flex items-center gap-ds-3 rounded-ds-sm px-ds-2 py-ds-2 hover:bg-ds-surface-sunken">
+                    <button
+                      onClick={() => handleSubtaskToggle(subtask)}
+                      className={cn(
+                        'flex size-5 shrink-0 items-center justify-center rounded-ds-sm border-2 transition-colors',
+                        subtask.status === 'done' ? 'border-ds-primary bg-ds-primary text-ds-primary-foreground' : 'border-ds-border hover:border-ds-primary',
+                      )}
+                    >
+                      {subtask.status === 'done' && (
+                        <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <span className={cn('flex-1 text-sm', subtask.status === 'done' && 'text-ds-foreground-muted line-through')}>
+                      {subtask.title}
+                    </span>
+                    {subtask.assigneeName && (
+                      <span className="text-xs text-ds-foreground-muted">{subtask.assigneeName}</span>
+                    )}
+                  </div>
+                ))}
+
+                {subtasks.length === 0 && !showSubtaskInput && (
+                  <EmptyState title="No subtasks yet" description='Click "Add" to create a subtask.' />
+                )}
+
+                {showSubtaskInput && (
+                  <div className="mt-ds-2 flex gap-ds-2 border-t border-ds-border pt-ds-2">
+                    <Input
+                      placeholder="Subtask title..."
+                      value={newSubtask}
+                      onChange={(e) => setNewSubtask(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    <Button size="sm" className="h-8" onClick={handleAddSubtask} disabled={createSubtaskMutation.loading}>
+                      {createSubtaskMutation.loading ? <Loader2 className="size-3.5 animate-spin" /> : 'Add'}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8" onClick={() => { setShowSubtaskInput(false); setNewSubtask(''); }}>
+                      Cancel
                     </Button>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {subtasks.map((subtask) => (
-                    <div key={subtask.id} className="flex items-center gap-3 py-2 px-2 rounded-md hover:bg-muted/50 transition-colors group">
-                      <button
-                        onClick={() => handleSubtaskToggle(subtask)}
-                        className={cn(
-                          'h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
-                          subtask.status === 'done'
-                            ? 'bg-primary border-primary text-primary-foreground'
-                            : 'border-muted-foreground/50 hover:border-primary',
-                        )}
-                      >
-                        {subtask.status === 'done' && (
-                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </button>
-                      <span className={cn('text-sm flex-1', subtask.status === 'done' && 'line-through text-muted-foreground')}>
-                        {subtask.title}
-                      </span>
-                      {subtask.assignee_name && (
-                        <div className="flex items-center gap-1.5">
-                          <Avatar className="h-5 w-5">
-                            <AvatarFallback className="text-[8px]">{subtask.assignee_name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs text-muted-foreground">{subtask.assignee_name}</span>
-                        </div>
-                      )}
-                      {subtask.due_date && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(subtask.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-
-                  {subtasks.length === 0 && !showSubtaskInput && (
-                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                      <CheckSquare className="h-8 w-8 opacity-30 mb-2" />
-                      <p className="text-sm">No subtasks yet</p>
-                      <p className="text-xs">Click &quot;Add&quot; to create a subtask</p>
-                    </div>
-                  )}
-
-                  {showSubtaskInput && (
-                    <div className="flex gap-2 mt-2 pt-2 border-t">
-                      <Input
-                        placeholder="Subtask title..."
-                        value={newSubtask}
-                        onChange={(e) => setNewSubtask(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
-                        className="h-8 text-sm"
-                        autoFocus
-                      />
-                      <Button size="sm" className="h-8" onClick={handleAddSubtask} disabled={createSubtaskMutation.loading}>
-                        {createSubtaskMutation.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                )}
+              </div>
+            </SectionCard>
+          </div>
+        }
+        activity={timelineItems}
+        related={[
+          {
+            title: 'Comments',
+            content: (
+              <div className="space-y-ds-4">
+                <div className="flex gap-ds-3">
+                  <Avatar className="size-8 shrink-0"><AvatarFallback className="text-xs">Me</AvatarFallback></Avatar>
+                  <div className="flex-1 space-y-ds-2">
+                    <Textarea
+                      placeholder="Add a comment..."
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      rows={3}
+                      className="resize-none text-sm"
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-ds-foreground-muted">Ctrl+Enter to submit</span>
+                      <Button size="sm" className="h-7 gap-ds-1" onClick={handleAddComment} disabled={!commentText.trim() || createCommentMutation.loading}>
+                        {createCommentMutation.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                        Post
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8" onClick={() => { setShowSubtaskInput(false); setNewSubtask(''); }}>
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Comments Tab */}
-          <TabsContent value="comments" className="mt-0">
-            <div className="max-w-2xl space-y-4">
-              {/* Add comment */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex gap-3">
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="text-xs">Me</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-2">
-                      <Textarea
-                        placeholder="Add a comment..."
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        rows={3}
-                        className="text-sm resize-none"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                            handleAddComment();
-                          }
-                        }}
-                      />
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-muted-foreground">
-                          Press Ctrl+Enter to submit
-                        </span>
-                        <Button
-                          size="sm"
-                          className="h-7"
-                          onClick={handleAddComment}
-                          disabled={!commentText.trim() || createCommentMutation.loading}
-                        >
-                          {createCommentMutation.loading
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                            : <Send className="h-3.5 w-3.5 mr-1" />}
-                          Post
-                        </Button>
-                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
 
-              {/* Comment list */}
-              {comments.length === 0 && (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No comments yet</p>
-                    <p className="text-xs">Be the first to comment on this task</p>
-                  </CardContent>
-                </Card>
-              )}
+                {comments.length === 0 && (
+                  <EmptyState title="No comments yet" description="Be the first to comment on this task." />
+                )}
 
-              {comments.map((comment) => {
-                const commentDate = comment.createdAt || comment.created_at || '';
-                const userName = comment.user_name || comment.createdBy || comment.created_by || 'User';
-                const isEditing = editingCommentId === comment.id;
-                return (
-                  <Card key={comment.id}>
-                    <CardContent className="p-4">
-                      <div className="flex gap-3">
-                        <Avatar className="h-8 w-8 shrink-0">
-                          <AvatarFallback className="text-[10px]">{userName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold">{userName}</span>
-                            {commentDate && (
-                              <span className="text-xs text-muted-foreground">
-                                {formatRelativeDate(commentDate)}
-                              </span>
-                            )}
-                            <div className="ml-auto flex items-center gap-1">
-                              <button
-                                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
-                                onClick={() => {
-                                  setEditingCommentId(comment.id);
-                                  setEditingCommentText(comment.content);
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="text-xs text-red-500 hover:text-red-700 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
-                                onClick={() => handleDeleteComment(comment.id)}
-                              >
-                                Delete
-                              </button>
+                {comments.map((comment) => {
+                  const commentDate = comment.createdAt || '';
+                  const userName = comment.userName || comment.createdBy || 'User';
+                  const isEditing = editingCommentId === comment.id;
+                  return (
+                    <div key={comment.id} className="flex gap-ds-3 border-t border-ds-border pt-ds-3">
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarFallback className="text-xs">{initialsOf(userName)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 space-y-ds-1">
+                        <div className="flex items-center gap-ds-2">
+                          <span className="text-sm font-semibold">{userName}</span>
+                          {commentDate && <span className="text-xs text-ds-foreground-muted">{formatDate(commentDate)}</span>}
+                          <div className="ml-auto flex items-center gap-ds-1">
+                            <button
+                              className="rounded-ds-sm px-1.5 py-0.5 text-xs text-ds-foreground-muted hover:bg-ds-surface-sunken hover:text-ds-foreground"
+                              onClick={() => { setEditingCommentId(comment.id); setEditingCommentText(comment.content); }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="rounded-ds-sm px-1.5 py-0.5 text-xs text-ds-danger hover:bg-ds-danger-subtle"
+                              onClick={() => handleDeleteComment(comment.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <div className="space-y-ds-2">
+                            <Textarea value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} rows={2} className="resize-none text-sm" autoFocus />
+                            <div className="flex gap-ds-2">
+                              <Button size="sm" className="h-7 text-xs" onClick={() => handleUpdateComment(comment.id)} disabled={updateCommentMutation.loading}>
+                                {updateCommentMutation.loading && <Loader2 className="mr-1 size-3 animate-spin" />}
+                                Save
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingCommentId(null)}>Cancel</Button>
                             </div>
                           </div>
-                          {isEditing ? (
-                            <div className="space-y-2">
-                              <Textarea
-                                value={editingCommentText}
-                                onChange={(e) => setEditingCommentText(e.target.value)}
-                                rows={2}
-                                className="text-sm resize-none"
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
-                                <Button size="sm" className="h-7 text-xs" onClick={() => handleUpdateComment(comment.id)} disabled={updateCommentMutation.loading}>
-                                  {updateCommentMutation.loading && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                                  Save
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingCommentId(null)}>Cancel</Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
-                          )}
-                        </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap text-sm">{comment.content}</p>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </TabsContent>
-
-          {/* Timeline Tab */}
-          <TabsContent value="timeline" className="mt-0">
-            <div className="max-w-2xl space-y-0">
-              {timelineEvents.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No activity yet</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                timelineEvents.map((event, idx) => (
-                  <div key={event.id} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className={cn(
-                        'h-10 w-10 rounded-full border-2 flex items-center justify-center shrink-0',
-                        event.color,
-                      )}>
-                        {event.icon}
-                      </div>
-                      {idx < timelineEvents.length - 1 && (
-                        <div className="flex-1 w-px bg-border mt-2 mb-2" style={{ minHeight: '24px' }} />
-                      )}
                     </div>
-                    <div className="pb-6 pt-1 flex-1 min-w-0">
-                      <h4 className="text-sm font-semibold">{event.title}</h4>
-                      {event.description && (
-                        <p className="text-sm text-muted-foreground mt-0.5 break-words">{event.description}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatRelativeDate(event.date)}
-                        <span className="mx-1">-</span>
-                        {formatDate(event.date)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </TabsContent>
-        </div>
-      </Tabs>
+                  );
+                })}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Delete confirmation */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Task</DialogTitle>
+            <DialogTitle>Delete task</DialogTitle>
             <DialogDescription>
               This will permanently delete the task and all its subtasks and comments. This action cannot be undone.
             </DialogDescription>
@@ -812,12 +541,102 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.loading}>
-              {deleteMutation.loading && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              {deleteMutation.loading && <Loader2 className="mr-1.5 size-4 animate-spin" />}
               Delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Edit dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit task</DialogTitle>
+          </DialogHeader>
+          {editForm && (
+            <div className="space-y-ds-4">
+              <div className="space-y-ds-1">
+                <label className="text-sm font-medium" htmlFor="editTitle">Title <span className="text-ds-danger">*</span></label>
+                <Input id="editTitle" value={editForm.title} onChange={(e) => setEditForm((p) => p && { ...p, title: e.target.value })} />
+              </div>
+              <div className="space-y-ds-1">
+                <label className="text-sm font-medium" htmlFor="editDesc">Description</label>
+                <Textarea id="editDesc" value={editForm.description} onChange={(e) => setEditForm((p) => p && { ...p, description: e.target.value })} rows={3} />
+              </div>
+              <div className="grid grid-cols-2 gap-ds-4">
+                <div className="space-y-ds-1">
+                  <label className="text-sm font-medium">Priority</label>
+                  <Select value={editForm.priority} onValueChange={(v) => setEditForm((p) => p && { ...p, priority: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-ds-1">
+                  <label className="text-sm font-medium">Category</label>
+                  <Select value={editForm.category} onValueChange={(v) => setEditForm((p) => p && { ...p, category: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="follow_up">Follow Up</SelectItem>
+                      <SelectItem value="documentation">Documentation</SelectItem>
+                      <SelectItem value="meeting">Meeting</SelectItem>
+                      <SelectItem value="payment">Payment</SelectItem>
+                      <SelectItem value="visa">Visa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-ds-1">
+                <label className="text-sm font-medium">Assign to</label>
+                <RelationCombobox<User>
+                  value={editForm.assignedTo || null}
+                  onChange={(v) => setEditForm((p) => p && { ...p, assignedTo: v ?? '' })}
+                  fetcher={async (q, page) => {
+                    const r = await usersApi.list({ search: q, page, limit: 20 });
+                    return { items: r.data, total: r.pagination.total };
+                  }}
+                  getOptionId={(u) => u.id}
+                  getOptionLabel={(u) => u.name || u.email}
+                  getOptionDescription={(u) => u.email}
+                  resolveSelected={async (uid) => unwrapEntity<User>(await usersApi.getById(uid))}
+                  placeholder="Search team members…"
+                />
+              </div>
+              <div className="space-y-ds-1">
+                <label className="text-sm font-medium">Linked lead</label>
+                <RelationCombobox<Lead>
+                  value={editForm.leadId || null}
+                  onChange={(v) => setEditForm((p) => p && { ...p, leadId: v ?? '' })}
+                  fetcher={async (q, page) => {
+                    const list = unwrapList<Lead>(await leadsApi.list({ search: q, page, limit: 20 }), { page, limit: 20 });
+                    return { items: list.data, total: list.pagination.total };
+                  }}
+                  getOptionId={(l) => l.id}
+                  getOptionLabel={(l) => l.title || l.id}
+                  resolveSelected={async (lid) => unwrapEntity<Lead>(await leadsApi.getById(lid))}
+                  placeholder="Search leads…"
+                />
+              </div>
+              <div className="space-y-ds-1">
+                <label className="text-sm font-medium">Due date</label>
+                <DatePicker value={editForm.dueDate} onChange={(d) => setEditForm((p) => p && { ...p, dueDate: d })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updateTaskMutation.loading}>
+              {updateTaskMutation.loading && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

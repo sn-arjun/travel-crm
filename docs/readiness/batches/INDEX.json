@@ -1,0 +1,647 @@
+[
+  {
+    "id": "R100",
+    "tier": 1,
+    "title": "Owner action: make the repository private, revoke the old token, list secrets to rotate",
+    "size": "S",
+    "dependsOn": [],
+    "blockedOnOwner": "DEFERRED 2026-10-21: owner will make the repo private later; secrets are dummy"
+  },
+  {
+    "id": "R101",
+    "tier": 1,
+    "title": "Tenancy resolver: one binding scheme, fail closed, every lookup through resolveTenantDb",
+    "size": "L",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R114",
+    "tier": 1,
+    "title": "Desktop installer that works: Next server inside Electron, runtime API URL, icons, auto-update",
+    "size": "L",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R102",
+    "tier": 1,
+    "title": "Transactional email with a local outbox; app URLs and sender from config",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R120",
+    "tier": 1,
+    "title": "Carry-over defects from the walkthrough: command palette, calendar stray 0, credit notes in the invoice list, yearly numbering reset",
+    "size": "M",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R103",
+    "tier": 1,
+    "title": "Local multi-tenant stack, generated wrangler config, tenant migration runner",
+    "size": "L",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R116",
+    "tier": 1,
+    "title": "Landing page that converts honestly: working CTAs and forms, legal page drafts, sitemap, no unverifiable claims",
+    "size": "M",
+    "dependsOn": [
+      "R101",
+      "R102"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R104",
+    "tier": 1,
+    "title": "Tenant provisioner in the backend: POST /admin/tenants creates a working agency",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R102",
+      "R103"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R115",
+    "tier": 1,
+    "title": "Driver app release: agency code login, release signing from an untracked keystore, iOS permission strings",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R105",
+    "tier": 1,
+    "title": "Cron fan-out through a queue, working cron jobs, usage caps reset once per period",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R103"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R119",
+    "tier": 1,
+    "title": "Call code matches the schema: inbound endpoint, routing, missed calls, extraction follow-ups, dial page lead link",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R106",
+    "tier": 1,
+    "title": "Security: tenant-scoped files, real login limits, CORS and URLs from config, rate limits applied, TEST_MODE fenced",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R108",
+    "tier": 1,
+    "title": "Credentials encrypted at rest, API keys hashed",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R107",
+    "tier": 1,
+    "title": "Provider webhooks signed, chatbot widget on a public mount keyed by widget key",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R109",
+    "tier": 1,
+    "title": "One plan catalogue in the master database: yearly agency prices, included users, extra-user price, AI credits, communication caps, add-ons, trial expiry",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R110",
+    "tier": 1,
+    "title": "Communication caps: SMS, WhatsApp, login codes and call minutes metered per plan, alerts at 80% and 100%, upgrade or top-up, OTP abuse limits",
+    "size": "L",
+    "dependsOn": [
+      "R109",
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R117",
+    "tier": 1,
+    "title": "Operations: real health check, structured logs with an error-reporting hook, backups, hibernating realtime",
+    "size": "M",
+    "dependsOn": [
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R111",
+    "tier": 1,
+    "title": "Super admin backend API: its own login, tenant lifecycle writes, usage view, impersonation, full audit",
+    "size": "L",
+    "dependsOn": [
+      "R104",
+      "R109"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R113",
+    "tier": 1,
+    "title": "First login: forced password change, onboarding wizard reachable, change password in settings",
+    "size": "M",
+    "dependsOn": [
+      "R104"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R112",
+    "tier": 1,
+    "title": "Super admin console uses the backend, OpenNext build, no tracked credentials; desktop super-admin pages removed",
+    "size": "L",
+    "dependsOn": [
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R118",
+    "tier": 1,
+    "title": "CI on the right branch with one npm workspace model, fresh-clone job, driver and desktop jobs; terraform serves the landing page",
+    "size": "L",
+    "dependsOn": [
+      "R103",
+      "R112",
+      "R114",
+      "R115",
+      "R116",
+      "R117"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R123",
+    "tier": 1,
+    "title": "Full e2e green again; website chatbot settings reach the widget",
+    "size": "M",
+    "dependsOn": [
+      "R103",
+      "R107",
+      "R120"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R124",
+    "tier": 1,
+    "title": "Scheduled reminders never re-send to a recipient on retry",
+    "size": "M",
+    "dependsOn": [
+      "R117",
+      "R110"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R121",
+    "tier": 1,
+    "title": "Three-agency isolation end-to-end test (Tier 1 exit)",
+    "size": "M",
+    "dependsOn": [
+      "R104",
+      "R106",
+      "R107",
+      "R108",
+      "R113"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R122",
+    "tier": 1,
+    "title": "README and CONTRIBUTING rewritten for the desktop-first, multi-tenant product",
+    "size": "M",
+    "dependsOn": [
+      "R118",
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R125",
+    "tier": 1,
+    "title": "Go-live blockers found while writing the runbook",
+    "size": "L",
+    "dependsOn": [
+      "R118",
+      "R122"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R126",
+    "tier": 1,
+    "title": "Shared Flutter package tests green and in CI",
+    "size": "S",
+    "dependsOn": [
+      "R204",
+      "R118"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R127",
+    "tier": 1,
+    "title": "Feature switches in the super admin console: per plan, platform-wide and per agency",
+    "size": "M",
+    "dependsOn": [
+      "R109",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R128",
+    "tier": 1,
+    "title": "Email delivery bugs found by the ADR-002 review",
+    "size": "M",
+    "dependsOn": [
+      "R102",
+      "R208"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R201",
+    "tier": 2,
+    "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R210",
+    "tier": 2,
+    "title": "i18n wiring: English catalogue complete for the shell, navigation, auth and shared components; language switch",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R202",
+    "tier": 2,
+    "title": "Locale core: currency, locale and time zone from tenant and user settings in backend and desktop helpers",
+    "size": "L",
+    "dependsOn": [
+      "R201"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R203",
+    "tier": 2,
+    "title": "Desktop sweep: remove hardcoded INR, en-IN and Asia/Kolkata from pages and components",
+    "size": "L",
+    "dependsOn": [
+      "R202"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R205",
+    "tier": 2,
+    "title": "Subscription billing: Razorpay for India, Stripe elsewhere, behind one gateway interface with idempotent webhooks",
+    "size": "L",
+    "dependsOn": [
+      "R109",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R204",
+    "tier": 2,
+    "title": "Phones by tenant country everywhere; full country list in desktop and driver app; Flutter currency formatting",
+    "size": "M",
+    "dependsOn": [
+      "R202"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R208",
+    "tier": 2,
+    "title": "GDPR and DPDP tooling: consent records, contact export and erasure, public unsubscribe, cookie notice, legal links",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R206",
+    "tier": 2,
+    "title": "Self-serve add-ons: buy extra users, AI credit packs and communication packs online",
+    "size": "M",
+    "dependsOn": [
+      "R205",
+      "R110"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R209",
+    "tier": 2,
+    "title": "Two-factor sign-in (TOTP) and a stronger password policy",
+    "size": "M",
+    "dependsOn": [
+      "R113"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R207",
+    "tier": 2,
+    "title": "Agencies collect from their customers: payment links on invoices through the agency's own Razorpay or Stripe",
+    "size": "M",
+    "dependsOn": [
+      "R201",
+      "R205",
+      "R108"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R211",
+    "tier": 2,
+    "title": "Arabic with right-to-left layout for the core screens",
+    "size": "L",
+    "dependsOn": [
+      "R210",
+      "R203"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R212",
+    "tier": 2,
+    "title": "Data residency: choose the agency's data region at creation",
+    "size": "M",
+    "dependsOn": [
+      "R104",
+      "R103"
+    ],
+    "blockedOnOwner": "DEFERRED 2026-10-21: single location for now"
+  },
+  {
+    "id": "R213",
+    "tier": 2,
+    "title": "WhatsApp direct through Meta's Cloud API behind the existing messaging interface",
+    "size": "L",
+    "dependsOn": [
+      "R110",
+      "R107",
+      "R108"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R301",
+    "tier": 3,
+    "title": "VoipProvider contract for reselling, a mock provider and a local call simulator",
+    "size": "M",
+    "dependsOn": [
+      "R119",
+      "R107"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R309",
+    "tier": 3,
+    "title": "WordPress site provisioning: backend queue calls the provisioner, signed and retried, status in the super admin console",
+    "size": "M",
+    "dependsOn": [
+      "R111",
+      "R112"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R302",
+    "tier": 3,
+    "title": "Every call callback signed and processed once; inbound and outbound flows correct",
+    "size": "M",
+    "dependsOn": [
+      "R301"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R310",
+    "tier": 3,
+    "title": "WordPress hosting sized to Oracle's free allowance with a shared database container",
+    "size": "M",
+    "dependsOn": [
+      "R118"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R303",
+    "tier": 3,
+    "title": "Call lifecycle events, call recipes, timeline entries and the screen pop",
+    "size": "L",
+    "dependsOn": [
+      "R302"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R306",
+    "tier": 3,
+    "title": "Recordings in our storage with consent and retention; transcription and call summary through metered AI",
+    "size": "L",
+    "dependsOn": [
+      "R303"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R304",
+    "tier": 3,
+    "title": "Sub-account per agency, number purchase and release, number registration, country switch (G1)",
+    "size": "L",
+    "dependsOn": [
+      "R303",
+      "R206",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R305",
+    "tier": 3,
+    "title": "Call minutes metered from provider records against the plan cap and minute packs, fraud limits (G1 addendum)",
+    "size": "L",
+    "dependsOn": [
+      "R304"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R307",
+    "tier": 3,
+    "title": "Softphone in the desktop app for resell countries (G1)",
+    "size": "L",
+    "dependsOn": [
+      "R303",
+      "R304"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R308",
+    "tier": 3,
+    "title": "India call-bridge: the agent's own phone rings first, then the customer (provider per G1 addendum)",
+    "size": "M",
+    "dependsOn": [
+      "R303",
+      "R304",
+      "R305"
+    ],
+    "blockedOnOwner": "DROPPED for v1"
+  },
+  {
+    "id": "R129",
+    "tier": 1,
+    "title": "Load the approved pricing (step A) and the market split",
+    "size": "M",
+    "dependsOn": [
+      "R109",
+      "R205",
+      "R206",
+      "R305",
+      "R127"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R130",
+    "tier": 2,
+    "title": "Pricing step B: WhatsApp marketing split, per-market allowances",
+    "size": "M",
+    "dependsOn": [
+      "R129",
+      "R213"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R131",
+    "tier": 1,
+    "title": "Email: Cloudflare inbound + system mail, SendGrid agency mail",
+    "size": "L",
+    "dependsOn": [
+      "R128",
+      "R102",
+      "R208"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R132",
+    "tier": 1,
+    "title": "Email: Cloudflare + SendGrid by default, settings in the super admin console, the R131 gaps closed",
+    "size": "M",
+    "dependsOn": [
+      "R131",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R133",
+    "tier": 1,
+    "title": "Find and fix the intermittent invoice request timeouts",
+    "size": "S",
+    "dependsOn": [
+      "R129"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R135",
+    "tier": 3,
+    "title": "Bugs found while recording the video catalogue",
+    "size": "M",
+    "dependsOn": [],
+    "blockedOnOwner": null,
+    "status": "merged 2026-10-21"
+  },
+  { "id": "R136", "tier": 4, "step": 1, "parallelWith": "R137", "title": "Dutch interface foundation: nl language, split catalogues, complete-nl gate, Dutch system emails and voucher labels, driver app in Dutch", "size": "L", "dependsOn": [], "migrations": [], "blockedOnOwner": null },
+  { "id": "R137", "tier": 4, "step": 1, "parallelWith": "R136", "title": "Calling ready to switch on in the EU, Netherlands first: backend, pricing, regulatory bundles, recording defaults, Dutch prompts, docs", "size": "L", "dependsOn": [], "migrations": ["master/0029_calling_eu_nl.sql"], "blockedOnOwner": "OPEN Q1 (default VOIP_CALLING_COUNTRIES US,NL assumed); real Twilio NL prices stay draft until the owner enters them" },
+  { "id": "R138", "tier": 4, "step": 2, "parallelWith": "R139", "title": "No rupee or India defaults for a non-India agency (B1-B4, B7 and the sweep) with a guard test", "size": "M", "dependsOn": ["R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R139", "tier": 4, "step": 2, "parallelWith": "R138", "title": "Group departures 1: data model, the wave's feature keys, permissions, tours and departures API, calendar sync", "size": "L", "dependsOn": ["R136"], "migrations": ["tenant/0057_group_departures.sql", "master/0030_tour_operator_features.sql"], "blockedOnOwner": "OPEN Q2 (plan placement: group_departures and public_booking on trial, pro, enterprise assumed)" },
+  { "id": "R140", "tier": 4, "step": 3, "parallelWith": "R141", "title": "Bank details by country, payment methods by country, message reader currencies and children's ages (B5, B6)", "size": "M", "dependsOn": ["R138"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R141", "tier": 4, "step": 3, "parallelWith": "R140", "title": "Calling in the Netherlands, screens: number requirements and pending states, recording default, super admin bundle review, NL phone formats", "size": "M", "dependsOn": ["R137", "R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R142", "tier": 4, "step": 4, "parallelWith": "R143", "title": "Pay online locally: customer email in the local outbox, test gateway for agency links, deposit and balance links, Stripe local methods, invoice creation as a domain function", "size": "M", "dependsOn": ["R138", "R140"], "migrations": ["tenant/0058_payment_link_amounts.sql"], "blockedOnOwner": null },
+  { "id": "R143", "tier": 4, "step": 4, "parallelWith": "R142", "title": "Group departures 2: seat holds, confirmation, waitlist, expiry, passengers, lead link, events and recipes", "size": "L", "dependsOn": ["R139"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R144", "tier": 4, "step": 5, "parallelWith": "R145", "title": "Group departures 3: desktop tours, departures, seat bookings, waitlist, passengers, Group tours settings and the agency switch", "size": "L", "dependsOn": ["R143"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R145", "tier": 4, "step": 5, "parallelWith": "R144", "title": "Coach trips with ordered stops and passenger check-in: backend, driver API, desktop; tour leaders as crew", "size": "L", "dependsOn": ["R143"], "migrations": ["tenant/0059_coach_trip_stops.sql"], "blockedOnOwner": null },
+  { "id": "R146", "tier": 4, "step": 6, "parallelWith": "R147", "title": "Group departures 4: seats left on calendar, lead and quote; manifest pickup and rooming lists; seats-sold reports; coach trips from the departure", "size": "M", "dependsOn": ["R144", "R145"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R147", "tier": 4, "step": 6, "parallelWith": "R146", "title": "Driver app: ordered stops, passenger ticks, head count, documents checked, tour leader role, offline ticks", "size": "M", "dependsOn": ["R145", "R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R148", "tier": 4, "step": 7, "parallelWith": "R149", "title": "Public booking page per departure, with booking invoice and deposit link", "size": "L", "dependsOn": ["R146", "R142"], "migrations": ["master/0031_public_links.sql"], "blockedOnOwner": null },
+  { "id": "R149", "tier": 4, "step": 7, "parallelWith": "R148", "title": "Age-band pricing on templates and quotes, quantities from ages", "size": "M", "dependsOn": ["R140", "R146"], "migrations": ["tenant/0060_age_bands.sql"], "blockedOnOwner": null },
+  { "id": "R150", "tier": 4, "step": 8, "parallelWith": "R151", "title": "Extras catalogue and the traveller self-service page (details, extras, pay)", "size": "L", "dependsOn": ["R148", "R149"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R151", "tier": 4, "step": 8, "parallelWith": "R150", "title": "Website chat widget asks for contact details so a chat can become a lead", "size": "S", "dependsOn": ["R136"], "migrations": ["tenant/0061_chatbot_contact_capture.sql"], "blockedOnOwner": null },
+  { "id": "R152", "tier": 4, "step": 9, "parallelWith": "R153", "title": "Margin-scheme invoices with configurable wording and a margin report", "size": "M", "dependsOn": ["R150"], "migrations": ["tenant/0062_margin_scheme.sql"], "blockedOnOwner": null },
+  { "id": "R153", "tier": 4, "step": 9, "parallelWith": "R152", "title": "Leads pipeline board with drag and drop", "size": "M", "dependsOn": ["R146"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R154", "tier": 4, "step": 10, "parallelWith": "R155", "title": "Departure-relative messages with per-person fields through the Communication Hub", "size": "M", "dependsOn": ["R150"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R155", "tier": 4, "step": 10, "parallelWith": "R154", "title": "Accept and book on the shared quote page", "size": "M", "dependsOn": ["R150"], "migrations": ["tenant/0063_quote_acceptance.sql"], "blockedOnOwner": null },
+  { "id": "R156", "tier": 4, "step": 11, "parallelWith": "R157", "title": "Interface sweep A (en and nl): leads, contacts, dashboard, calendar, tasks, follow-ups", "size": "M", "dependsOn": ["R155"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R157", "tier": 4, "step": 11, "parallelWith": "R156", "title": "Interface sweep B (en and nl): fleet, travellers, visa, documents, rate cards, suppliers", "size": "L", "dependsOn": ["R155"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R158", "tier": 4, "step": 12, "parallelWith": "R159", "title": "Interface sweep C (en and nl): itineraries, invoices, payments, credit and debit notes, vouchers", "size": "L", "dependsOn": ["R156", "R157"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R159", "tier": 4, "step": 12, "parallelWith": "R158", "title": "Interface sweep D (en and nl): marketing, campaigns, communication", "size": "L", "dependsOn": ["R156", "R157"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R160", "tier": 4, "step": 13, "parallelWith": "R161", "title": "Interface sweep E (en and nl): settings", "size": "L", "dependsOn": ["R158", "R159"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R161", "tier": 4, "step": 13, "parallelWith": "R160", "title": "Interface sweep F (en and nl): AI, assistant, chatbot, reports", "size": "L", "dependsOn": ["R158", "R159"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R162", "tier": 4, "step": 14, "parallelWith": null, "title": "Interface sweep G (en and nl): shared components and the rest; i18n-check over the whole app", "size": "M", "dependsOn": ["R160", "R161"], "migrations": [], "blockedOnOwner": null }
+]

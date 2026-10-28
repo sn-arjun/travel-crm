@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { Bold, Italic, List, ListOrdered } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 interface RichTextEditorProps {
   value?: string;
@@ -20,8 +21,9 @@ export function RichTextEditor({
   onChange,
   placeholder,
   className,
-  minHeight = '120px',
+  minHeight = '7.5rem',
 }: RichTextEditorProps) {
+  const t = useT();
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [StarterKit],
@@ -58,6 +60,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label={t('ui.richText.bold')}
           onClick={() => editor.chain().focus().toggleBold().run()}
           className={cn(
             'h-7 w-7',
@@ -70,6 +73,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label={t('ui.richText.italic')}
           onClick={() => editor.chain().focus().toggleItalic().run()}
           className={cn(
             'h-7 w-7',
@@ -83,6 +87,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label={t('ui.richText.bulletList')}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           className={cn(
             'h-7 w-7',
@@ -96,6 +101,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label={t('ui.richText.numberedList')}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           className={cn(
             'h-7 w-7',

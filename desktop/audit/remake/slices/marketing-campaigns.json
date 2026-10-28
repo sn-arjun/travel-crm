@@ -1,0 +1,66 @@
+{
+  "slice": "marketing-campaigns",
+  "title": "Marketing Campaigns",
+  "status": "existing",
+  "showcaseOrder": 31,
+  "endpoints": [
+    "DELETE /api/v1/marketing/campaigns/:id",
+    "GET /api/v1/marketing/campaigns",
+    "GET /api/v1/marketing/campaigns/:id",
+    "GET /api/v1/marketing/campaigns/:id/analytics",
+    "GET /api/v1/marketing/campaigns/:id/recipients",
+    "POST /api/v1/marketing/campaigns",
+    "POST /api/v1/marketing/campaigns/:id/cancel",
+    "POST /api/v1/marketing/campaigns/:id/send",
+    "PUT /api/v1/marketing/campaigns/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/campaigns/page.tsx",
+    "desktop/src/app/(app)/marketing/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/marketing/campaigns/new/page.tsx",
+    "desktop/src/app/(app)/marketing/campaigns/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/17-m17-marketing-campaigns.spec.ts",
+    "desktop/e2e/19-marketing.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/marketing-campaigns.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/campaigns/**",
+    "desktop/src/app/(app)/marketing/page.tsx",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Rebuilt on ListPage/EntityForm/DetailPage archetypes, now wired to the correct /marketing/campaigns/* backend (previously the list page silently called the unrelated legacy /campaigns endpoints). Added marketingApi.campaigns.* client module (list/get/create/update/delete/send/cancel/analytics/recipients — update is defined but unused, no edit page was in scope). Create page added with channel/segment/schedule fields; detail page added with analytics stats, campaign details, and a recipients table, plus send/cancel/delete actions. Sidebar 'Campaigns' link and marketing dashboard links repointed from /campaigns to /marketing/campaigns. No relation field warrants PhoneInput/AddressAutocomplete/CurrencyInput here, and no SendMessageDialog integration — sending IS the campaign-level action (POST .../send), there's no distinct 1:1 outbound message step to wrap. Campaign scheduler cron table mismatch (#11) is a backend issue, out of scope.",
+  "showcaseScript": [
+    "Open Marketing → Campaigns",
+    "Create a multi-channel campaign with a flyer attached",
+    "Send it to a segment",
+    "Open the analytics view and show delivery and engagement"
+  ]
+}

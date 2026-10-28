@@ -1,6 +1,9 @@
+import type { DepartureSummary, QuoteSeats } from './departures';
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import type { Itinerary } from '@travelcrm/shared';
+import { unwrapEntity } from './envelope';
+import type { AgeBand } from '../age-bands';
 
 export interface ItineraryItem {
   id?: string;
@@ -16,7 +19,8 @@ export interface ItineraryItem {
   taxRate?: number;
   taxAmount?: number;
   quantity?: number;
-  paxType?: 'adult' | 'child' | 'infant';
+  /** A band key of the agency or of the quote (adult, child, infant, child_6, ...) or per_person (R149). */
+  paxType?: string;
   timeStart?: string;
   timeEnd?: string;
   sortOrder?: number;
@@ -98,6 +102,204 @@ export interface ShareLinkResponse {
   accessLevel: string;
 }
 
+/** Contact summary the itinerary detail endpoint joins in. */
+export interface ItineraryContact {
+  id?: string;
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
+/** Itinerary as returned by GET /itineraries/:id (days with items, joined lead and contact). */
+export interface ItineraryDetail {
+  id: string;
+  leadId?: string;
+  title: string;
+  version?: number;
+  status?: 'draft' | 'sent' | 'approved' | 'rejected' | 'expired';
+  validityDate?: string | null;
+  notes?: string | null;
+  inclusions?: string[];
+  exclusions?: string[];
+  termsConditions?: string | null;
+  currency?: string;
+  totalCost?: number;
+  totalSelling?: number;
+  totalTax?: number;
+  grandTotal?: number;
+  markupType?: 'percentage' | 'fixed' | null;
+  markupValue?: number | null;
+  shareLinkActive?: boolean;
+  viewCount?: number;
+  lastViewedAt?: string | null;
+  createdAt?: string;
+  days?: ItineraryDay[];
+  lead?: { id?: string; title?: string; destination?: unknown } | null;
+  contact?: ItineraryContact | null;
+  /** The group departure the quote is for and its seats; null when none is linked (R146). */
+  departure?: DepartureSummary | null;
+  seats?: QuoteSeats | null;
+  /** Set once the quote is accepted (R155): when, how (share_link, staff, message) and the name given. */
+  acceptedAt?: string | null;
+  acceptedVia?: 'share_link' | 'staff' | 'message' | null;
+  acceptedName?: string | null;
+  /** The band list the quantities were filled with; null = the agency's bands (R149). */
+  ageBands?: AgeBand[] | null;
+  /** What the last fill used (R149). */
+  paxAges?: { adults?: number; ages?: number[]; children?: number; infants?: number; source?: string } | null;
+}
+
+/** Message of a thrown `ApiError` (a plain `{ status, message }` object) or `Error`; `fallback` otherwise. */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+}
+
+/** Normalises a stored destination (array, JSON-array string or plain text) to "Goa, Kerala". */
+export function formatDestination(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter(Boolean).join(', ');
+  }
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (text.startsWith('[')) {
+    try {
+      return formatDestination(JSON.parse(text) as unknown);
+    } catch {
+      return text;
+    }
+  }
+  return text;
+}
+
+/** Entity from a GET /itineraries/:id response. */
+export function toItineraryDetail(res: unknown): ItineraryDetail {
+  return unwrapEntity<ItineraryDetail>(res);
+}
+
+export interface ItineraryTemplateDay {
+  dayNumber?: number;
+  title?: string;
+  description?: string;
+  city?: string;
+  items?: ItineraryItem[];
+}
+
+export interface ItineraryTemplateData {
+  days?: ItineraryTemplateDay[];
+  inclusions?: string[];
+  exclusions?: string[];
+  termsConditions?: string;
+}
+
+export type ItineraryTemplateCategory =
+  | 'beach' | 'mountain' | 'heritage' | 'adventure' | 'honeymoon'
+  | 'family' | 'corporate' | 'pilgrimage' | 'custom';
+
+export const ITINERARY_TEMPLATE_CATEGORIES: ItineraryTemplateCategory[] = [
+  'beach', 'mountain', 'heritage', 'adventure', 'honeymoon', 'family', 'corporate', 'pilgrimage', 'custom',
+];
+
+export interface ItineraryTemplate {
+  id: string;
+  title: string;
+  description?: string | null;
+  destination?: string | null;
+  durationDays?: number | null;
+  category?: string | null;
+  templateData?: ItineraryTemplateData | string | null;
+  /** The template's own bands; null = the agency's (R149). */
+  ageBands?: AgeBand[] | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateItineraryTemplateRequest {
+  title: string;
+  description?: string | null;
+  destination?: string | null;
+  durationDays?: number | null;
+  category?: ItineraryTemplateCategory | null;
+  /** JSON snapshot: `{ days: [...] }` */
+  templateData: string;
+}
+
+/** Day outline of a template; handles `templateData` arriving as a JSON string. */
+export function templateDays(t: Pick<ItineraryTemplate, 'templateData'>): ItineraryTemplateDay[] {
+  let data = t.templateData;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data) as ItineraryTemplateData;
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(data?.days) ? data.days : [];
+}
+
+export const itineraryTemplatesApi = {
+  list: (params?: { page?: number; limit?: number; search?: string }) =>
+    client.get<ApiResponse<PaginatedResponse<ItineraryTemplate>>>(API_ENDPOINTS.itineraryTemplates.list, { params }),
+
+  getById: (id: string) =>
+    client.get<ApiResponse<ItineraryTemplate>>(API_ENDPOINTS.itineraryTemplates.byId(id)),
+
+  create: (data: CreateItineraryTemplateRequest) =>
+    client.post<ApiResponse<ItineraryTemplate>>(API_ENDPOINTS.itineraryTemplates.create, data),
+
+  delete: (id: string) =>
+    client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraryTemplates.byId(id)),
+
+  /** adults and ages fill the band quantities of the new quote (R149; ignored while age-band pricing is off). */
+  createFrom: (data: { templateId: string; leadId: string; title: string; adults?: number; ages?: number[] }) =>
+    client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.itineraryTemplates.createFrom, data),
+
+  /** The template's own bands (null = the agency's) and the band of lines, as {day, item, paxType} by position (R149). */
+  saveAgeBands: (id: string, data: { ageBands?: Array<{ key?: string; label: string; minAge: number }> | null; lines?: Array<{ day: number; item: number; paxType: string | null }> }) =>
+    client.put<ApiResponse<{ id: string; ageBands: AgeBand[] | null }>>(`${API_ENDPOINTS.itineraryTemplates.byId(id)}/age-bands`, data),
+};
+
+export interface AgeBandsSettings {
+  bands: AgeBand[];
+  defaults: AgeBand[];
+  isDefault: boolean;
+}
+
+/** The agency's age bands (Settings > Itinerary defaults, R149). */
+export const ageBandsApi = {
+  get: () => client.get<ApiResponse<AgeBandsSettings>>('/settings/age-bands'),
+  /** null (or an empty list) goes back to adult, child and infant. */
+  save: (bands: Array<{ key?: string; label: string; minAge: number }> | null) =>
+    client.put<ApiResponse<AgeBandsSettings>>('/settings/age-bands', { bands }),
+};
+
+export type FillSource = 'ages' | 'travellers' | 'lead';
+
+export interface FillQuantitiesRequest {
+  source: FillSource;
+  adults?: number;
+  ages?: number[];
+  travellerIds?: string[];
+}
+
+export interface FillQuantitiesResult {
+  source: FillSource;
+  applied: boolean;
+  travelDate: string;
+  bands: AgeBand[];
+  counts: Record<string, number>;
+  total: number;
+  adults: number;
+  ages: number[];
+  /** Travellers without a date of birth, counted as adults. */
+  unknown: number;
+  lines: Array<{ id: string; title: string; paxType: string | null; from: number; to: number }>;
+}
+
 export const itinerariesApi = {
   list: (params?: {
     page?: number;
@@ -138,6 +340,29 @@ export const itinerariesApi = {
   createShareLink: (id: string, data?: ShareLinkRequest) =>
     client.post<ApiResponse<ShareLinkResponse>>(API_ENDPOINTS.itineraries.shareLink(id), data),
 
+  /** Previews (default) or applies (apply: true) the band quantities from ages, linked travellers or the lead (R149). */
+  fillQuantities: (id: string, data: FillQuantitiesRequest, apply = false) =>
+    client.post<ApiResponse<FillQuantitiesResult>>(`${API_ENDPOINTS.itineraries.byId(id)}/fill-quantities${apply ? '?apply=1' : ''}`, data),
+
   revokeShareLink: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraries.shareLink(id)),
+};
+
+/** Settings > Itinerary defaults > Quote link (R155, design 4.6). */
+export interface QuoteAcceptSettings {
+  enabled: boolean;
+  label: string;
+  requireName: boolean;
+  requireTerms: boolean;
+  holdSeats: boolean;
+  createInvoice: 'none' | 'proforma' | 'invoice';
+  offerDeposit: boolean;
+}
+
+export const quoteAcceptApi = {
+  get: () => client.get<ApiResponse<QuoteAcceptSettings>>('/settings/quotes-accept'),
+  save: (data: Partial<QuoteAcceptSettings>) => client.put<ApiResponse<QuoteAcceptSettings>>('/settings/quotes-accept', data),
+  /** Staff record an acceptance that came by message or call; the lead moves to won. */
+  markAccepted: (id: string, data: { via?: 'staff' | 'message'; name?: string }) =>
+    client.post<ApiResponse<{ id: string; changed: boolean; acceptedAt: string | null }>>(`/itineraries/${id}/mark-accepted`, data),
 };

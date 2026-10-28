@@ -11,6 +11,7 @@ import {
   ChevronsRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,11 +64,13 @@ export function DataTable<T extends Record<string, unknown>>({
   totalItems,
   onPageChange,
   onPageSizeChange,
-  emptyMessage = 'No data found',
+  emptyMessage: emptyMessageProp,
   className,
   onRowClick,
   stickyHeader = true,
 }: DataTableProps<T>) {
+  const t = useT();
+  const emptyMessage = emptyMessageProp ?? t('ui.dataTable.emptyDefault');
   const allSelected = data.length > 0 && data.every((row) => selectedRows.has(getRowId(row)));
   const someSelected = data.some((row) => selectedRows.has(getRowId(row)));
 
@@ -76,7 +79,7 @@ export function DataTable<T extends Record<string, unknown>>({
     if (allSelected) {
       onSelectRows(new Set());
     } else {
-      onSelectRows(new Set(data.map((row: any) => getRowId(row))));
+      onSelectRows(new Set(data.map((row) => getRowId(row))));
     }
   };
 
@@ -94,43 +97,43 @@ export function DataTable<T extends Record<string, unknown>>({
   const totalPages = totalItems ? Math.ceil(totalItems / pageSize) : 1;
 
   return (
-    <div className={cn('rounded-[var(--radius-card)] border border-[var(--color-border-default)] bg-[var(--color-bg-card)] overflow-hidden animate-fade-in', className)}>
+    <div className={cn('rounded-ds-lg border border-ds-border bg-ds-surface overflow-hidden animate-fade-in', className)}>
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead className={cn(stickyHeader && 'sticky top-0 z-10')}>
-            <tr className="border-b border-[var(--color-divider)] bg-[var(--color-bg-muted)]/50">
+            <tr className="border-b border-ds-border bg-ds-surface-sunken/50">
               {selectable && (
-                <th className="w-12 px-4 py-3" aria-label="Select all rows">
+                <th className="w-12 px-4 py-3" aria-label={t('ui.dataTable.selectAll')}>
                   <Checkbox
                     checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                     onCheckedChange={handleSelectAll}
-                    aria-label="Select all rows"
+                    aria-label={t('ui.dataTable.selectAll')}
                   />
                 </th>
               )}
-              {columns.map((col: any) => (
+              {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 text-left font-medium text-[var(--color-text-muted)] whitespace-nowrap',
+                    'px-4 py-3 text-start font-medium text-ds-foreground-muted whitespace-nowrap',
                     col.align === 'center' && 'text-center',
-                    col.align === 'right' && 'text-right',
-                    col.sortable && 'cursor-pointer select-none hover:text-[var(--color-text-primary)] transition-colors',
+                    col.align === 'right' && 'text-end',
+                    col.sortable && 'cursor-pointer select-none hover:text-ds-foreground transition-colors',
                   )}
                   style={{ width: col.width }}
                   onClick={() => col.sortable && onSort?.(col.key)}
-                  aria-label={col.sortable ? `Sort by ${col.header}` : undefined}
+                  aria-label={col.sortable ? t('ui.dataTable.sortBy', { column: String(col.header) }) : undefined}
                   role={col.sortable ? 'button' : undefined}
                 >
                   <div className={cn('flex items-center gap-1', col.align === 'right' && 'justify-end')}>
                     {col.header}
                     {col.sortable && (
-                      <span className="ml-1">
+                      <span className="ms-1">
                         {sortColumn === col.key ? (
                           sortDirection === 'asc' ? (
-                            <ChevronUp className="h-3.5 w-3.5 text-primary-500" />
+                            <ChevronUp className="h-3.5 w-3.5 text-ds-primary" />
                           ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-primary-500" />
+                            <ChevronDown className="h-3.5 w-3.5 text-ds-primary" />
                           )
                         ) : (
                           <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />
@@ -145,15 +148,15 @@ export function DataTable<T extends Record<string, unknown>>({
           <tbody>
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-[var(--color-divider)]">
+                  <tr key={i} className="border-b border-ds-border">
                     {selectable && (
                       <td className="px-4 py-3">
                         <Skeleton className="h-4 w-4" />
                       </td>
                     )}
-                    {columns.map((col: any) => (
+                    {columns.map((col) => (
                       <td key={col.key} className="px-4 py-3">
-                        <Skeleton className="h-4 w-full max-w-[200px]" />
+                        <Skeleton className="h-4 w-full max-w-48" />
                       </td>
                     ))}
                   </tr>
@@ -161,7 +164,7 @@ export function DataTable<T extends Record<string, unknown>>({
               : data.length === 0
                 ? (
                     <tr>
-                      <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-12 text-center text-[var(--color-text-muted)]">
+                      <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-12 text-center text-ds-foreground-muted">
                         {emptyMessage}
                       </td>
                     </tr>
@@ -174,9 +177,9 @@ export function DataTable<T extends Record<string, unknown>>({
                         key={rowId}
                         onClick={() => onRowClick?.(row)}
                         className={cn(
-                          'border-b border-[var(--color-divider)] transition-colors',
-                          'hover:bg-[var(--color-bg-muted)]/50',
-                          isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
+                          'border-b border-ds-border transition-colors',
+                          'hover:bg-ds-surface-sunken/50',
+                          isSelected && 'bg-ds-primary-subtle',
                           onRowClick && 'cursor-pointer',
                           'animate-fade-in',
                         )}
@@ -184,16 +187,16 @@ export function DataTable<T extends Record<string, unknown>>({
                       >
                         {selectable && (
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={`Select row ${rowId}`} />
+                            <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={t('ui.dataTable.selectRow', { id: String(rowId) })} />
                           </td>
                         )}
-                        {columns.map((col: any) => (
+                        {columns.map((col) => (
                           <td
                             key={col.key}
                             className={cn(
                               'px-4 py-3',
                               col.align === 'center' && 'text-center',
-                              col.align === 'right' && 'text-right tabular-nums',
+                              col.align === 'right' && 'text-end tabular-nums',
                             )}
                           >
                             {col.cell ? col.cell(row, idx) : String(row[col.key] ?? '')}
@@ -208,25 +211,25 @@ export function DataTable<T extends Record<string, unknown>>({
 
       {/* Pagination */}
       {(totalItems !== undefined || onPageSizeChange) && (
-        <div className="flex items-center justify-between border-t border-[var(--color-divider)] px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+        <div className="flex items-center justify-between border-t border-ds-border px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-ds-foreground-muted">
             {selectedRows.size > 0 && (
-              <span className="font-medium text-primary-500 animate-pop-in">{selectedRows.size} selected</span>
+              <span className="font-medium text-ds-primary">{t('ui.common.selected', { count: selectedRows.size })}</span>
             )}
             {totalItems !== undefined && (
-              <span>{totalItems} total</span>
+              <span>{t('ui.dataTable.total', { count: totalItems })}</span>
             )}
           </div>
           <div className="flex items-center gap-4">
             {onPageSizeChange && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--color-text-muted)]">Rows:</span>
+                <span className="text-xs text-ds-foreground-muted">{t('ui.dataTable.rowsLabel')}</span>
                 <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
                   <SelectTrigger className="h-8 w-16 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[10, 20, 50, 100].map((size: any) => (
+                    {[10, 20, 50, 100].map((size) => (
                       <SelectItem key={size} value={String(size)}>{size}</SelectItem>
                     ))}
                   </SelectContent>
@@ -235,19 +238,19 @@ export function DataTable<T extends Record<string, unknown>>({
             )}
             {onPageChange && (
               <div className="flex items-center gap-1">
-                <span className="text-xs text-[var(--color-text-muted)] mr-2">
-                  Page {page} of {totalPages}
+                <span className="text-xs text-ds-foreground-muted me-2">
+                  {t('ui.pagination.pageOf', { page, total: totalPages })}
                 </span>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.first')} onClick={() => onPageChange(1)} disabled={page <= 1}>
                   <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.previous')} onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.next')} onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.last')} onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
                   <ChevronsRight className="h-3.5 w-3.5" />
                 </Button>
               </div>

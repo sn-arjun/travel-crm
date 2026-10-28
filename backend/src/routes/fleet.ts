@@ -1,9 +1,13 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import type { Context } from 'hono';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { normalizePhone, phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
 import { logActivity } from '../utils/activity-logger';
+import { loadLocaleContext } from '../utils/money';
+import { tenantToday, tenantTimeZone, addDaysLocal, daysBetweenLocal, localMonthWindow } from '../utils/tz';
 import {
   createVehicleSchema, updateVehicleSchema, vehicleStatusSchema, vehicleListSchema,
   createDriverSchema, updateDriverSchema, driverStatusSchema, driverListSchema, rateDriverSchema,
@@ -12,7 +16,15 @@ import {
   availabilitySchema, scheduleSchema,
   createRateCardSchema, updateRateCardSchema, rateCardListSchema, rateCardLookupSchema,
   costEstimateSchema, calculateDistanceSchema,
+  tripStopsBodySchema, stopWhereSchema, addTripPassengerSchema, tickPassengerSchema,
 } from '../validators/fleet';
+import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
+import { DepartureError, departureErrorResponse, guarded } from '../services/departures/common';
+import {
+  addPassenger, headcountOf, listPassengersGrouped, listStops, removePassenger, replaceStops, setStopStatus, tickPassenger,
+  type CoachCtx,
+} from '../services/fleet/coach-trips';
 import { calculateTripCost, calculateDistance, type RateCard } from '../services/trip-cost-calculator';
 
 const fleet = new Hono<AppContext>();
@@ -67,6 +79,65 @@ fleet.get('/vehicles', zValidator('query', vehicleListSchema), async (c) => {
   return paginated(c, (rows.results || []).map(parseVehicle), total, page, limit);
 });
 
+// ============================================================================
+// VEHICLE AVAILABILITY CALENDAR (TICKET-312)
+// ============================================================================
+
+fleet.get('/vehicles/availability', zValidator('query', availabilitySchema), async (c) => {
+  const db = c.get('tenantDb');
+  const { from, to, type } = c.req.valid('query');
+
+  // Validate max 90 days
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
+    return error(c, 'Date range cannot exceed 90 days', 400);
+  }
+
+  const vehicleConditions = ['v.is_deleted = 0'];
+  const vehicleParams: any[] = [];
+  if (type) { vehicleConditions.push('v.type = ?'); vehicleParams.push(type); }
+
+  const allVehicles = await db.prepare(
+    `SELECT v.id, v.registration_number, v.type, v.status, v.seating_capacity
+     FROM vehicles v WHERE ${vehicleConditions.join(' AND ')}
+     ORDER BY v.registration_number`
+  ).bind(...vehicleParams).all();
+
+  // Get overlapping trips
+  const trips = await db.prepare(`
+    SELECT ta.vehicle_id, ta.pickup_datetime, ta.drop_datetime, ta.passenger_name, ta.status as trip_status, ta.id as trip_id
+    FROM trip_assignments ta
+    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
+      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
+      AND ta.vehicle_id IS NOT NULL
+  `).bind(to, from).all();
+
+  const tripsByVehicle = new Map<string, any[]>();
+  for (const trip of (trips.results || [])) {
+    const arr = tripsByVehicle.get(trip.vehicle_id as string) || [];
+    arr.push(trip);
+    tripsByVehicle.set(trip.vehicle_id as string, arr);
+  }
+
+  const result = (allVehicles.results || []).map((v: any) => ({
+    vehicleId: v.id,
+    registrationNumber: v.registration_number,
+    type: v.type,
+    status: v.status,
+    seatingCapacity: v.seating_capacity,
+    trips: (tripsByVehicle.get(v.id) || []).map((t: any) => ({
+      tripId: t.trip_id,
+      pickupDatetime: t.pickup_datetime,
+      dropDatetime: t.drop_datetime,
+      passengerName: t.passenger_name,
+      status: t.trip_status,
+    })),
+  }));
+
+  return success(c, result);
+});
+
 // Get vehicle by ID
 fleet.get('/vehicles/:id', async (c) => {
   const db = c.get('tenantDb');
@@ -102,8 +173,8 @@ fleet.get('/vehicles/:id', async (c) => {
   `).bind(id).all();
 
   // Documents expiring within 30 days
-  const now = new Date().toISOString().split('T')[0];
-  const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+  const { today: now } = await tenantToday(c);
+  const thirtyDays = addDaysLocal(now, 30);
   const expiringDocs = await db.prepare(`
     SELECT * FROM vehicle_documents
     WHERE vehicle_id = ? AND is_active = 1 AND expiry_date <= ? AND expiry_date >= ?
@@ -111,10 +182,10 @@ fleet.get('/vehicles/:id', async (c) => {
 
   return success(c, {
     ...parseVehicle(vehicle),
-    documents: (docs.results || []).map(parseVehicleDocument),
+    documents: (docs.results || []).map((r: any) => parseVehicleDocument(r, now)),
     upcomingTrips: (trips.results || []).map(parseTripRow),
     activeTrip: activeTrip.results?.[0] ? parseTripRow(activeTrip.results[0]) : null,
-    documentsExpiringSoon: (expiringDocs.results || []).map(parseVehicleDocument),
+    documentsExpiringSoon: (expiringDocs.results || []).map((r: any) => parseVehicleDocument(r, now)),
   });
 });
 
@@ -357,7 +428,7 @@ fleet.post('/vehicles/:id/documents', async (c) => {
   `).bind(docId, vehicleId, docType, docNumber, key, file.name, expiryDate, issuedDate, now, now).run();
 
   const doc = await db.prepare('SELECT * FROM vehicle_documents WHERE id = ?').bind(docId).first();
-  return created(c, parseVehicleDocument(doc!));
+  return created(c, parseVehicleDocument(doc!, (await tenantToday(c)).today));
 });
 
 fleet.get('/vehicles/:id/documents', async (c) => {
@@ -368,7 +439,7 @@ fleet.get('/vehicles/:id/documents', async (c) => {
     'SELECT * FROM vehicle_documents WHERE vehicle_id = ? AND is_active = 1 ORDER BY type, created_at DESC'
   ).bind(vehicleId).all();
 
-  return success(c, (rows.results || []).map(parseVehicleDocument));
+  { const { today: todayDoc } = await tenantToday(c); return success(c, (rows.results || []).map((r: any) => parseVehicleDocument(r, todayDoc))); }
 });
 
 fleet.get('/vehicles/:vehicleId/documents/:docId/download', async (c) => {
@@ -396,8 +467,8 @@ fleet.get('/documents/expiring', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '30');
-  const today = new Date().toISOString().split('T')[0];
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT vd.*, v.registration_number, v.type as vehicle_type, 'vehicle' as owner_type
@@ -486,7 +557,8 @@ fleet.get('/maintenance/due', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '15');
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT v.id, v.registration_number, v.type, v.next_service_due, v.odometer_km, v.last_service_date
@@ -511,65 +583,6 @@ fleet.put('/vehicles/:id/odometer', async (c) => {
     .bind(km, new Date().toISOString(), id).run();
 
   return success(c, { odometerKm: km });
-});
-
-// ============================================================================
-// VEHICLE AVAILABILITY CALENDAR (TICKET-312)
-// ============================================================================
-
-fleet.get('/vehicles/availability', zValidator('query', availabilitySchema), async (c) => {
-  const db = c.get('tenantDb');
-  const { from, to, type } = c.req.valid('query');
-
-  // Validate max 90 days
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
-    return error(c, 'Date range cannot exceed 90 days', 400);
-  }
-
-  const vehicleConditions = ['v.is_deleted = 0'];
-  const vehicleParams: any[] = [];
-  if (type) { vehicleConditions.push('v.type = ?'); vehicleParams.push(type); }
-
-  const allVehicles = await db.prepare(
-    `SELECT v.id, v.registration_number, v.type, v.status, v.seating_capacity
-     FROM vehicles v WHERE ${vehicleConditions.join(' AND ')}
-     ORDER BY v.registration_number`
-  ).bind(...vehicleParams).all();
-
-  // Get overlapping trips
-  const trips = await db.prepare(`
-    SELECT ta.vehicle_id, ta.pickup_datetime, ta.drop_datetime, ta.passenger_name, ta.status as trip_status, ta.id as trip_id
-    FROM trip_assignments ta
-    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
-      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
-      AND ta.vehicle_id IS NOT NULL
-  `).bind(to, from).all();
-
-  const tripsByVehicle = new Map<string, any[]>();
-  for (const trip of (trips.results || [])) {
-    const arr = tripsByVehicle.get(trip.vehicle_id as string) || [];
-    arr.push(trip);
-    tripsByVehicle.set(trip.vehicle_id as string, arr);
-  }
-
-  const result = (allVehicles.results || []).map((v: any) => ({
-    vehicleId: v.id,
-    registrationNumber: v.registration_number,
-    type: v.type,
-    status: v.status,
-    seatingCapacity: v.seating_capacity,
-    trips: (tripsByVehicle.get(v.id) || []).map((t: any) => ({
-      tripId: t.trip_id,
-      pickupDatetime: t.pickup_datetime,
-      dropDatetime: t.drop_datetime,
-      passengerName: t.passenger_name,
-      status: t.trip_status,
-    })),
-  }));
-
-  return success(c, result);
 });
 
 // Single vehicle availability
@@ -606,13 +619,17 @@ fleet.get('/vehicles/:id/availability', async (c) => {
 
 fleet.get('/drivers', zValidator('query', driverListSchema), async (c) => {
   const db = c.get('tenantDb');
-  const { page, limit, status, search, availableFrom, availableTo, sortBy, sortOrder } = c.req.valid('query');
+  const { page, limit, status, search, availableFrom, availableTo, crewRole, sortBy, sortOrder } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ['d.is_deleted = 0'];
   const params: any[] = [];
 
   if (status) { conditions.push('d.status = ?'); params.push(status); }
+  // R145: "driver" and "tour_leader" mean everyone who can do that job, so a person with both roles is in both lists
+  if (crewRole === 'driver') conditions.push("d.crew_role IN ('driver', 'both')");
+  else if (crewRole === 'tour_leader') conditions.push("d.crew_role IN ('tour_leader', 'both')");
+  else if (crewRole === 'both') conditions.push("d.crew_role = 'both'");
   if (search) {
     conditions.push('(d.name LIKE ? OR d.phone LIKE ?)');
     params.push(`%${search}%`, `%${search}%`);
@@ -646,6 +663,59 @@ fleet.get('/drivers', zValidator('query', driverListSchema), async (c) => {
   return paginated(c, (rows.results || []).map(parseDriver), total, page, limit);
 });
 
+// ============================================================================
+// DRIVER SCHEDULE (TICKET-315)
+// ============================================================================
+
+fleet.get('/drivers/schedule', zValidator('query', scheduleSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const { from, to } = c.req.valid('query');
+
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
+    return error(c, 'Date range cannot exceed 90 days', 400);
+  }
+
+  const allDrivers = await db.prepare(
+    'SELECT id, name, phone, status, rating FROM drivers WHERE is_deleted = 0 ORDER BY name'
+  ).all();
+
+  const trips = await db.prepare(`
+    SELECT ta.driver_id, ta.id as trip_id, ta.pickup_datetime, ta.drop_datetime,
+           ta.pickup_location, ta.passenger_name, ta.status as trip_status
+    FROM trip_assignments ta
+    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
+      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
+      AND ta.driver_id IS NOT NULL
+  `).bind(to, from).all();
+
+  const tripsByDriver = new Map<string, any[]>();
+  for (const trip of (trips.results || [])) {
+    const arr = tripsByDriver.get(trip.driver_id as string) || [];
+    arr.push(trip);
+    tripsByDriver.set(trip.driver_id as string, arr);
+  }
+
+  const result = (allDrivers.results || []).map((d: any) => ({
+    driverId: d.id,
+    name: d.name,
+    phone: d.phone,
+    status: d.status,
+    rating: d.rating,
+    trips: (tripsByDriver.get(d.id) || []).map((t: any) => ({
+      tripId: t.trip_id,
+      pickupDatetime: t.pickup_datetime,
+      dropDatetime: t.drop_datetime,
+      pickupLocation: t.pickup_location,
+      passengerName: t.passenger_name,
+      status: t.trip_status,
+    })),
+  }));
+
+  return success(c, result);
+});
+
 fleet.get('/drivers/:id', async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
@@ -661,18 +731,19 @@ fleet.get('/drivers/:id', async (c) => {
     SELECT ta.*, v.registration_number, v.type as vehicle_type
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
       AND ta.status NOT IN ('completed', 'cancelled')
     ORDER BY ta.pickup_datetime ASC LIMIT 5
-  `).bind(id).all();
+  `).bind(id, id).all();
 
   const ratings = await db.prepare(
     'SELECT * FROM driver_ratings WHERE driver_id = ? ORDER BY created_at DESC LIMIT 10'
   ).bind(id).all();
 
   // Revenue attribution
-  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-  const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+  const { timeZone: tzDriver, today: todayDrv } = await tenantToday(c);
+  const thisMonthStart = localMonthWindow(tzDriver).startIso;
+  const lastMonthStart = localMonthWindow(tzDriver, new Date(), -1).startIso;
   const [revenueAll, revenueThisMonth, revenueLastMonth, completedTrips, revenueByMonth] = await Promise.all([
     db.prepare(`SELECT COALESCE(SUM(i.total), 0) as total, COUNT(i.id) as count
       FROM invoices i JOIN trip_assignments ta ON ta.invoice_id = i.id
@@ -694,9 +765,15 @@ fleet.get('/drivers/:id', async (c) => {
       GROUP BY strftime('%Y-%m', i.created_at) ORDER BY month DESC`).bind(id).all(),
   ]);
 
+  const linkedUser = driver.user_id
+    ? await db.prepare('SELECT name, email FROM users WHERE id = ?').bind(driver.user_id).first<{ name: string; email: string }>()
+    : null;
+
   return success(c, {
     ...parseDriver(driver),
-    documents: (docs.results || []).map(parseDriverDocument),
+    userName: linkedUser?.name ?? null,
+    userEmail: linkedUser?.email ?? null,
+    documents: (docs.results || []).map((r: any) => parseDriverDocument(r, todayDrv)),
     upcomingTrips: (trips.results || []).map(parseTripRow),
     recentRatings: ratings.results || [],
     revenue: {
@@ -722,20 +799,27 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
   const id = generateId();
   const now = new Date().toISOString();
 
-  // Check unique phone
+  // Store phones as E.164 so the driver app and desktop (digits-only) agree; numbers typed without a country code
+  // are read as the agency's own country (R204)
+  const phoneCountry = await tenantPhoneCountry(db);
+  const phone = normalizePhone(data.phone, phoneCountry) || data.phone;
+  const phoneVariants = phoneLookupVariants(data.phone, phoneCountry);
+
+  // Check unique phone (any stored format)
   const existing = await db.prepare(
-    'SELECT id FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(data.phone).first();
+    `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0`
+  ).bind(...phoneVariants).first();
   if (existing) return error(c, 'Driver with this phone number already exists', 409);
+  if (data.userId && !(await db.prepare('SELECT id FROM users WHERE id = ?').bind(data.userId).first())) return error(c, 'The linked staff user was not found', 400);
 
   await db.prepare(`
-    INSERT INTO drivers (id, tenant_id, name, phone, email, license_number, license_expiry, address, emergency_contact_name, emergency_contact_phone, date_of_joining, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO drivers (id, tenant_id, name, phone, email, license_number, license_expiry, address, emergency_contact_name, emergency_contact_phone, date_of_joining, notes, crew_role, user_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, tenantId, data.name, data.phone,
+    id, tenantId, data.name, phone,
     data.email ?? null, data.licenseNumber ?? null, data.licenseExpiry ?? null,
-    data.address ?? null, data.emergencyContactName ?? null, data.emergencyContactPhone ?? null,
-    data.dateOfJoining ?? null, data.notes ?? null, userId, now, now,
+    data.address ?? null, data.emergencyContactName ?? null, normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null,
+    data.dateOfJoining ?? null, data.notes ?? null, data.crewRole ?? 'driver', data.userId ?? null, userId, now, now,
   ).run();
 
   await logActivity(db as any, {
@@ -757,8 +841,13 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   const existing = await db.prepare('SELECT * FROM drivers WHERE id = ? AND is_deleted = 0').bind(id).first();
   if (!existing) return notFound(c, 'Driver');
 
-  if (data.phone && data.phone !== existing.phone) {
-    const dup = await db.prepare('SELECT id FROM drivers WHERE phone = ? AND is_deleted = 0 AND id != ?').bind(data.phone, id).first();
+  const phoneCountry = data.phone !== undefined || data.emergencyContactPhone !== undefined ? await tenantPhoneCountry(db) : undefined;
+  const normalizedPhone = data.phone ? (normalizePhone(data.phone, phoneCountry) || data.phone) : undefined;
+  if (data.phone && normalizedPhone !== existing.phone) {
+    const phoneVariants = phoneLookupVariants(data.phone, phoneCountry);
+    const dup = await db.prepare(
+      `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0 AND id != ?`
+    ).bind(...phoneVariants, id).first();
     if (dup) return error(c, 'Driver with this phone number already exists', 409);
   }
 
@@ -766,15 +855,20 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   const params: any[] = [now];
 
   if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
-  if (data.phone !== undefined) { sets.push('phone = ?'); params.push(data.phone); }
+  if (data.phone !== undefined) { sets.push('phone = ?'); params.push(normalizedPhone ?? data.phone); }
   if (data.email !== undefined) { sets.push('email = ?'); params.push(data.email); }
   if (data.licenseNumber !== undefined) { sets.push('license_number = ?'); params.push(data.licenseNumber); }
   if (data.licenseExpiry !== undefined) { sets.push('license_expiry = ?'); params.push(data.licenseExpiry); }
   if (data.address !== undefined) { sets.push('address = ?'); params.push(data.address); }
   if (data.emergencyContactName !== undefined) { sets.push('emergency_contact_name = ?'); params.push(data.emergencyContactName); }
-  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(data.emergencyContactPhone); }
+  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null); }
   if (data.dateOfJoining !== undefined) { sets.push('date_of_joining = ?'); params.push(data.dateOfJoining); }
   if (data.notes !== undefined) { sets.push('notes = ?'); params.push(data.notes); }
+  if (data.crewRole !== undefined) { sets.push('crew_role = ?'); params.push(data.crewRole); }
+  if (data.userId !== undefined) {
+    if (data.userId && !(await db.prepare('SELECT id FROM users WHERE id = ?').bind(data.userId).first())) return error(c, 'The linked staff user was not found', 400);
+    sets.push('user_id = ?'); params.push(data.userId);
+  }
 
   params.push(id);
   await db.prepare(`UPDATE drivers SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run();
@@ -789,8 +883,8 @@ fleet.delete('/drivers/:id', async (c) => {
   const userId = c.get('userId');
 
   const activeTrip = await db.prepare(
-    "SELECT id FROM trip_assignments WHERE driver_id = ? AND status NOT IN ('completed', 'cancelled') AND is_deleted = 0"
-  ).bind(id).first();
+    "SELECT id FROM trip_assignments WHERE (driver_id = ? OR tour_leader_id = ?) AND status NOT IN ('completed', 'cancelled') AND is_deleted = 0"
+  ).bind(id, id).first();
   if (activeTrip) return error(c, 'Cannot delete driver with active trips', 400);
 
   await db.prepare("UPDATE drivers SET is_deleted = 1, updated_at = ? WHERE id = ?")
@@ -866,18 +960,18 @@ fleet.get('/drivers/:id/trips', async (c) => {
   const offset = (page - 1) * limit;
 
   const countResult = await db.prepare(
-    'SELECT COUNT(*) as count FROM trip_assignments WHERE driver_id = ? AND is_deleted = 0'
-  ).bind(id).first<{ count: number }>();
+    'SELECT COUNT(*) as count FROM trip_assignments WHERE (driver_id = ? OR tour_leader_id = ?) AND is_deleted = 0'
+  ).bind(id, id).first<{ count: number }>();
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
     SELECT ta.*, v.registration_number, v.type as vehicle_type
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
     ORDER BY ta.pickup_datetime DESC
     LIMIT ? OFFSET ?
-  `).bind(id, limit, offset).all();
+  `).bind(id, id, limit, offset).all();
 
   return paginated(c, (rows.results || []).map(parseTripRow), total, page, limit);
 });
@@ -924,7 +1018,7 @@ fleet.post('/drivers/:id/documents', async (c) => {
   `).bind(docId, driverId, docType, docNumber, key, file.name, expiryDate, issuedDate, now, now).run();
 
   const doc = await db.prepare('SELECT * FROM driver_documents WHERE id = ?').bind(docId).first();
-  return created(c, parseDriverDocument(doc!));
+  return created(c, parseDriverDocument(doc!, (await tenantToday(c)).today));
 });
 
 fleet.get('/drivers/:id/documents', async (c) => {
@@ -935,7 +1029,7 @@ fleet.get('/drivers/:id/documents', async (c) => {
     'SELECT * FROM driver_documents WHERE driver_id = ? AND is_active = 1 ORDER BY type, created_at DESC'
   ).bind(driverId).all();
 
-  return success(c, (rows.results || []).map(parseDriverDocument));
+  { const { today: todayDoc } = await tenantToday(c); return success(c, (rows.results || []).map((r: any) => parseDriverDocument(r, todayDoc))); }
 });
 
 fleet.get('/drivers/:driverId/documents/:docId/download', async (c) => {
@@ -963,8 +1057,8 @@ fleet.get('/documents/drivers/expiring', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '30');
-  const today = new Date().toISOString().split('T')[0];
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT dd.*, d.name as driver_name, d.phone as driver_phone
@@ -986,59 +1080,6 @@ fleet.get('/documents/drivers/expiring', async (c) => {
   });
 
   return success(c, data);
-});
-
-// ============================================================================
-// DRIVER SCHEDULE (TICKET-315)
-// ============================================================================
-
-fleet.get('/drivers/schedule', zValidator('query', scheduleSchema), async (c) => {
-  const db = c.get('tenantDb');
-  const { from, to } = c.req.valid('query');
-
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
-    return error(c, 'Date range cannot exceed 90 days', 400);
-  }
-
-  const allDrivers = await db.prepare(
-    'SELECT id, name, phone, status, rating FROM drivers WHERE is_deleted = 0 ORDER BY name'
-  ).all();
-
-  const trips = await db.prepare(`
-    SELECT ta.driver_id, ta.id as trip_id, ta.pickup_datetime, ta.drop_datetime,
-           ta.pickup_location, ta.passenger_name, ta.status as trip_status
-    FROM trip_assignments ta
-    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
-      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
-      AND ta.driver_id IS NOT NULL
-  `).bind(to, from).all();
-
-  const tripsByDriver = new Map<string, any[]>();
-  for (const trip of (trips.results || [])) {
-    const arr = tripsByDriver.get(trip.driver_id as string) || [];
-    arr.push(trip);
-    tripsByDriver.set(trip.driver_id as string, arr);
-  }
-
-  const result = (allDrivers.results || []).map((d: any) => ({
-    driverId: d.id,
-    name: d.name,
-    phone: d.phone,
-    status: d.status,
-    rating: d.rating,
-    trips: (tripsByDriver.get(d.id) || []).map((t: any) => ({
-      tripId: t.trip_id,
-      pickupDatetime: t.pickup_datetime,
-      dropDatetime: t.drop_datetime,
-      pickupLocation: t.pickup_location,
-      passengerName: t.passenger_name,
-      status: t.trip_status,
-    })),
-  }));
-
-  return success(c, result);
 });
 
 fleet.get('/drivers/:id/schedule', async (c) => {
@@ -1081,7 +1122,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
   const db = c.get('tenantDb');
-  const { page, limit, status, driverId, vehicleId, leadId, from, to, search, sortBy, sortOrder } = c.req.valid('query');
+  const { page, limit, status, driverId, vehicleId, tripKind, departureId, leadId, from, to, search, sortBy, sortOrder } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ['ta.is_deleted = 0'];
@@ -1091,11 +1132,14 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
   if (driverId) { conditions.push('ta.driver_id = ?'); params.push(driverId); }
   if (vehicleId) { conditions.push('ta.vehicle_id = ?'); params.push(vehicleId); }
   if (leadId) { conditions.push('ta.lead_id = ?'); params.push(leadId); }
+  if (tripKind) { conditions.push('ta.trip_kind = ?'); params.push(tripKind); }
+  if (departureId) { conditions.push('ta.departure_id = ?'); params.push(departureId); }
   if (from) { conditions.push('ta.pickup_datetime >= ?'); params.push(from); }
   if (to) { conditions.push('ta.pickup_datetime <= ?'); params.push(to); }
   if (search) {
-    conditions.push('(ta.passenger_name LIKE ? OR v.registration_number LIKE ? OR d.name LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    // R145: a coach trip has no passenger name, so the route and the tour leader are searchable too
+    conditions.push('(ta.passenger_name LIKE ? OR v.registration_number LIKE ? OR d.name LIKE ? OR ta.pickup_location LIKE ? OR ta.drop_location LIKE ? OR tl.name LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const whereClause = conditions.join(' AND ');
@@ -1106,16 +1150,22 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
     SELECT COUNT(*) as count FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ${whereClause}
   `).bind(...params).first<{ count: number }>();
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
-           v.registration_number, v.type as vehicle_type
+           v.registration_number, v.type as vehicle_type, tl.name as tour_leader_name,
+           (SELECT COUNT(*) FROM trip_stops ts WHERE ts.trip_id = ta.id) as stop_count,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id) as pax_expected,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id AND tp.boarding_status = 'boarded') as pax_boarded,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id AND tp.boarding_status = 'no_show') as pax_no_show
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ${whereClause}
     ORDER BY ${orderCol} ${orderDir}
     LIMIT ? OFFSET ?
@@ -1132,10 +1182,11 @@ fleet.get('/trips/:id', async (c) => {
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone, d.photo_url as driver_photo,
            v.registration_number, v.type as vehicle_type, v.make as vehicle_make, v.model as vehicle_model,
            v.seating_capacity, v.photo_url as vehicle_photo,
-           l.title as lead_title
+           l.title as lead_title, tl.name as tour_leader_name, tl.phone as tour_leader_phone
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     LEFT JOIN leads l ON l.id = ta.lead_id
     WHERE ta.id = ? AND ta.is_deleted = 0
   `).bind(id).first();
@@ -1163,6 +1214,8 @@ fleet.get('/trips/:id', async (c) => {
     seatingCapacity: trip.seating_capacity,
     vehiclePhoto: trip.vehicle_photo,
     leadTitle: trip.lead_title,
+    tourLeaderPhone: trip.tour_leader_phone ?? null,
+    ...(trip.trip_kind === 'coach' && { stops: await listStops(db, id), headcount: await headcountOf(db, id) }),
     timeline: timeline.results || [],
     costs: costs.results || [],
     totalCost: costTotal?.total ?? 0,
@@ -1177,21 +1230,33 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const id = generateId();
   const now = new Date().toISOString();
 
+  // R145: coach trips, a tour leader or a departure link need the coach_trips feature and valid references
+  const tripKind = data.tripKind ?? 'transfer';
+  const coachProblem = await coachFieldsProblem(c, db, { tripKind, tourLeaderId: data.tourLeaderId, departureId: data.departureId });
+  if (coachProblem) return coachProblem;
+
   // Validate vehicle availability
-  const vehicleConflict = await db.prepare(`
-    SELECT id FROM trip_assignments
-    WHERE vehicle_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
-      AND pickup_datetime <= ? AND drop_datetime >= ?
-  `).bind(data.vehicleId, data.dropDatetime, data.pickupDatetime).first();
-  if (vehicleConflict) return error(c, 'Vehicle is not available for the selected date range', 400);
+  if (data.vehicleId) {
+    const vehicleConflict = await db.prepare(`
+      SELECT id FROM trip_assignments
+      WHERE vehicle_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
+        AND pickup_datetime <= ? AND drop_datetime >= ?
+    `).bind(data.vehicleId, data.dropDatetime, data.pickupDatetime).first();
+    if (vehicleConflict) return error(c, 'Vehicle is not available for the selected date range', 400);
+  }
 
   // Validate driver availability
-  const driverConflict = await db.prepare(`
-    SELECT id FROM trip_assignments
-    WHERE driver_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
-      AND pickup_datetime <= ? AND drop_datetime >= ?
-  `).bind(data.driverId, data.dropDatetime, data.pickupDatetime).first();
-  if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
+  if (data.driverId) {
+    const driverConflict = await db.prepare(`
+      SELECT id FROM trip_assignments
+      WHERE driver_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
+        AND pickup_datetime <= ? AND drop_datetime >= ?
+    `).bind(data.driverId, data.dropDatetime, data.pickupDatetime).first();
+    if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
+  }
+
+  // Store the passenger phone as E.164 (empty -> null)
+  const passengerPhoneE164 = normalizePhone(data.passengerPhone ?? '', await tenantPhoneCountry(db)) || null;
 
   await db.prepare(`
     INSERT INTO trip_assignments (
@@ -1201,13 +1266,14 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
       trip_type, rate_card_id, estimated_distance_km, estimated_duration_min,
       estimated_cost, estimated_breakdown,
       pickup_lat, pickup_lng, drop_lat, drop_lng, contact_id,
+      trip_kind, tour_leader_id, departure_id,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, tenantId, data.leadId ?? null, data.vehicleId, data.driverId,
+    id, tenantId, data.leadId ?? null, data.vehicleId ?? null, data.driverId ?? null,
     data.pickupLocation ?? null, data.dropLocation ?? null,
     data.pickupDatetime, data.dropDatetime,
-    data.passengerName ?? null, data.passengerPhone ?? null,
+    data.passengerName ?? null, passengerPhoneE164,
     data.specialInstructions ?? null, userId,
     data.tripType ?? 'one_way', data.rateCardId ?? null,
     data.estimatedDistanceKm ?? null, data.estimatedDurationMin ?? null,
@@ -1215,6 +1281,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
     data.pickupLat ?? null, data.pickupLng ?? null,
     data.dropLat ?? null, data.dropLng ?? null,
     data.contactId ?? null,
+    tripKind, data.tourLeaderId ?? null, data.departureId ?? null,
     now, now,
   ).run();
 
@@ -1224,6 +1291,16 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
     VALUES (?, ?, 'assigned', ?, 'Trip created', ?)
   `).bind(generateId(), id, userId, now).run();
 
+  if (data.stops?.length) {
+    try {
+      await replaceStops(coachCtx(c), id, data.stops);
+    } catch (e) {
+      if (!(e instanceof DepartureError)) throw e;
+      await db.prepare('UPDATE trip_assignments SET is_deleted = 1 WHERE id = ?').bind(id).run();
+      return departureErrorResponse(c, e);
+    }
+  }
+
   await logActivity(db as any, {
     userId, action: 'create', entityType: 'trip_assignment', entityId: id,
     details: JSON.stringify({ vehicleId: data.vehicleId, driverId: data.driverId }),
@@ -1231,17 +1308,19 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   });
 
   // Send customer notification (async, non-blocking)
-  if (data.passengerPhone) {
+  if (passengerPhoneE164 && data.vehicleId && data.driverId) {
     try {
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
       const vehicle = await db.prepare('SELECT registration_number, type FROM vehicles WHERE id = ?').bind(data.vehicleId).first();
       if (driver && vehicle) {
-        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        const tzPickup = await tenantTimeZone(c);
+        const pickupLocale = (await loadLocaleContext(db)).locale;
+        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString(pickupLocale, { timeZone: tzPickup, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString(pickupLocale, { timeZone: tzPickup, hour: '2-digit', minute: '2-digit' });
         const settings = await db.prepare('SELECT company_name FROM settings LIMIT 1').first<{ company_name: string }>();
         const message = `Hello ${data.passengerName || 'Guest'}, your vehicle has been assigned for ${pickupDate}.\n\nDriver: ${driver.name}\nPhone: ${driver.phone}\nVehicle: ${(vehicle.type as string).replace(/_/g, ' ')} (${vehicle.registration_number})\n\nPickup: ${data.pickupLocation || 'TBD'} at ${pickupTime}\n\n— ${settings?.company_name || 'TravelCRM'}`;
         await c.env.SMS_QUEUE.send({
-          type: 'whatsapp', to: data.passengerPhone, body: message,
+          type: 'whatsapp', to: passengerPhoneE164, body: message,
           tenantId, entityType: 'trip_assignment', entityId: id,
         });
       }
@@ -1251,17 +1330,18 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const row = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
   // Auto-create voucher if requested
-  if (data.autoCreateVoucher !== false && data.passengerName) {
+  if (data.autoCreateVoucher !== false && data.passengerName && data.vehicleId && data.driverId && tripKind !== 'coach') {
     try {
       const voucherId = generateId();
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
@@ -1271,7 +1351,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
         vehicleType: vehicle?.type, vehicleRegistration: vehicle?.registration_number,
         pickupLocation: data.pickupLocation, dropLocation: data.dropLocation,
         pickupDatetime: data.pickupDatetime, dropDatetime: data.dropDatetime,
-        passengerName: data.passengerName, passengerPhone: data.passengerPhone,
+        passengerName: data.passengerName, passengerPhone: passengerPhoneE164,
         tripType: data.tripType ?? 'one_way',
       });
       await db.prepare(`
@@ -1290,12 +1370,13 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const finalRow = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
@@ -1314,8 +1395,24 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   if (!existing) return notFound(c, 'Trip');
   if (existing.status !== 'assigned') return error(c, 'Can only edit trips with status "assigned"', 400);
 
+  const coachProblem = await coachFieldsProblem(c, db, {
+    tripKind: data.tripKind,
+    tourLeaderId: data.tourLeaderId,
+    departureId: data.departureId,
+  });
+  if (coachProblem) return coachProblem;
+  if (data.tripKind === 'transfer' && existing.trip_kind === 'coach') {
+    const used = await db.prepare(
+      'SELECT (SELECT COUNT(*) FROM trip_stops WHERE trip_id = ?1) + (SELECT COUNT(*) FROM trip_passengers WHERE trip_id = ?1) AS n',
+    ).bind(id).first<{ n: number }>();
+    if ((used?.n ?? 0) > 0) return error(c, 'A coach trip with stops or passengers cannot become a transfer', 409);
+  }
+
   const sets: string[] = ['updated_at = ?'];
   const params: any[] = [now];
+  if (data.tripKind !== undefined) { sets.push('trip_kind = ?'); params.push(data.tripKind); }
+  if (data.tourLeaderId !== undefined) { sets.push('tour_leader_id = ?'); params.push(data.tourLeaderId); }
+  if (data.departureId !== undefined) { sets.push('departure_id = ?'); params.push(data.departureId); }
 
   if (data.vehicleId !== undefined) {
     // Check availability
@@ -1342,7 +1439,7 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   if (data.pickupDatetime !== undefined) { sets.push('pickup_datetime = ?'); params.push(data.pickupDatetime); }
   if (data.dropDatetime !== undefined) { sets.push('drop_datetime = ?'); params.push(data.dropDatetime); }
   if (data.passengerName !== undefined) { sets.push('passenger_name = ?'); params.push(data.passengerName); }
-  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(data.passengerPhone); }
+  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(normalizePhone(data.passengerPhone ?? '', await tenantPhoneCountry(db)) || null); }
   if (data.specialInstructions !== undefined) { sets.push('special_instructions = ?'); params.push(data.specialInstructions); }
   // M20 fields
   if (data.tripType !== undefined) { sets.push('trip_type = ?'); params.push(data.tripType); }
@@ -1380,12 +1477,13 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   const row = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
@@ -1467,7 +1565,7 @@ fleet.put('/trips/:id/status', zValidator('json', tripStatusSchema), async (c) =
       const completedTrip = await db.prepare('SELECT * FROM trip_assignments WHERE id = ?').bind(id).first();
       if (completedTrip && !completedTrip.invoice_id && completedTrip.contact_id) {
         const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-        await generateTripInvoice(db, completedTrip, userId);
+        await generateTripInvoice(db, completedTrip, userId, { env: c.env, tenantId: c.get('tenantId') });
       }
     } catch {
       // Invoice generation failure should not block status update
@@ -1489,6 +1587,117 @@ fleet.get('/trips/:id/timeline', async (c) => {
 
   return success(c, rows.results || []);
 });
+
+// ============================================================================
+// COACH TRIPS (R145): stops, passengers, check-in, head count
+// ============================================================================
+
+/** Who acts in the coach service: this staff user, with the request's waiter so automations run after the response. */
+function coachCtx(c: Context<AppContext>): CoachCtx {
+  let waiter: CoachCtx['waiter'];
+  try { waiter = c.executionCtx; } catch { waiter = undefined; }
+  return { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), userId: c.get('userId'), waiter };
+}
+
+/**
+ * The coach fields of a trip body: a coach trip, a tour leader or a departure link need the coach_trips feature (the routes under
+ * /trips/:id/stops and so on are gated by middleware; this covers the trip body). A tour leader must be crew with that role.
+ */
+async function coachFieldsProblem(
+  c: Context<AppContext>,
+  db: D1Database,
+  f: { tripKind?: string; tourLeaderId?: string | null; departureId?: string | null },
+): Promise<Response | null> {
+  const used = f.tripKind === 'coach' || Boolean(f.tourLeaderId) || Boolean(f.departureId);
+  if (!used) return null;
+  const feature = await resolveFeature(c.env, c.get('tenantId'), 'coach_trips');
+  if (!feature.enabled) return c.json({ error: 'Feature "coach_trips" is not available for this agency.', featureKey: 'coach_trips', upgrade: feature.source !== 'platform' }, 403);
+  if (f.tourLeaderId) {
+    const leader = await db.prepare("SELECT id FROM drivers WHERE id = ? AND is_deleted = 0 AND crew_role IN ('tour_leader', 'both')").bind(f.tourLeaderId).first();
+    if (!leader) return error(c, 'The tour leader was not found, or is not a tour leader', 400);
+  }
+  if (f.departureId) {
+    const dep = await db.prepare('SELECT id FROM departures WHERE id = ? AND is_deleted = 0').bind(f.departureId).first();
+    if (!dep) return error(c, 'The departure was not found', 400);
+  }
+  return null;
+}
+
+// Stops, passengers and head count exist only with the coach_trips feature.
+fleet.use('/trips/:id/stops', requireFeature('coach_trips'));
+fleet.use('/trips/:id/stops/*', requireFeature('coach_trips'));
+fleet.use('/trips/:id/passengers', requireFeature('coach_trips'));
+fleet.use('/trips/:id/passengers/*', requireFeature('coach_trips'));
+fleet.use('/trips/:id/headcount', requireFeature('coach_trips'));
+
+fleet.get('/trips/:id/stops', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await listStops(db, c.req.param('id')));
+  }),
+);
+
+fleet.put('/trips/:id/stops', zValidator('json', tripStopsBodySchema), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const stops = await replaceStops(coachCtx(c), id, c.req.valid('json').stops);
+    await logActivity(c.get('tenantDb') as any, { userId: c.get('userId'), action: 'update', entityType: 'trip_assignment', entityId: id, details: JSON.stringify({ stops: stops.length }), ipAddress: c.get('clientIp') });
+    return success(c, stops);
+  }),
+);
+
+// The body is optional (the position is only a courtesy); an empty body parses as {}.
+const optionalJson = async (c: Context<AppContext>): Promise<unknown> => {
+  try { return await c.req.json(); } catch { return {}; }
+};
+
+fleet.post('/trips/:id/stops/:sid/arrive', (c) =>
+  guarded(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    return success(c, await setStopStatus(coachCtx(c), c.req.param('id'), c.req.param('sid'), 'arrive', where.data));
+  }),
+);
+
+fleet.post('/trips/:id/stops/:sid/depart', (c) =>
+  guarded(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    return success(c, await setStopStatus(coachCtx(c), c.req.param('id'), c.req.param('sid'), 'depart', where.data));
+  }),
+);
+
+fleet.get('/trips/:id/passengers', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await listPassengersGrouped(db, c.req.param('id')));
+  }),
+);
+
+fleet.post('/trips/:id/passengers', zValidator('json', addTripPassengerSchema), (c) =>
+  guarded(c, async () => created(c, await addPassenger(coachCtx(c), c.req.param('id'), c.req.valid('json')))),
+);
+
+fleet.put('/trips/:id/passengers/:pid', zValidator('json', tickPassengerSchema), (c) =>
+  guarded(c, async () => success(c, await tickPassenger(coachCtx(c), c.req.param('id'), c.req.param('pid'), c.req.valid('json')))),
+);
+
+fleet.delete('/trips/:id/passengers/:pid', (c) =>
+  guarded(c, async () => {
+    await removePassenger(coachCtx(c), c.req.param('id'), c.req.param('pid'));
+    return success(c, { message: 'Passenger removed' });
+  }),
+);
+
+fleet.get('/trips/:id/headcount', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await headcountOf(db, c.req.param('id')));
+  }),
+);
 
 // ============================================================================
 // TRIP COST TRACKING (TICKET-317)
@@ -1601,11 +1810,12 @@ fleet.get('/dashboard', async (c) => {
   const db = c.get('tenantDb');
   const now = new Date().toISOString();
   const sevenDays = new Date(Date.now() + 7 * 86400000).toISOString();
-  const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-  const fifteenDays = new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0];
+  const { timeZone: tzDash, today: todayDash } = await tenantToday(c);
+  const thirtyDays = addDaysLocal(todayDash, 30);
+  const fifteenDays = addDaysLocal(todayDash, 15);
 
-  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-  const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+  const thisMonthStart = localMonthWindow(tzDash).startIso;
+  const lastMonthStart = localMonthWindow(tzDash, new Date(), -1).startIso;
 
   const [vehicleCounts, driverCounts, activeTrips, upcomingTrips, expiringDocs, maintenanceDue, recentCompleted, topDrivers, revenueThisMonth, revenueLastMonth, revenueByVehicleType, revenueByDriver] = await Promise.all([
     // Vehicle summary
@@ -1652,8 +1862,20 @@ fleet.get('/dashboard', async (c) => {
       WHERE ta.is_deleted = 0 AND ta.status = 'completed'
       ORDER BY ta.completed_at DESC LIMIT 5
     `).all(),
-    // Top drivers by rating
-    db.prepare("SELECT id, name, phone, rating, total_trips FROM drivers WHERE is_deleted = 0 AND total_trips > 0 ORDER BY rating DESC LIMIT 5").all(),
+    // Top drivers: active drivers ranked by completed trips, then rating. Drivers with no trips yet are
+    // still listed (a fresh fleet must not show an empty widget); trips are counted from the assignments
+    // themselves so the figure does not depend on the denormalised drivers.total_trips counter.
+    db.prepare(`
+      SELECT d.id, d.name, d.phone, d.rating,
+             MAX(COALESCE(d.total_trips, 0), COUNT(ta.id)) AS total_trips
+      FROM drivers d
+      LEFT JOIN trip_assignments ta
+        ON ta.driver_id = d.id AND ta.is_deleted = 0 AND ta.status = 'completed'
+      WHERE d.is_deleted = 0 AND d.status IN ('active', 'on_trip')
+      GROUP BY d.id
+      ORDER BY total_trips DESC, d.rating DESC, d.name ASC
+      LIMIT 5
+    `).all(),
     // Revenue this month (from invoices linked to trips)
     db.prepare(`
       SELECT COALESCE(SUM(i.total), 0) as revenue, COUNT(DISTINCT ta.id) as trips,
@@ -1769,10 +1991,9 @@ function parseVehicle(row: Record<string, any>) {
   };
 }
 
-function parseVehicleDocument(row: Record<string, any>) {
-  const today = new Date().toISOString().split('T')[0];
+function parseVehicleDocument(row: Record<string, any>, today: string) {
   const expiryDate = row.expiry_date;
-  const daysUntil = expiryDate ? Math.ceil((new Date(expiryDate).getTime() - new Date(today).getTime()) / 86400000) : null;
+  const daysUntil = expiryDate ? daysBetweenLocal(today, expiryDate) : null;
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -1807,16 +2028,17 @@ function parseDriver(row: Record<string, any>) {
     totalTrips: row.total_trips ?? 0,
     dateOfJoining: row.date_of_joining ?? null,
     notes: row.notes ?? null,
+    crewRole: row.crew_role ?? 'driver',
+    userId: row.user_id ?? null,
     createdBy: row.created_by ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-function parseDriverDocument(row: Record<string, any>) {
-  const today = new Date().toISOString().split('T')[0];
+function parseDriverDocument(row: Record<string, any>, today: string) {
   const expiryDate = row.expiry_date;
-  const daysUntil = expiryDate ? Math.ceil((new Date(expiryDate).getTime() - new Date(today).getTime()) / 86400000) : null;
+  const daysUntil = expiryDate ? daysBetweenLocal(today, expiryDate) : null;
   return {
     id: row.id,
     driverId: row.driver_id,
@@ -1882,6 +2104,15 @@ function parseTripRow(row: Record<string, any>) {
     contactId: row.contact_id ?? null,
     invoiceId: row.invoice_id ?? null,
     voucherId: row.voucher_id ?? null,
+    // R145: coach trips
+    tripKind: row.trip_kind ?? 'transfer',
+    departureId: row.departure_id ?? null,
+    tourLeaderId: row.tour_leader_id ?? null,
+    tourLeaderName: row.tour_leader_name ?? null,
+    ...(row.stop_count !== undefined && {
+      stopCount: row.stop_count ?? 0,
+      headcount: { expected: row.pax_expected ?? 0, boarded: row.pax_boarded ?? 0, noShow: row.pax_no_show ?? 0 },
+    }),
     // Joined fields
     driverName: row.driver_name ?? null,
     driverPhone: row.driver_phone ?? null,
@@ -1914,28 +2145,21 @@ fleet.get('/vehicle-rate-cards', zValidator('query', rateCardListSchema), async 
 
   const whereClause = conditions.join(' AND ');
 
+  const agencyCurrency = (await loadLocaleContext(db)).currency;
   const [countResult, rows] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as total FROM vehicle_rate_cards WHERE ${whereClause}`).bind(...params).first<{ total: number }>(),
     db.prepare(`SELECT * FROM vehicle_rate_cards WHERE ${whereClause} ORDER BY vehicle_type ASC, trip_type ASC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
   ]);
 
-  return paginated(c, (rows.results || []).map(parseRateCardRow), countResult?.total ?? 0, page, limit);
-});
-
-// Get single rate card
-fleet.get('/vehicle-rate-cards/:id', async (c) => {
-  const db = c.get('tenantDb');
-  const id = c.req.param('id');
-  const row = await db.prepare('SELECT * FROM vehicle_rate_cards WHERE id = ? AND is_deleted = 0').bind(id).first();
-  if (!row) return notFound(c, 'Rate card');
-  return success(c, parseRateCardRow(row));
+  return paginated(c, (rows.results || []).map((r) => parseRateCardRow(r, agencyCurrency)), countResult?.total ?? 0, page, limit);
 });
 
 // Lookup rate card by vehicle type + trip type
 fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema), async (c) => {
   const db = c.get('tenantDb');
   const { vehicleType, tripType } = c.req.valid('query');
-  const now = new Date().toISOString();
+  // valid_from / valid_to are local calendar dates, inclusive on both ends
+  const { today: now } = await tenantToday(c);
 
   const row = await db.prepare(`
     SELECT * FROM vehicle_rate_cards
@@ -1946,7 +2170,16 @@ fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema
   `).bind(vehicleType, tripType, now, now).first();
 
   if (!row) return success(c, null);
-  return success(c, parseRateCardRow(row));
+  return success(c, parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency));
+});
+
+// Get single rate card
+fleet.get('/vehicle-rate-cards/:id', async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const row = await db.prepare('SELECT * FROM vehicle_rate_cards WHERE id = ? AND is_deleted = 0').bind(id).first();
+  if (!row) return notFound(c, 'Rate card');
+  return success(c, parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency));
 });
 
 // Create rate card
@@ -1971,7 +2204,7 @@ fleet.post('/vehicle-rate-cards', zValidator('json', createRateCardSchema), asyn
     data.minKm, data.minHours, data.nightCharge, data.driverAllowance,
     data.flatRate ?? null, data.extraKmRate, data.extraHourRate,
     data.tollIncluded ? 1 : 0, data.parkingIncluded ? 1 : 0,
-    data.currency, data.validFrom ?? null, data.validTo ?? null,
+    data.currency?.toUpperCase() ?? (await loadLocaleContext(db)).currency, data.validFrom ?? null, data.validTo ?? null,
     data.notes ?? null, data.isActive ? 1 : 0,
     userId, now, now,
   ).run();
@@ -2081,7 +2314,7 @@ fleet.post('/vehicle-rate-cards/estimate', zValidator('json', costEstimateSchema
     isNightTrip: data.isNightTrip,
   });
 
-  return success(c, { rateCard: parseRateCardRow(row), breakdown });
+  return success(c, { rateCard: parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency), breakdown });
 });
 
 // Generate invoice for completed trip
@@ -2097,7 +2330,7 @@ fleet.post('/trips/:id/generate-invoice', async (c) => {
 
   try {
     const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-    const invoice = await generateTripInvoice(db, trip, userId);
+    const invoice = await generateTripInvoice(db, trip, userId, { env: c.env, tenantId: c.get('tenantId') });
     return created(c, invoice);
   } catch (err: any) {
     return error(c, err.message || 'Failed to generate invoice', 500);
@@ -2147,7 +2380,7 @@ fleet.post('/trips/:id/generate-voucher', async (c) => {
 // HELPERS
 // ============================================================================
 
-function parseRateCardRow(row: Record<string, any>) {
+function parseRateCardRow(row: Record<string, any>, agencyCurrency: string | null = null) {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -2166,7 +2399,7 @@ function parseRateCardRow(row: Record<string, any>) {
     extraHourRate: row.extra_hour_rate ?? 0,
     tollIncluded: row.toll_included === 1,
     parkingIncluded: row.parking_included === 1,
-    currency: row.currency ?? 'INR',
+    currency: row.currency ?? agencyCurrency,
     validFrom: row.valid_from ?? null,
     validTo: row.valid_to ?? null,
     notes: row.notes ?? null,

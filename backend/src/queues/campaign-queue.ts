@@ -1,4 +1,10 @@
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
+import { refundUsage, tryMeter } from '../services/metering/meter';
+import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText } from '../services/privacy/consent';
+import { sendMail } from '../services/mail/provider';
+import { isEmailUndeliverable, resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
 
 export interface CampaignJob {
   campaignId: string;
@@ -30,9 +36,9 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
   const { campaignId, tenantId, campaignType } = job;
 
   // Get tenant DB
-  const dbBinding = env[`TENANT_DB_${tenantId}` as keyof Env] as D1Database | undefined;
+  const dbBinding = await resolveTenantDb(env, tenantId);
   if (!dbBinding) {
-    console.error(`No DB binding for tenant: ${tenantId}`);
+    console.error(`No tenant database for tenant: ${tenantId}; job dropped`);
     return;
   }
 
@@ -68,12 +74,53 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 
   let sentCount = 0;
   let failedCount = 0;
+  let capReached = false;
+  let skippedCount = 0;
+  // R128: customer replies to a campaign email reach the agency, not the no-reply sender
+  const replyTo = campaignType === 'email' ? await resolveReplyTo(env, dbBinding, tenantId, (campaign as any).created_by) : undefined;
 
   for (const recipient of recipients) {
     const recipientId = (recipient as any).id;
     const now = new Date().toISOString();
 
+    // R208: consent is checked at send time, so an unsubscribe that arrived after the campaign was built is honoured
+    // (and uses no allowance). The recipient is marked opted_out, which the campaign stats already count.
+    const blocked = await marketingBlockedReason(dbBinding, (recipient as any).contact_id, campaignType);
+    if (blocked) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('opted_out', blocked, recipientId)
+        .run();
+      continue;
+    }
+    // R128: an address that hard-bounced earlier is not sent to again (and uses no allowance)
+    if (campaignType === 'email' && (await isEmailUndeliverable(dbBinding, (recipient as any).email))) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('failed', 'Address bounced earlier (undeliverable)', recipientId)
+        .run();
+      failedCount++;
+      continue;
+    }
+    const unsubUrl = (recipient as any).contact_id ? await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, campaignType) : null;
+
+    // R110: each recipient takes one unit of the monthly allowance before the provider is called. At the cap the
+    // remaining recipients are marked skipped_allowance and the campaign still finishes (it does not fail).
+    if (!capReached) {
+      const taken = await tryMeter(env, tenantId, campaignType);
+      if (!taken.allowed) capReached = true;
+    }
+    if (capReached) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('skipped_allowance', 'Monthly allowance used up', recipientId)
+        .run();
+      skippedCount++;
+      continue;
+    }
+
     try {
+      let emailMessageId: string | undefined;
       // Mark as queued
       await dbBinding
         .prepare('UPDATE campaign_recipients SET status = ? WHERE id = ?')
@@ -85,23 +132,25 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
         case 'whatsapp': {
           const phone = (recipient as any).phone;
           if (!phone) throw new Error('No phone number');
-          await sendWhatsApp(env, phone, (campaign as any).message_body || '');
+          await sendWhatsApp(env, phone, withFooter((campaign as any).message_body || '', unsubUrl));
           break;
         }
         case 'sms': {
           const phone = (recipient as any).phone;
           if (!phone) throw new Error('No phone number');
-          await sendSms(env, phone, (campaign as any).message_body || '');
+          await sendSms(env, phone, withFooter((campaign as any).message_body || '', unsubUrl));
           break;
         }
         case 'email': {
           const email = (recipient as any).email;
           if (!email) throw new Error('No email');
-          await sendEmail(
+          emailMessageId = await sendEmail(
             env,
             email,
             (campaign as any).email_subject || 'Campaign',
-            (campaign as any).message_body || ''
+            (campaign as any).message_body || '',
+            unsubUrl,
+            inboundDomain(env) ? await resolveReplyTo(env, dbBinding, tenantId, (campaign as any).created_by, { contactId: (recipient as any).contact_id }) : replyTo
           );
           break;
         }
@@ -109,11 +158,12 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 
       // Mark as sent
       await dbBinding
-        .prepare('UPDATE campaign_recipients SET status = ?, sent_at = ? WHERE id = ?')
-        .bind('sent', now, recipientId)
+        .prepare('UPDATE campaign_recipients SET status = ?, sent_at = ?, message_id = COALESCE(?, message_id) WHERE id = ?')
+        .bind('sent', now, emailMessageId ?? null, recipientId)
         .run();
       sentCount++;
     } catch (err) {
+      await refundUsage(env, tenantId, campaignType); // a failed send does not consume allowance
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       await dbBinding
         .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
@@ -134,6 +184,10 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
     )
     .bind(sentCount, failedCount, new Date().toISOString(), campaignId)
     .run();
+
+  if (skippedCount > 0) {
+    console.warn(`Campaign ${campaignId}: ${skippedCount} recipients skipped, monthly ${campaignType} allowance used up`);
+  }
 
   // If there are more pending recipients, re-enqueue
   const remaining = await dbBinding
@@ -160,6 +214,12 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 // ============================================================
 // Channel send helpers
 // ============================================================
+
+function withFooter(body: string, url: string | null): string {
+  return url ? `${body}
+
+${unsubscribeFooterText(url)}` : body;
+}
 
 async function sendWhatsApp(env: Env, to: string, body: string): Promise<void> {
   const accountSid = env.TWILIO_ACCOUNT_SID;
@@ -219,24 +279,19 @@ async function sendEmail(
   env: Env,
   to: string,
   subject: string,
-  htmlBody: string
-): Promise<void> {
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.SENDGRID_API_KEY}`,
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: 'noreply@travelcrm.pro' },
-      subject,
-      content: [{ type: 'text/html', value: htmlBody }],
-    }),
+  htmlBody: string,
+  unsubUrl: string | null = null,
+  replyTo?: string
+): Promise<string | undefined> {
+  // R132: through the provider interface (agency marketing is always SendGrid). The provider appends the footer link and adds
+  // the List-Unsubscribe headers when it is given the unsubscribe URL, as the inline fetch did before.
+  const res = await sendMail(env, 'agency_marketing', {
+    to,
+    subject,
+    html: htmlBody,
+    ...(unsubUrl ? { unsubscribeUrl: unsubUrl } : {}),
+    ...(replyTo ? { replyTo } : {}),
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Email send failed: ${errText}`);
-  }
+  if (!res.success) throw new Error(`Email send failed: ${res.error ?? 'unknown error'}`);
+  return res.messageId;
 }

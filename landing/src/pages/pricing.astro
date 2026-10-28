@@ -1,0 +1,43 @@
+---
+import Base from '../layouts/Base.astro';
+import PricingCards from '../components/PricingCards.astro';
+import CompareTable from '../components/CompareTable.astro';
+import FoundingBand from '../components/FoundingBand.astro';
+import InfoDesk from '../components/InfoDesk.astro';
+import { MARKETS, MARKET } from '../data/markets';
+import { bindings } from '../scripts/bind';
+import { SOFTWARE_LD, FAQ_LD, CRUMBS_LD } from '../data/seo';
+import { FAQS } from '../data/content';
+const site = Astro.site!;
+const b = bindings(MARKET.IN);
+---
+<Base
+  title="Pricing · one price per agency, per year"
+  description="TravelCRM Pro pricing for India, the UK, Europe, the US and Australia: Basic, Pro and Enterprise, one yearly price per agency with users included. Founding agencies pay 20% less for 24 months."
+  jsonLd={[SOFTWARE_LD(site), FAQ_LD(FAQS.filter((f) => f.t === 'price')), CRUMBS_LD(site, [['Home', '/'], ['Pricing', '/pricing/']])]}
+  market="IN"
+  detect
+>
+  <section id="pricing" class="wrap section">
+    <PricingCards market="IN" heading="h1" />
+    <CompareTable market="IN" maxHeight="none" />
+    <div class="packs">
+      <h2 class="h3">Packs, when you need more.</h2>
+      <p>Allowances reset every month. Packs bought this month carry into the next.</p>
+      <ul>
+        <li data-bind="aiPack.0">{b['aiPack.0']}</li>
+        <li data-bind="aiPack.1">{b['aiPack.1']}</li>
+        <li>WhatsApp, SMS, email and call-minute packs are priced from the provider's cost in your market and shown in the app before you buy.</li>
+      </ul>
+      <p class="markets">Prices for each market: {MARKETS.map((m, i) => <>{i ? ' · ' : ''}<a href={m.path + '#pricing'}>{m.name}</a></>)}</p>
+    </div>
+  </section>
+  <FoundingBand />
+  <InfoDesk only={['price']} heading="Pricing questions." />
+</Base>
+<style>
+  .packs { margin-top: 72px; max-width: 820px; }
+  .packs p { color: var(--ink2); }
+  .packs ul { display: grid; gap: 8px; padding-left: 20px; font-size: 16px; }
+  .markets a { font-weight: 600; }
+</style>

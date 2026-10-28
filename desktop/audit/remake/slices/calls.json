@@ -1,0 +1,69 @@
+{
+  "slice": "calls",
+  "title": "Call Log & Dialer",
+  "status": "existing",
+  "showcaseOrder": 27,
+  "endpoints": [
+    "DELETE /api/v1/calls/:id",
+    "GET /api/v1/calls",
+    "GET /api/v1/calls/:id",
+    "GET /api/v1/calls/:id/actions",
+    "GET /api/v1/calls/analytics",
+    "GET /api/v1/calls/missed",
+    "GET /api/v1/transcripts",
+    "GET /api/v1/transcripts/:callLogId",
+    "POST /api/v1/calls/:id/end",
+    "POST /api/v1/calls/:id/transfer",
+    "POST /api/v1/calls/missed/:id/mark-returned",
+    "POST /api/v1/calls/outbound",
+    "PUT /api/v1/calls/:id",
+    "PUT /api/v1/transcripts/:callLogId"
+  ],
+  "gates": [
+    "voip_calling"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/voip.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/communication/calls/page.tsx",
+    "desktop/src/app/(app)/communication/calls/[id]/page.tsx",
+    "desktop/src/app/(app)/communication/calls/dial/page.tsx",
+    "desktop/src/app/(app)/communication/calls/analytics/page.tsx",
+    "desktop/src/app/(app)/communication/calls/transcripts/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/calls.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/communication/calls/**",
+    "desktop/src/lib/api/voip.ts",
+    "desktop/e2e/calls.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Call Log and Transcript Search rebuilt on ListPage (FilterBar via a direction/status dropdown, infinite scroll, hover row actions, skeleton, bulk delete, full-dataset CSV export). Call detail rebuilt on DetailPage with Overview/Related tabs, SendMessageDialog messaging when a contact is linked, and wired end/transfer actions (voipApi.calls.end/transfer, previously orphaned). Dial pad rebuilt with PhoneInput and a RelationCombobox contact picker. Analytics rebuilt with token-based StatCards and a DataTable for top callers. All five pages gate on voip_calling via useFeatureGate and render an upgrade/disabled state instead of calling the API when off. No detail drawer (call detail is a full page, matching prior nav) and no AddressAutocomplete/CurrencyInput/DatePicker — none of the call fields are address, money, or date-only. Missed-call mark-returned (voipApi.missedCalls.markReturned) and transcript update are wired into voip.ts but have no dedicated missed-calls page in this slice's page list; call it out if a future slice needs one.",
+  "showcaseScript": [
+    "Open the Call Log and filter to missed calls",
+    "Place an outbound call from the dialer",
+    "Open a call recording and read its transcript",
+    "Show call analytics by agent"
+  ]
+}

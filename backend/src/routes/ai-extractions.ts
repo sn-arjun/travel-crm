@@ -6,11 +6,14 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { rbac } from '../middleware/rbac';
+import { loadLocaleContext } from '../utils/money';
+import { computeDocumentTotals, loadTaxBuyer, taxColumns, TaxConfigError } from '../services/tax-calculator';
+import { loadInvoiceTaxContext, marginColumns, resolveMarginCost } from '../services/margin-scheme';
 
 const aiExtractionRoutes = new Hono<AppContext>();
 
@@ -26,7 +29,7 @@ function parseExtraction(row: Record<string, any>) {
     paxCount: row.pax_count,
     paxDetails: row.pax_details ? JSON.parse(row.pax_details) : null,
     budget: row.budget,
-    budgetCurrency: row.budget_currency,
+    budgetCurrency: row.budget_currency ?? null,
     preferences: row.preferences ? JSON.parse(row.preferences) : [],
     tripType: row.trip_type,
     hotelPreference: row.hotel_preference,
@@ -304,10 +307,13 @@ aiExtractionRoutes.post('/:id/create-itinerary', zValidator('json', createItiner
   const itineraryId = generateId();
   const title = `${dest} - ${numDays}N/${numDays + 1}D (${paxCount} Pax)`;
 
+  const agencyCurrency = (await loadLocaleContext(db)).currency;
+  const itineraryCurrency = String(extraction.budget_currency || agencyCurrency).toUpperCase();
+
   await db.prepare(`
     INSERT INTO itineraries (id, lead_id, title, status, notes, currency, created_by)
-    VALUES (?, ?, ?, 'draft', ?, 'INR', ?)
-  `).bind(itineraryId, leadId, title, body.notes || `AI-generated from call extraction. Preferences: ${preferences.join(', ')}`, userId).run();
+    VALUES (?, ?, ?, 'draft', ?, ?, ?)
+  `).bind(itineraryId, leadId, title, body.notes || `AI-generated from call extraction. Preferences: ${preferences.join(', ')}`, itineraryCurrency, userId).run();
 
   // Create day stubs
   const dayStmts = [];
@@ -368,35 +374,60 @@ aiExtractionRoutes.post('/:id/create-invoice', async (c) => {
   ).first<{ cnt: number }>();
   const invoiceNum = `INV-${String((countResult?.cnt || 0) + 1).padStart(5, '0')}`;
 
+  // Tax follows the agency's own regime and rules (settings), the same engine invoices use.
+  const currency = String(extraction.budget_currency || (await loadLocaleContext(db)).currency).toUpperCase();
+  const taxCtx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), db, { origin: 'manual' });
+  const { regime, seller } = taxCtx;
+  const marginCost = regime === 'margin' && taxCtx.scheme ? await resolveMarginCost(db, { scheme: taxCtx.scheme, currency }) : null;
+  if (taxCtx.margin) taxCtx.margin = { ...taxCtx.margin, cost: marginCost?.cost ?? null };
+  const buyer = (await loadTaxBuyer(db, contactId)) ?? {};
+  const unitRate = budget > 0 ? Math.round(budget / paxCount) : 0;
+  const subtotalBase = budget > 0 ? budget : 0;
+  let doc;
+  try {
+    // 5% is the Indian GST rate for a travel package; other regimes use the agency's configured rate.
+    doc = computeDocumentTotals([{ rate: subtotalBase, quantity: 1 }], undefined, 0, { regime, seller, buyer, gstDefaultRate: 5, margin: taxCtx.margin });
+  } catch (e) {
+    if (e instanceof TaxConfigError) return error(c, e.message, 400);
+    throw e;
+  }
+  const taxCols = taxColumns(doc.tax);
   const invoiceId = generateId();
-  const subtotal = budget > 0 ? budget : 0;
-  const taxRate = 0.05; // 5% GST for travel
-  const totalTax = Math.round(subtotal * taxRate * 100) / 100;
-  const total = subtotal + totalTax;
+  const subtotal = doc.subtotal;
+  const totalTax = doc.tax.totalTax;
+  const total = doc.total;
 
   await db.prepare(`
-    INSERT INTO invoices (id, lead_id, contact_id, invoice_number, type, subtotal, taxable_amount, tax_type, cgst, sgst, total_tax, total, currency, status, balance_due, notes, created_by)
-    VALUES (?, ?, ?, ?, 'proforma', ?, ?, 'gst', ?, ?, ?, ?, 'INR', 'draft', ?, ?, ?)
+    INSERT INTO invoices (id, lead_id, contact_id, invoice_number, type, subtotal, taxable_amount, tax_regime, tax_type, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes, cgst, sgst, igst, vat_amount, total_tax, total, currency, status, balance_due, notes, created_by)
+    VALUES (?, ?, ?, ?, 'proforma', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
   `).bind(
     invoiceId, leadId, contactId, invoiceNum,
-    subtotal, subtotal,
-    Math.round(totalTax / 2 * 100) / 100, // CGST
-    Math.round(totalTax / 2 * 100) / 100, // SGST
-    totalTax, total, total,
+    subtotal, doc.taxableAmount,
+    taxCols.tax_regime, taxCols.tax_type, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id, taxCols.place_of_supply, taxCols.tax_notes,
+    doc.tax.cgst, doc.tax.sgst, doc.tax.igst, doc.tax.vatAmount,
+    totalTax, total, currency, total,
     `Auto-generated from AI extraction for ${dest} (${paxCount} pax)`,
     userId,
   ).run();
 
+  if (regime === 'margin') {
+    const m = marginColumns(regime, taxCtx.margin, marginCost);
+    await db.prepare('UPDATE invoices SET margin_cost = ?, margin_cost_source = ?, margin_vat_rate = ?, margin_wording = ? WHERE id = ?')
+      .bind(m.margin_cost, m.margin_cost_source, m.margin_vat_rate, m.margin_wording, invoiceId).run();
+  }
+
   // Add line item
   const itemId = generateId();
+  const item = doc.items[0];
   await db.prepare(`
     INSERT INTO invoice_items (id, invoice_id, description, hsn_code, quantity, rate, taxable_amount, tax_rate, tax_amount, amount)
-    VALUES (?, ?, ?, '998551', ?, ?, ?, 5, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     itemId, invoiceId,
     `${dest} Travel Package (${paxCount} Pax)`,
-    paxCount, budget > 0 ? Math.round(budget / paxCount) : 0,
-    subtotal, totalTax, total,
+    regime === 'gst' ? '998551' : null,
+    paxCount, unitRate,
+    item.taxable, item.taxRate, item.tax, item.amount,
   ).run();
 
   // Log activity

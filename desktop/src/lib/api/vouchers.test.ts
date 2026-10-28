@@ -74,7 +74,22 @@ describe('vouchersApi', () => {
 
       const result = await vouchersApi.getById('v1');
 
-      expect(result.data).toEqual(voucher);
+      expect(result.data).toMatchObject(voucher);
+    });
+
+    it('should add camelCase fields from snake_case rows', async () => {
+      vi.mocked(client.get).mockResolvedValue({
+        data: { id: 'v1', lead_id: 'l1', lead_name: 'Asha Rao', supplier_name: 'Taj Hotels', created_at: '2026-03-01T10:00:00Z' },
+      });
+
+      const result = await vouchersApi.getById('v1');
+
+      expect(result.data).toMatchObject({
+        leadId: 'l1',
+        leadName: 'Asha Rao',
+        supplierName: 'Taj Hotels',
+        createdAt: '2026-03-01T10:00:00Z',
+      });
     });
 
     it('should use correct id in URL', async () => {

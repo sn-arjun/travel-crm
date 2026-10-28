@@ -1,0 +1,13 @@
+{
+  "suppliers.supplierName": "आपूर्तिकर्ता का नाम",
+  "suppliers.contactPerson": "संपर्क व्यक्ति",
+  "suppliers.email": "ईमेल",
+  "suppliers.phone": "फोन",
+  "suppliers.category": "श्रेणी",
+  "suppliers.rating": "रेटिंग",
+  "suppliers.createSupplier": "आपूर्तिकर्ता जोड़ें",
+  "suppliers.editSupplier": "आपूर्तिकर्ता संपादित करें",
+  "suppliers.deleteSupplier": "आपूर्तिकर्ता हटाएं",
+  "suppliers.viewDetails": "विवरण देखें",
+  "suppliers.noSuppliers": "कोई आपूर्तिकर्ता नहीं मिली"
+}

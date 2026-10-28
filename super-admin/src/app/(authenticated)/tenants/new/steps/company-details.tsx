@@ -1,19 +1,32 @@
 'use client';
 
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface CompanyData {
+export interface CompanyData {
   name: string;
   slug: string;
   ownerName: string;
   ownerEmail: string;
-  ownerPhone: string;
   country: string;
   timezone: string;
+  currency: string;
+  taxSystem: 'gst' | 'vat' | 'sales_tax' | 'none';
+  region: 'in' | 'eu' | 'uk' | 'us' | 'au' | 'gulf';
+  /** The agency's default language and its admin's own. '' = automatic: Dutch for a Netherlands agency, else English. */
+  language: '' | 'en' | 'nl' | 'hi' | 'ar';
 }
+
+/** The languages the product ships; keep in step with UI_LANGUAGES in backend/src/i18n/index.ts. */
+export const AGENCY_LANGUAGES: ReadonlyArray<{ value: CompanyData['language']; label: string }> = [
+  { value: 'en', label: 'English' },
+  { value: 'nl', label: 'Nederlands (Dutch)' },
+  { value: 'hi', label: 'हिन्दी (Hindi)' },
+  { value: 'ar', label: 'العربية (Arabic)' },
+];
 
 interface Props {
   data: CompanyData;
@@ -25,7 +38,7 @@ function slugify(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 30);
+    .slice(0, 38);
 }
 
 export function CompanyDetailsStep({ data, onNext }: Props) {
@@ -34,9 +47,12 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
     slug: data.slug || '',
     ownerName: data.ownerName || '',
     ownerEmail: data.ownerEmail || '',
-    ownerPhone: data.ownerPhone || '',
     country: data.country || 'India',
     timezone: data.timezone || 'Asia/Kolkata',
+    currency: data.currency || 'INR',
+    taxSystem: data.taxSystem || 'gst',
+    region: data.region || 'in',
+    language: data.language || '',
   });
   const [errors, setErrors] = useState<Partial<Record<keyof CompanyData, string>>>({});
 
@@ -48,7 +64,7 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
     const errs: Partial<Record<keyof CompanyData, string>> = {};
     if (!form.name.trim()) errs.name = 'Company name is required';
     if (!form.slug.trim()) errs.slug = 'Subdomain is required';
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(form.slug)) errs.slug = 'Must be lowercase letters, numbers, and hyphens';
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/.test(form.slug)) errs.slug = 'Must be 3-40 characters: lowercase letters, numbers, and hyphens';
     if (!form.ownerName.trim()) errs.ownerName = 'Owner name is required';
     if (!form.ownerEmail.trim()) errs.ownerEmail = 'Email is required';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.ownerEmail)) errs.ownerEmail = 'Invalid email format';
@@ -72,7 +88,7 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
         <Field label="Subdomain" error={errors.slug}>
           <div className="flex items-center gap-2">
             <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })} placeholder="acme-travel" />
-            <span className="text-sm text-muted-foreground whitespace-nowrap">.travelcrmpro.com</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">.{PLATFORM_DOMAIN}</span>
           </div>
         </Field>
         <Field label="Owner Name" error={errors.ownerName}>
@@ -80,9 +96,6 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
         </Field>
         <Field label="Owner Email" error={errors.ownerEmail}>
           <Input type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} placeholder="john@acmetravel.com" />
-        </Field>
-        <Field label="Owner Phone">
-          <Input value={form.ownerPhone} onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })} placeholder="+91 98765 43210" />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Country">
@@ -92,6 +105,38 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
             <Input value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
           </Field>
         </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Currency">
+            <Input value={form.currency} maxLength={3} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} />
+          </Field>
+          <Field label="Tax system">
+            <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.taxSystem} onChange={(e) => setForm({ ...form, taxSystem: e.target.value as CompanyData['taxSystem'] })}>
+              <option value="gst">GST</option>
+              <option value="vat">VAT</option>
+              <option value="sales_tax">Sales tax</option>
+              <option value="none">None</option>
+            </select>
+          </Field>
+          <Field label="Data region">
+            <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value as CompanyData['region'] })}>
+              <option value="in">India</option>
+              <option value="eu">European Union</option>
+              <option value="uk">United Kingdom</option>
+              <option value="us">United States</option>
+              <option value="au">Australia</option>
+              <option value="gulf">Gulf</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Default language">
+          <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value as CompanyData['language'] })} data-testid="tenant-language">
+            <option value="">Automatic (Dutch for the Netherlands, else English)</option>
+            {AGENCY_LANGUAGES.map((l) => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">The language of the agency documents and of its first administrator. Staff can still pick their own.</p>
+        </Field>
         <div className="flex justify-end pt-4">
           <Button onClick={handleNext}>Next: Select Plan</Button>
         </div>

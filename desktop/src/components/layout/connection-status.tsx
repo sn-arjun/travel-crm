@@ -4,8 +4,10 @@ import * as React from 'react';
 import { useRealtimeStore } from '@/stores/realtime-store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function ConnectionStatus() {
+  const t = useT();
   const connected = useRealtimeStore((s) => s.connected);
   const reconnectAttempts = useRealtimeStore((s) => s.reconnectAttempts);
 
@@ -13,29 +15,35 @@ export function ConnectionStatus() {
 
   if (!connected && reconnectAttempts === 0) return null;
 
+  const label = connected
+    ? t('shell.connection.connected')
+    : isReconnecting
+      ? t('shell.connection.reconnecting')
+      : t('shell.connection.disconnected');
+
   return (
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
-        <div className="flex items-center justify-center px-3 py-1.5">
+        <span
+          role="status"
+          tabIndex={0}
+          aria-label={label}
+          className="flex h-8 w-8 items-center justify-center rounded-ds-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring"
+        >
           <span
+            aria-hidden="true"
             className={cn(
-              'h-2 w-2 rounded-full',
+              'h-2 w-2 rounded-ds-full',
               connected
-                ? 'bg-emerald-500'
+                ? 'bg-ds-success'
                 : isReconnecting
-                  ? 'bg-amber-500 animate-pulse'
-                  : 'bg-red-500',
+                  ? 'bg-ds-warning animate-pulse'
+                  : 'bg-ds-danger',
             )}
           />
-        </div>
+        </span>
       </TooltipTrigger>
-      <TooltipContent side="right">
-        {connected
-          ? 'Real-time connected'
-          : isReconnecting
-            ? `Reconnecting... (attempt ${reconnectAttempts})`
-            : 'Disconnected'}
-      </TooltipContent>
+      <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
   );
 }

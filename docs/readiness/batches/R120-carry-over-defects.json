@@ -1,0 +1,107 @@
+{
+  "id": "R120",
+  "tier": 1,
+  "title": "Carry-over defects from the walkthrough: command palette, calendar stray 0, credit notes in the invoice list, yearly numbering reset",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Fix the visible defects reported after the last recorded walkthrough so a new agency does not meet them on day one.",
+  "why": "desktop/showcase/SHOWCASE.md \"Application findings\": Ctrl+K palette searches commands only and logs a Radix DialogTitle warning; calendar event cards render a stray \"0\" (is_all_day = 0); the invoices list includes credit notes (SH-CN-… rows); the hardening memo lists numbering reset_yearly not honoured. Also from the same list: segments criteria shows raw rule text, chatbot list last message always \"—\", inbox previews start with [Subject: …].",
+  "featuresToWorks": [
+    "dashboard.command-palette"
+  ],
+  "dependsOn": [],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R102"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "desktop/src/components/ui/command-palette.tsx",
+      "desktop/src/app/(app)/calendar/page.tsx",
+      "desktop/src/app/(app)/invoices/page.tsx",
+      "desktop/src/lib/api/invoices.ts",
+      "backend/src/routes/invoices.ts",
+      "backend/src/services/numbering.ts",
+      "backend/test/services/numbering.test.ts",
+      "desktop/e2e/chatbot.spec.ts",
+      "desktop/src/lib/api/chatbot.ts"
+    ],
+    "create": [
+      "backend/test/invoices-list-type.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/users.ts",
+      "backend/src/services/email.ts",
+      "backend/src/index.ts",
+      "desktop/src/components/layout/**",
+      "desktop/electron/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Command palette: add a visually hidden DialogTitle (Radix requirement) and a data section: when the query has 2+ characters, search contacts, leads and invoices through their existing list endpoints with the q/search parameter (debounced 250 ms, limit 5 each, cancel stale requests), results navigate to the detail page. No new backend endpoint.",
+    "Calendar: render is_all_day as a boolean (`{event.isAllDay ? <Badge>All day</Badge> : null}`), never the number; check other `{x && ...}` patterns on numeric fields in that file.",
+    "Invoices list: backend GET /invoices excludes credit notes by default (filter on the column that marks them: read routes/invoices.ts and the credit-notes route to see whether credit notes share the invoices table with a type/document_type column or live in credit_notes; if they share, add `type` query param default 'invoice'); desktop invoices page passes nothing new; the credit-notes page keeps working.",
+    "Numbering: services/numbering.ts honours reset_yearly (settings key written by routes/settings.ts ~502): the sequence restarts at 1 when the financial year (start month from settings, default April) changes; the counter key includes the financial-year label; existing numbers unaffected.",
+    "Optional if time remains, in this order, each a small change in its own file: segments list criteria rendered as readable text; inbox preview strips the leading [Subject: …]. Leave chatbot last message for later (needs an endpoint change).",
+    "Chatbot install tab (broken by R107, 2026-10-14): the desktop chatbot settings Install tab builds a /chatbot/widget.js URL that no longer exists. Use GET /chatbot/widget (returns widgetKey, scriptUrl, snippet, allowedOrigins) to show the snippet, and add an \"Allowed websites\" field saved with PUT /chatbot/config/website { allowedOrigins: [...] }. Explain in the UI that an empty list blocks every website.",
+    "desktop/e2e/chatbot.spec.ts seeds conversations through the removed authenticated /chatbot/webhook/:channel; switch its seeding to the public mount /api/v1/public/chatbot/:widgetKey/messages (get the key from GET /chatbot/widget and add the test origin to allowedOrigins), so the spec works on an enterprise-plan stack."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/services/numbering.test.ts: with reset_yearly true and FY start April, the last number of FY 2025-26 is followed by 0001 in FY 2026-27; with reset_yearly false the sequence continues.",
+    "backend/test/invoices-list-type.test.ts: list returns invoices but not credit notes; ?type=credit_note (if supported) returns only credit notes.",
+    "desktop unit test for the palette data search (mock the api clients)."
+  ],
+  "acceptance": [
+    "No Radix DialogTitle warning in the browser console when opening Ctrl+K (layout probe console check).",
+    "Calendar shows no stray 0.",
+    "Invoices list shows no credit notes.",
+    "The Install tab shows a working snippet from GET /chatbot/widget and saves allowed websites; chatbot.spec.ts seeding uses the public mount."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/calendar.spec.ts e2e/invoices.spec.ts e2e/credit-debit-notes.spec.ts e2e/dashboard.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0",
+    "cd desktop && node scripts/layout-probe.mjs --routes /calendar,/invoices,/dashboard --viewports 1366x768 --themes light --out audit/fix/probe/R120"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/calendar.spec.ts",
+      "e2e/invoices.spec.ts",
+      "e2e/credit-debit-notes.spec.ts",
+      "e2e/dashboard.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md: ds-* indigo tokens only (no raw palette classes or hex), archetypes (ListPage/EntityForm/DetailPage or PageContainer + PageHeader), FilterBar + useInfiniteScroll for lists, RelationCombobox for relations, PhoneInput for phones, useConfirm instead of window.confirm, graceful degradation when an env key is missing. lint-gate must not rise for any file you touch.",
+    "layout-probe needs a running stack on the slot (fix-stack up before it, down after)."
+  ]
+}

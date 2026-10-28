@@ -1,0 +1,22 @@
+{
+  "usage.title": "Usage and limits",
+  "usage.description.plan": "Plan {plan}. Allowances renew on {date}.",
+  "usage.description.default": "Your monthly allowances",
+  "usage.error": "Usage could not be loaded. Only administrators can see it.",
+  "usage.note.warning": "80% used. Consider requesting more before it runs out.",
+  "usage.note.exhausted": "Used up. New sends are refused until the allowance renews.",
+  "usage.renews": "Renews {date}",
+  "usage.buyMore": "Buy more",
+  "usage.requestTopUp": "Request top-up",
+  "usage.requestUpgrade": "Request upgrade",
+  "usage.requestSent": "Request sent. We will get back to you shortly.",
+  "usage.requestFailed": "Could not send the request. Please try again.",
+  "usage.progress": "{label} used",
+  "usage.channel.ai_credits": "AI credits",
+  "usage.channel.sms": "SMS",
+  "usage.channel.whatsapp": "WhatsApp utility messages",
+  "usage.channel.whatsapp_marketing": "WhatsApp marketing messages",
+  "usage.channel.otp": "Login codes",
+  "usage.channel.call_minute": "Call minutes",
+  "usage.channel.email": "Emails"
+}

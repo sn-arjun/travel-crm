@@ -1,238 +1,190 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Car } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+import { useParams, useRouter } from 'next/navigation';
+import { z } from 'zod';
+import { EntityForm, FormRow } from '@/components/domain';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+  Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SectionCard, Skeleton, Textarea,
+} from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
+import type { CreateVehicleRequest } from '@/lib/api/fleet';
+import { useApiQuery } from '@/hooks/use-api';
 import { toast } from 'sonner';
+import { VEHICLE_TYPE_LABELS, VEHICLE_STATUS_LABELS } from '@travelcrm/shared';
 
 const VEHICLE_COLORS = ['White', 'Silver', 'Black', 'Grey', 'Blue', 'Red', 'Brown', 'Green', 'Maroon', 'Gold'] as const;
+
+const schema = z.object({
+  registrationNumber: z.string().min(1, 'Registration number is required'),
+  type: z.string().min(1, 'Vehicle type is required'),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().optional(),
+  seatingCapacity: z.number().optional(),
+  color: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.string().optional(),
+  odometerKm: z.number().optional(),
+});
+type VehicleForm = z.infer<typeof schema>;
 
 export default function EditVehiclePage() {
   const router = useRouter();
   const params = useParams();
   const vehicleId = params.id as string;
 
-  const { data: vehicleResponse, loading: vehicleLoading, error: vehicleError } = useApiQuery(
+  const { data: vehicleResponse, loading, error } = useApiQuery(
     () => fleetApi.vehicles.getById(vehicleId),
     [vehicleId],
   );
-
-  const { mutate: updateVehicle, loading: isSubmitting } = useApiMutation(
-    (data: any) => fleetApi.vehicles.update(vehicleId, data),
-  );
-
   const vehicle = vehicleResponse?.data;
 
-  const [form, setForm] = React.useState({
-    registrationNumber: '',
-    make: '',
-    model: '',
-    year: new Date().getFullYear(),
-    capacity: 4,
-  });
-
-  // Initialize form when vehicle loads
-  React.useEffect(() => {
-    if (vehicle) {
-      setForm({
-        registrationNumber: vehicle.registrationNumber || '',
-        make: vehicle.make || '',
-        model: vehicle.model || '',
-        year: vehicle.year || new Date().getFullYear(),
-        capacity: vehicle.capacity || 4,
-      });
-    }
-  }, [vehicle]);
-
-  function updateField(field: string, value: string | number) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await updateVehicle(form);
-    if (result) {
-      toast.success('Vehicle updated successfully');
-      router.push('/fleet/vehicles');
-    } else {
-      toast.error('Failed to update vehicle');
-    }
-  }
-
-  if (vehicleLoading) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Loading vehicle...</p>
+      <div className="flex flex-col gap-ds-4 p-ds-6">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
-  if (vehicleError || !vehicle) {
+  if (error || !vehicle) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Vehicle not found</p>
+        <p className="text-sm text-ds-foreground-muted">Vehicle not found</p>
       </div>
     );
   }
+
+  const initialOdometer = vehicle.odometerKm ?? undefined;
+  const initialStatus = vehicle.status || 'available';
+  const colorOptions: string[] = vehicle.color && !(VEHICLE_COLORS as readonly string[]).includes(vehicle.color)
+    ? [...VEHICLE_COLORS, vehicle.color]
+    : [...VEHICLE_COLORS];
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Edit Vehicle</h1>
-            <p className="text-sm text-muted-foreground">{vehicle.registrationNumber}</p>
+    <EntityForm<VehicleForm>
+      title="Edit vehicle"
+      description={vehicle.registrationNumber}
+      schema={schema}
+      defaultValues={{
+        registrationNumber: vehicle.registrationNumber || '',
+        type: vehicle.type || 'sedan',
+        make: vehicle.make || '',
+        model: vehicle.model || '',
+        year: vehicle.year ?? undefined,
+        seatingCapacity: vehicle.seatingCapacity ?? undefined,
+        color: vehicle.color || '',
+        notes: vehicle.notes || '',
+        status: initialStatus,
+        odometerKm: initialOdometer,
+      }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        try {
+          await fleetApi.vehicles.update(vehicleId, {
+            registrationNumber: v.registrationNumber.toUpperCase(),
+            type: v.type as CreateVehicleRequest['type'],
+            make: v.make || undefined,
+            model: v.model || undefined,
+            year: v.year || undefined,
+            seatingCapacity: v.seatingCapacity || undefined,
+            color: v.color || undefined,
+            notes: v.notes || undefined,
+          });
+          if (v.status && v.status !== initialStatus) {
+            await fleetApi.vehicles.updateStatus(vehicleId, v.status);
+          }
+          if (v.odometerKm && v.odometerKm !== initialOdometer) {
+            await fleetApi.vehicles.updateOdometer(vehicleId, v.odometerKm);
+          }
+          toast.success('Vehicle updated successfully');
+          router.push(`/fleet/vehicles/${vehicleId}`);
+        } catch {
+          toast.error('Failed to update vehicle');
+        }
+      }}
+      renderSections={(form) => (
+        <SectionCard title="Vehicle details" required>
+          <div className="grid gap-ds-4 sm:grid-cols-2">
+            <FormRow name="registrationNumber" label="Registration number" required>
+              <Input
+                id="registrationNumber"
+                {...form.register('registrationNumber')}
+                placeholder="e.g., KA01AB1234"
+                onChange={(e) => form.setValue('registrationNumber', e.target.value.toUpperCase(), { shouldDirty: true })}
+              />
+            </FormRow>
+            <FormRow name="type" label="Vehicle type" required>
+              <Select value={form.watch('type')} onValueChange={(v) => form.setValue('type', v, { shouldDirty: true })}>
+                <SelectTrigger id="type"><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VEHICLE_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow name="make" label="Make">
+              <Input id="make" {...form.register('make')} placeholder="e.g., Toyota" />
+            </FormRow>
+            <FormRow name="model" label="Model">
+              <Input id="model" {...form.register('model')} placeholder="e.g., Innova Crysta" />
+            </FormRow>
+            <FormRow name="seatingCapacity" label="Seating capacity">
+              <Input
+                id="seatingCapacity"
+                type="number"
+                min={1}
+                max={100}
+                value={form.watch('seatingCapacity') ?? ''}
+                onChange={(e) => form.setValue('seatingCapacity', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+              />
+            </FormRow>
+            <FormRow name="year" label="Year">
+              <Input
+                id="year"
+                type="number"
+                min={1990}
+                max={2030}
+                value={form.watch('year') ?? ''}
+                onChange={(e) => form.setValue('year', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+              />
+            </FormRow>
+            <FormRow name="color" label="Color">
+              <Select value={form.watch('color') || undefined} onValueChange={(v) => form.setValue('color', v, { shouldDirty: true })}>
+                <SelectTrigger id="color"><SelectValue placeholder="Select color" /></SelectTrigger>
+                <SelectContent>
+                  {colorOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow name="status" label="Status">
+              <Select value={form.watch('status')} onValueChange={(v) => form.setValue('status', v, { shouldDirty: true })}>
+                <SelectTrigger id="status"><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VEHICLE_STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow name="odometerKm" label="Odometer (km)">
+              <Input
+                id="odometerKm"
+                type="number"
+                min={0}
+                value={form.watch('odometerKm') ?? ''}
+                onChange={(e) => form.setValue('odometerKm', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+              />
+            </FormRow>
+            <FormRow name="notes" label="Notes" wide>
+              <Textarea id="notes" rows={3} {...form.register('notes')} placeholder="Any notes about the vehicle..." />
+            </FormRow>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Changes
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          {/* Vehicle Identity */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Car className="h-4 w-4" />Vehicle Details</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="registrationNumber">Registration Number <span className="text-destructive">*</span></Label>
-                  <Input id="registrationNumber" placeholder="e.g., KA01AB1234" value={(form as any).registrationNumber} onChange={(e) => updateField('registrationNumber', e.target.value.toUpperCase())} required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Vehicle Type <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Select value={(form as any).type} onValueChange={(v) => updateField('type', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(VEHICLE_TYPE_LABELS).map(([v, l]) => (
-                        <SelectItem key={v} value={v}>{l}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="make">Make <span className="text-destructive">*</span></Label>
-                  <Input id="make" placeholder="e.g., Toyota" value={(form as any).make} onChange={(e) => updateField('make', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model">Model <span className="text-destructive">*</span></Label>
-                  <Input id="model" placeholder="e.g., Innova Crysta" value={(form as any).model} onChange={(e) => updateField('model', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="year">Year</Label>
-                  <Input id="year" type="number" min={2000} max={2030} value={(form as any).year} onChange={(e) => updateField('year', parseInt(e.target.value) || 2024)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Color</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Select value={(form as any).color} onValueChange={(v) => updateField('color', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select color" /></SelectTrigger>
-                    <SelectContent>
-                      {VEHICLE_COLORS.map((c: any) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="seatingCapacity">Seating Capacity</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="seatingCapacity" type="number" min={1} max={60} value={(form as any).seatingCapacity} onChange={(e) => updateField('seatingCapacity', parseInt(e.target.value) || 4)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="odometerReading">Odometer (km)</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="odometerReading" type="number" min={0} value={(form as any).odometerReading} onChange={(e) => updateField('odometerReading', parseInt(e.target.value) || 0)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Documents */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Document Expiry Dates</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="insuranceExpiry">Insurance Expiry</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="insuranceExpiry" type="date" value={(form as any).insuranceExpiry} onChange={(e) => updateField('insuranceExpiry', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="permitExpiry">Permit Expiry</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="permitExpiry" type="date" value={(form as any).permitExpiry} onChange={(e) => updateField('permitExpiry', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pollutionExpiry">Pollution Certificate Expiry</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="pollutionExpiry" type="date" value={(form as any).pollutionExpiry} onChange={(e) => updateField('pollutionExpiry', e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Owner Info */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Owner Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ownerName">Owner Name</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="ownerName" placeholder="Vehicle owner name" value={(form as any).ownerName} onChange={(e) => updateField('ownerName', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ownerPhone">Owner Phone</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="ownerPhone" placeholder="+91 XXXXX XXXXX" value={(form as any).ownerPhone} onChange={(e) => updateField('ownerPhone', e.target.value)} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                // @ts-ignore-next-line
-        // @ts-expect-error
-                <Textarea id="notes" placeholder="Any notes about the vehicle..." value={(form as any).notes} onChange={(e) => updateField('notes', e.target.value)} rows={3} />
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    </div>
+        </SectionCard>
+      )}
+    />
   );
 }

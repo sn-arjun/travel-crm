@@ -1,0 +1,103 @@
+{
+  "slice": "auth-shell",
+  "title": "Authentication & App Shell",
+  "status": "existing",
+  "showcaseOrder": 1,
+  "endpoints": [
+    "DELETE /api/v1/auth/sessions",
+    "DELETE /api/v1/auth/sessions/:id",
+    "DELETE /api/v1/files/*",
+    "GET /api/v1/auth/sessions",
+    "GET /api/v1/exchange-rates",
+    "GET /api/v1/files/*",
+    "GET /api/v1/hsn-codes",
+    "GET /api/v1/public/quotation/:token",
+    "GET /api/v1/users/me",
+    "GET /api/v1/users/me/login-history",
+    "GET /api/v1/users/me/signature",
+    "POST /api/v1/auth/forgot-password",
+    "POST /api/v1/auth/login",
+    "POST /api/v1/auth/logout",
+    "POST /api/v1/auth/refresh-token",
+    "POST /api/v1/auth/reset-password",
+    "POST /api/v1/auth/resolve-tenant",
+    "POST /api/v1/auth/send-otp",
+    "POST /api/v1/auth/setup-account",
+    "POST /api/v1/auth/verify-otp",
+    "POST /api/v1/files/upload",
+    "POST /api/v1/hsn-codes",
+    "POST /api/v1/users/me/avatar",
+    "PUT /api/v1/users/me",
+    "PUT /api/v1/users/me/signature"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/auth.ts",
+    "desktop/src/lib/api/client.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/lib/api/users.ts",
+    "desktop/src/lib/api/hsn-codes.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(auth)/login/page.tsx",
+    "desktop/src/app/(auth)/forgot-password/page.tsx",
+    "desktop/src/app/(auth)/reset-password/page.tsx",
+    "desktop/src/app/(auth)/setup-account/page.tsx",
+    "desktop/src/app/(app)/onboarding/page.tsx",
+    "desktop/src/app/(app)/help/page.tsx",
+    "desktop/src/app/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/settings/sessions/page.tsx"
+  ],
+  "stores": [
+    "desktop/src/stores/auth-store.ts",
+    "desktop/src/stores/sidebar-store.ts",
+    "desktop/src/stores/i18n-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/01-auth.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/auth-shell.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(auth)/**",
+    "desktop/src/app/page.tsx",
+    "desktop/src/app/(app)/onboarding/**",
+    "desktop/src/app/(app)/help/**",
+    "desktop/src/app/(app)/layout.tsx",
+    "desktop/src/components/layout/**",
+    "desktop/src/lib/api/auth.ts",
+    "desktop/src/lib/api/client.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/lib/api/hsn-codes.ts",
+    "desktop/src/stores/auth-store.ts",
+    "desktop/src/stores/sidebar-store.ts",
+    "desktop/src/stores/i18n-store.ts",
+    "desktop/e2e/auth-shell.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Login/forgot/reset/setup exist and now use ds-* tokens instead of raw green/red/amber Tailwind colors. Fixed a real bug: login (password + OTP) was discarding the real Tenant from the login response and fabricating a fake partial one via `as any` — now uses response.data.tenant directly. Sessions page (settings/sessions) rebuilt onto PageHeader + DataTable + EmptyState + Skeleton + useConfirm (was raw Card/Table with no confirm-before-revoke); it's a small flat array from the backend (not paginated), so no infinite scroll/filterBar apply here — ListPage archetype doesn't fit a non-paginated dataset. Help page's 'Contact Support' form posted to a nonexistent `/api/support-tickets` Next.js route (this app has no Next API routes at all, only the Workers backend) — replaced with a copy-to-clipboard + direct support-email instruction since no such backend endpoint exists in this slice and mailto: is banned. Sidebar badge counts are already wired to notificationsApi.getBadgeCounts() with realtime updates, not hardcoded as previously noted. Shell (sidebar/topbar/command palette) was already solid, uses shadcn CSS-var classes consistently (not raw hex/px, so contract-compliant) — left as-is rather than a wholesale ds-* rewrite given no functional defect.",
+  "showcaseScript": [
+    "Open the app and sign in with email and password",
+    "Show the tenant-aware sidebar and global search",
+    "Open Settings → Sessions and revoke another device",
+    "Sign out and confirm the login screen returns"
+  ]
+}

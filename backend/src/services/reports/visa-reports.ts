@@ -7,10 +7,12 @@ const visaReports: ReportDefinition[] = [
         name: 'Visa Status Summary',
         category: 'visa',
         description: 'Overview of active visa applications by status.',
-        requiredRole: ['admin', 'manager', 'salesperson'],
+        requiredRole: ['admin', 'sales_manager', 'salesperson'],
         allowedFilters: ['status', 'country'],
         allowedGroupBy: ['country', 'status'],
         defaultSort: { column: 'application_count', order: 'desc' },
+        // visa_applications have no assigned_to; a salesperson sees the applications they created
+        ownerColumn: 'created_by',
         baseQuery: `
       SELECT
         status,
@@ -32,25 +34,28 @@ const visaReports: ReportDefinition[] = [
         name: 'Pending Documents',
         category: 'visa',
         description: 'Visa applications with incomplete document submission.',
-        requiredRole: ['admin', 'manager', 'salesperson'],
+        requiredRole: ['admin', 'sales_manager', 'salesperson'],
         allowedFilters: ['country'],
         allowedGroupBy: ['country'],
-        defaultSort: { column: 'created_at', order: 'asc' },
+        defaultSort: { column: 'va.created_at', order: 'asc' },
+        dateColumn: 'va.created_at',
+        ownerColumn: 'va.created_by',
         baseQuery: `
       SELECT
         va.id as application_id,
         va.country,
         va.status,
         va.created_at,
-        va.travel_date,
+        ld.travel_date as travel_date,
         COUNT(vc.id) as total_checklist_items,
-        SUM(CASE WHEN vc.completed = 0 THEN 1 ELSE 0 END) as pending_items,
+        SUM(CASE WHEN vc.is_received = 0 THEN 1 ELSE 0 END) as pending_items,
         CAST(julianday('now') - julianday(va.created_at) AS INTEGER) as age_days
       FROM visa_applications va
-      LEFT JOIN visa_checklists vc ON vc.visa_application_id = va.id
-      WHERE va.status NOT IN ('approved', 'rejected', 'cancelled') {DATE_FILTER}
+      LEFT JOIN leads ld ON ld.id = va.lead_id
+      LEFT JOIN visa_checklist_items vc ON vc.visa_application_id = va.id
+      WHERE va.is_deleted = 0 AND va.status NOT IN ('approved', 'rejected', 'cancelled') {DATE_FILTER}
       GROUP BY va.id
-      HAVING SUM(CASE WHEN vc.completed = 0 THEN 1 ELSE 0 END) > 0
+      HAVING SUM(CASE WHEN vc.is_received = 0 THEN 1 ELSE 0 END) > 0
       {ORDER_BY}
     `,
         columns: [
@@ -69,7 +74,7 @@ const visaReports: ReportDefinition[] = [
         name: 'Visa Success Rate',
         category: 'visa',
         description: 'Approval and rejection rates by country.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['country'],
         allowedGroupBy: ['country'],
         defaultSort: { column: 'success_rate', order: 'desc' },

@@ -38,12 +38,103 @@ export interface ReportExecuteParams {
   [key: string]: string | number | boolean | undefined;
 }
 
-export interface ReportResult {
-  data: Record<string, any>[];
-  columns: Array<{ name: string; type: string }>;
-  meta: { total: number; page: number; per_page: number };
-  previous_period?: Record<string, any> | Record<string, Record<string, any>>;
+/** One cell of a report row as the report engine returns it. */
+export type ReportCell = string | number | boolean | null;
+
+/** Loose row shape for callers that have no typed row interface. */
+export type ReportRow = Record<string, ReportCell>;
+
+export interface ReportColumn {
+  name: string;
+  type: string;
+  label?: string;
+}
+
+export interface ReportMeta {
+  /** Real row count for the whole report (not just this page). */
+  total: number;
+  page: number;
+  per_page: number;
+  /** True when more rows exist beyond this page. */
+  hasMore?: boolean;
+}
+
+export interface ReportResult<T = ReportRow> {
+  data: T[];
+  columns: ReportColumn[];
+  meta: ReportMeta;
+  /** Ungrouped reports: one row. Grouped reports: rows keyed by the group value. */
+  /** Full previous-period rows (same shape as `data`); present when `compare=true`. */
+  previous_period_rows?: T[];
+  previous_period?: Record<string, ReportCell | Record<string, ReportCell>>;
   cached_at?: string;
+}
+
+export interface DashboardPipelineRow {
+  status: string;
+  count: number;
+  total_value: number;
+}
+
+export interface DashboardHotLead {
+  id: string;
+  title: string;
+  destination?: string | null;
+  budget?: number | null;
+  status: string;
+  priority?: string;
+  createdAt: string;
+  contactId?: string | null;
+  travelDate?: string | null;
+}
+
+export interface DashboardActivity {
+  id: string;
+  leadId: string;
+  type: string;
+  description?: string | null;
+  createdAt: string;
+  createdBy?: string | null;
+}
+
+export interface DashboardResponse {
+  pipeline: DashboardPipelineRow[];
+  hotLeads: DashboardHotLead[];
+  followUps: { total: number; overdue: number; pending: number };
+  recentActivities: DashboardActivity[];
+  financial: {
+    revenueThisMonth: number;
+    outstanding: number;
+    overdue: number;
+    invoicedThisMonth: number;
+    collectionsThisMonth: number;
+  };
+}
+
+export interface OutstandingInvoice {
+  id: string;
+  invoice_number: string;
+  total: number;
+  balance_due: number;
+  due_date: string;
+  contact_name: string | null;
+}
+
+export interface OutstandingResponse {
+  totalReceivable: number;
+  overdueReceivable: number;
+  ageing: { current: number; days30: number; days60: number; days90Plus: number };
+  topOverdueInvoices: OutstandingInvoice[];
+}
+
+export interface AgeingRow {
+  contact_id: string;
+  contact_name: string;
+  total_outstanding: number;
+  current_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_90_plus: number;
 }
 
 // Map frontend date range labels to backend date_preset values
@@ -85,11 +176,14 @@ export const reportsApi = {
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.reports.byId(id)),
 
-  // Execute a report from the report engine registry
-  execute: (reportId: string, params?: ReportExecuteParams) => {
-    const queryParams: Record<string, any> = { ...params };
+  /**
+   * Execute a report from the report engine registry. `T` is the row shape of
+   * that report, so pages read `unwrapReport<T>(res).data` without casting.
+   */
+  execute: <T = ReportRow>(reportId: string, params?: ReportExecuteParams) => {
+    const queryParams: Record<string, string | number | boolean | undefined> = { ...params };
     if (params?.compare) queryParams.compare = 'true';
-    return client.get<ApiResponse<ReportResult>>(
+    return client.get<ApiResponse<ReportResult<T>>>(
       API_ENDPOINTS.reports.byId(reportId),
       { params: queryParams }
     );
@@ -102,25 +196,13 @@ export const reportsApi = {
     }),
 
   getDashboard: () =>
-    client.get<ApiResponse<{
-      pipeline: Array<{ status: string; count: number; total_value: number }>;
-      hotLeads: Array<any>;
-      followUps: { total: number; overdue: number; pending: number };
-      recentActivities: Array<any>;
-      financial: {
-        revenueThisMonth: number;
-        outstanding: number;
-        overdue: number;
-        invoicedThisMonth: number;
-        collectionsThisMonth: number;
-      };
-    }>>(API_ENDPOINTS.reports.dashboard),
+    client.get<ApiResponse<DashboardResponse>>(API_ENDPOINTS.reports.dashboard),
 
   getOutstandingReport: (params?: { date_from?: string; date_to?: string }) =>
-    client.get<ApiResponse<any>>(API_ENDPOINTS.reports.outstanding, { params }),
+    client.get<ApiResponse<OutstandingResponse>>(API_ENDPOINTS.reports.outstanding, { params }),
 
   getAgeingReport: (params?: { date_from?: string; date_to?: string }) =>
-    client.get<ApiResponse<any>>(API_ENDPOINTS.reports.ageing, { params }),
+    client.get<ApiResponse<AgeingRow[]>>(API_ENDPOINTS.reports.ageing, { params }),
 
   invalidateCache: (reportId?: string) =>
     reportId

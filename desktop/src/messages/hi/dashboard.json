@@ -1,0 +1,18 @@
+{
+  "dashboard.revenueThisMonth": "इस महीने का राजस्व",
+  "dashboard.leadsThisMonth": "इस महीने की लीड्स",
+  "dashboard.conversionRate": "रूपांतरण दर",
+  "dashboard.pendingFollowUps": "लंबित अनुवर्ती कार्रवाइयां",
+  "dashboard.pipeline": "पाइपलाइन मूल्य",
+  "dashboard.recentActivity": "हाल की गतिविधि",
+  "dashboard.topPerformers": "शीर्ष प्रदर्शनकर्ता",
+  "dashboard.monthlyTrend": "मासिक प्रवृत्ति",
+  "dashboard.leadsBy Source": "स्रोत द्वारा लीड्स",
+  "dashboard.invoiceStatus": "चालान स्थिति",
+  "dashboard.upcomingTrips": "आने वाली यात्राएं",
+  "dashboard.tasksDueToday": "आज के कार्य",
+  "dashboard.newLeads": "नई लीड्स",
+  "dashboard.closedDeals": "बंद डील",
+  "dashboard.totalRevenue": "कुल राजस्व",
+  "dashboard.averageDealSize": "औसत डील आकार"
+}

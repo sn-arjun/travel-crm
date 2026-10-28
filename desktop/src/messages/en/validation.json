@@ -1,0 +1,8 @@
+{
+  "validation.required": "This field is required",
+  "validation.email": "Please enter a valid email",
+  "validation.phone": "Please enter a valid phone number",
+  "validation.minLength": "Minimum {min} characters required",
+  "validation.maxLength": "Maximum {max} characters allowed",
+  "validation.pattern": "Invalid format"
+}

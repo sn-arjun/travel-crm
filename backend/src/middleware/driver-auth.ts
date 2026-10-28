@@ -1,12 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { jwtVerify } from 'jose';
-import { drizzle } from 'drizzle-orm/d1';
-import { eq } from 'drizzle-orm';
 import type { AppContext } from '../types';
-import { tenants } from '../db/master-schema';
+import { getTenantInfo, tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
 import { error } from '../utils/response';
-
-const TENANT_CACHE_TTL = 300; // 5 minutes
 
 function getSecretKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
@@ -45,40 +41,24 @@ export const driverAuth: MiddlewareHandler<AppContext> = async (c, next) => {
     c.set('role', 'driver');
     c.set('userName', (payload.phone as string) || '');
 
-    // Resolve tenant DB (same logic as tenant middleware)
-    const cacheKey = `tenant:${tenantId}`;
-    const cached = await c.env.CACHE.get(cacheKey, 'json') as { d1DatabaseId: string | null; status: string } | null;
-
-    let tenantInfo: { d1DatabaseId: string | null; status: string };
-
-    if (cached) {
-      tenantInfo = cached;
-    } else {
-      const masterDb = drizzle(c.env.MASTER_DB);
-      const [tenant] = await masterDb
-        .select({ d1DatabaseId: tenants.d1DatabaseId, status: tenants.status })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-
-      if (!tenant) {
-        return error(c, 'Tenant not found', 404);
-      }
-
-      tenantInfo = { d1DatabaseId: tenant.d1DatabaseId, status: tenant.status };
-      await c.env.CACHE.put(cacheKey, JSON.stringify(tenantInfo), { expirationTtl: TENANT_CACHE_TTL });
+    // Resolve tenant DB through the single resolver (fails closed in multi-tenant mode)
+    const tenantInfo = await getTenantInfo(c.env, tenantId);
+    if (!tenantInfo) {
+      return error(c, 'Tenant not found', 404);
     }
 
     if (tenantInfo.status === 'suspended') return error(c, 'Tenant account is suspended', 403);
     if (tenantInfo.status === 'expired') return error(c, 'Tenant subscription has expired', 403);
+    if (tenantInfo.status === 'cancelled') return error(c, 'Tenant account has been cancelled', 403);
 
     let tenantDb: D1Database;
-    if (tenantInfo.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenantInfo.d1DatabaseId}` as `TENANT_DB_${string}`;
-      const binding = c.env[bindingKey];
-      tenantDb = binding ? binding : c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
+    try {
+      tenantDb = tenantDbFor(c.env, tenantInfo);
+    } catch (e) {
+      if (e instanceof TenantDbUnavailableError) {
+        return c.json({ success: false, error: { code: 'TENANT_DB_UNAVAILABLE', message: 'Tenant database is not available' } }, 503);
+      }
+      throw e;
     }
 
     c.set('tenantDb', tenantDb);

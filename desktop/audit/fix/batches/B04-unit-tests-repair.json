@@ -1,0 +1,52 @@
+{
+  "id": "B04",
+  "title": "Desktop unit tests: fix the 7 stale vitest files and the unit-test tsc errors",
+  "lane": "tests",
+  "backend": false,
+  "wave": "W1",
+  "dependsOn": [],
+  "parallelGroup": "W1",
+  "bugIds": [
+    "BUG-079",
+    "BUG-080"
+  ],
+  "fixReqs": [],
+  "estFiles": 17,
+  "goal": "vitest has no failing files outside the 3 owned by B01, and `tsc --noEmit` has no errors in unit-test files outside B01's 3 files, so the typecheck/unit gates become strict (0) once B01+B04+B09 merge.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Baseline (planner run): `npx vitest run` -> Test Files 10 failed | 43 passed; Tests 19 failed | 1085 passed. Failing: src/lib/api/ai.test.ts (bi.getBriefing x2), chatbot.test.ts (config get/update x4), credit-notes.test.ts (credit/debit list x8), exports.test.ts (invoicesBulkPdf x2), marketing.test.ts (segments.create), payments.test.ts (getById), vouchers.test.ts (getById) - stale expectations after slice changes - plus auth/client/users (load failures, owned by B01). tsc test errors per file: auth.test.ts 16 (B01), use-notifications.test.ts 16, notification-store.test.ts 15, bookmarks-store.test.ts 10, users.test.ts 10 (B01), client.test.ts 9 (B01), ai.test.ts 7, suppliers.test.ts 5, imports.test.ts 2, follow-ups.test.ts 2, chatbot.test.ts 2, use-unsaved-changes.test.ts 2, leads.test.ts 1, e2e/webhooks-integrations.spec.ts 1 and e2e/itineraries.spec.ts 1 (both B09).",
+  "steps": [
+    "For each of the 7 stale API-client test files, read the current implementation in src/lib/api/<name>.ts and update the test expectations (endpoint path, params, response unwrapping). The implementation is the source of truth; if a test exposes a real bug in src (e.g. wrong endpoint vs backend route), do not change src - list it in your report.",
+    "Fix the tsc errors in use-notifications.test.ts, notification-store.test.ts, bookmarks-store.test.ts, ai.test.ts, suppliers.test.ts, imports.test.ts, follow-ups.test.ts, chatbot.test.ts, use-unsaved-changes.test.ts, leads.test.ts (typed mocks, vi.mocked, correct fixture shapes; no `any` casts that hide real type mismatches - prefer `satisfies`/typed factories).",
+    "Run `npx vitest run` and `npx tsc --noEmit`; report remaining failures (should only be auth/client/users from B01, and the 2 e2e tsc errors from B09)."
+  ],
+  "filesAllowlist": [
+    "desktop/src/**/*.test.ts",
+    "desktop/src/**/*.test.tsx"
+  ],
+  "mustNotTouch": [
+    "desktop/src/lib/api/auth.test.ts",
+    "desktop/src/lib/api/client.test.ts",
+    "desktop/src/lib/api/users.test.ts",
+    "desktop/src/** non-test files",
+    "desktop/e2e/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "vitest: the only failing files (if B01 is not merged yet) are auth/client/users; 0 failing tests elsewhere.",
+    "tsc: 0 errors in test files except the three B01 files and the two e2e files."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Parallel with B00/B01: no lint gate yet. After merge the orchestrator sets gate-baseline.vitestFailingFiles to [] and tscTestErrors to the remaining count (expected 0 after B09)."
+}

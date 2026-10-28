@@ -1,0 +1,59 @@
+{
+  "slice": "rate-cards",
+  "title": "Rate Cards",
+  "status": "existing",
+  "showcaseOrder": 8,
+  "endpoints": [
+    "DELETE /api/v1/rate-cards/:id",
+    "GET /api/v1/rate-cards",
+    "GET /api/v1/rate-cards/:id",
+    "GET /api/v1/rate-cards/lookup",
+    "POST /api/v1/rate-cards",
+    "PUT /api/v1/rate-cards/:id"
+  ],
+  "gates": [],
+  "apiModules": [],
+  "pages": [
+    "desktop/src/app/(app)/rate-cards/page.tsx",
+    "desktop/src/app/(app)/rate-cards/new/page.tsx",
+    "desktop/src/app/(app)/rate-cards/[id]/edit/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/06-m6-itineraries-rate-cards.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/rate-cards.spec.ts",
+  "seedHelpers": [
+    "seedRateCard",
+    "seedSupplier"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/rate-cards/**",
+    "desktop/src/lib/api/rate-cards.ts",
+    "desktop/e2e/rate-cards.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "phoneInput/addressAutocomplete/sendMessageDialog N/A — rate cards have no phone/address/messaging fields. lookup endpoint still orphaned (no UI surface for itinerary-builder lookup in this slice's scope).",
+  "showcaseScript": [
+    "Open Rate Cards and filter by supplier",
+    "Create a seasonal rate card with validity dates",
+    "Look up the applicable rate for a date and pax count"
+  ]
+}

@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, real, integer, uniqueIndex, index, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 // --- Tenants ---
@@ -7,15 +7,25 @@ export const tenants = sqliteTable('tenants', {
   companyName: text('company_name').notNull(),
   subdomain: text('subdomain').notNull(),
   d1DatabaseId: text('d1_database_id'),
+  dbBinding: text('db_binding'), // Worker binding name TENANT_DB_<32 hex>
+  shard: text('shard').notNull().default('s1'),
   logoUrl: text('logo_url'),
   plan: text('plan').notNull().default('trial'), // trial, basic, pro, enterprise
   status: text('status').notNull().default('trial'), // trial, active, suspended, expired
   settings: text('settings'), // JSON text
   maxUsers: integer('max_users').default(5),
+  provisioningStatus: text('provisioning_status').notNull().default('active'), // creating_db, migrating, seeding, binding, active, pending_deploy, failed
+  provisioningError: text('provisioning_error'),
+  ownerEmail: text('owner_email'),
+  ownerName: text('owner_name'),
+  country: text('country'),
+  createdByAdmin: text('created_by_admin'),
+  region: text('region').notNull().default('in'), // in, eu, uk, us, au, gulf
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
   uniqueIndex('tenants_subdomain_idx').on(table.subdomain),
+  uniqueIndex('tenants_db_binding_idx').on(table.dbBinding).where(sql`${table.dbBinding} IS NOT NULL`),
   index('tenants_status_idx').on(table.status),
 ]);
 
@@ -31,6 +41,13 @@ export const subscriptions = sqliteTable('subscriptions', {
   status: text('status').notNull().default('active'), // active, past_due, cancelled
   paymentGateway: text('payment_gateway'), // razorpay, stripe
   gatewaySubscriptionId: text('gateway_subscription_id'),
+  currentPeriodEnd: text('current_period_end'),
+  pastDueSince: text('past_due_since'), // R205: start of the grace period after a failed renewal
+  lastEventAt: text('last_event_at'), // R205: newest gateway event applied (older events do not change state)
+  extraUsers: integer('extra_users').notNull().default(0),
+  quoteSubtotal: real('quote_subtotal'),
+  quoteTaxLines: text('quote_tax_lines'), // JSON
+  cancelAtPeriodEnd: integer('cancel_at_period_end').notNull().default(0),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
@@ -65,8 +82,21 @@ export const wordpressSites = sqliteTable('wordpress_sites', {
   wpAdminUrl: text('wp_admin_url'),
   containerId: text('container_id'),
   ociInstanceId: text('oci_instance_id'),
-  status: text('status').notNull().default('provisioning'), // provisioning, active, suspended, deleted
+  status: text('status').notNull().default('provisioning'), // queued, provisioning, active, failed, suspended (R309)
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  // 0006
+  domain: text('domain'),
+  errorMessage: text('error_message'), // the last error
+  provisionedAt: text('provisioned_at'),
+  updatedAt: text('updated_at'),
+  // 0023 (R309)
+  attempts: integer('attempts').notNull().default(0),
+  provisionerSiteId: text('provisioner_site_id'),
+  siteUrl: text('site_url'),
+  requestJson: text('request_json'),
+  requestedBy: text('requested_by'),
+  startedAt: text('started_at'),
+  welcomeSentAt: text('welcome_sent_at'),
 }, (table) => [
   uniqueIndex('wp_sites_subdomain_idx').on(table.subdomain),
   index('wp_sites_tenant_id_idx').on(table.tenantId),
@@ -84,6 +114,15 @@ export const tenantFeatureFlags = sqliteTable('tenant_feature_flags', {
   uniqueIndex('tenant_feature_flags_tenant_key_idx').on(table.tenantId, table.featureKey),
   index('tenant_feature_flags_tenant_idx').on(table.tenantId),
 ]);
+
+// --- Platform feature switches (R127): a row with is_enabled = 0 turns the feature off for every agency ---
+export const platformFeatureSwitches = sqliteTable('platform_feature_switches', {
+  featureKey: text('feature_key').primaryKey(),
+  isEnabled: integer('is_enabled').notNull().default(1),
+  reason: text('reason'),
+  updatedBy: text('updated_by'),
+  updatedAt: text('updated_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
 
 // --- Tenant Usage Snapshots ---
 export const tenantUsageSnapshots = sqliteTable('tenant_usage_snapshots', {
@@ -121,6 +160,7 @@ export const tenantUsageCaps = sqliteTable('tenant_usage_caps', {
   currentUsage: integer('current_usage').default(0),
   resetPeriod: text('reset_period').default('monthly'), // daily, monthly
   lastResetAt: text('last_reset_at'),
+  periodKey: text('period_key'),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
@@ -150,7 +190,10 @@ export const superAdminLoginLog = sqliteTable('super_admin_login_log', {
   userAgent: text('user_agent'),
   success: integer('success').notNull(), // 0 or 1
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  email: text('email'), // R111 (0017): the email that was tried, for lockout counting
+  event: text('event').notNull().default('login'), // login, logout
 }, (table) => [
+  index('sa_login_log_email_idx').on(table.email, table.createdAt),
   index('sa_login_log_ip_idx').on(table.ipAddress),
   index('sa_login_log_admin_idx').on(table.adminId),
   index('sa_login_log_created_idx').on(table.createdAt),
@@ -227,12 +270,16 @@ export const superAdminAuditLog = sqliteTable('super_admin_audit_log', {
 export const tenantApiKeys = sqliteTable('tenant_api_keys', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  // Legacy plaintext key; '' once hashed (R108). New keys are only ever stored as keyHash.
   apiKey: text('api_key').notNull(),
+  keyHash: text('key_hash'), // lowercase hex SHA-256 of the key
+  keyPrefix: text('key_prefix'), // first 8 characters, for display and the request log
   label: text('label'),
   isActive: integer('is_active').default(1),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  lastUsedAt: text('last_used_at'),
 }, (table) => [
-  uniqueIndex('tenant_api_keys_key_idx').on(table.apiKey),
+  uniqueIndex('tenant_api_keys_hash_idx').on(table.keyHash),
   index('tenant_api_keys_tenant_idx').on(table.tenantId),
 ]);
 
@@ -240,7 +287,7 @@ export const tenantApiKeys = sqliteTable('tenant_api_keys', {
 export const webhookLog = sqliteTable('webhook_log', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id').notNull(),
-  apiKey: text('api_key'),
+  apiKey: text('api_key'), // key prefix only (R108)
   source: text('source'),
   payload: text('payload'),
   status: text('status').notNull().default('success'),
@@ -249,6 +296,22 @@ export const webhookLog = sqliteTable('webhook_log', {
 }, (table) => [
   index('webhook_log_tenant_idx').on(table.tenantId),
   index('webhook_log_created_idx').on(table.createdAt),
+]);
+
+// --- Tenant Channel Addresses (inbound gateway: receiving number / mailbox -> tenant) ---
+export const tenantChannelAddresses = sqliteTable('tenant_channel_addresses', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  channel: text('channel').notNull(), // whatsapp, sms, email, voice
+  address: text('address').notNull(), // E.164 number or lower-cased email address
+  provider: text('provider'), // twilio, plivo, sendgrid
+  label: text('label'),
+  isActive: integer('is_active').default(1),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('tenant_channel_addresses_channel_address_idx').on(table.channel, table.address),
+  index('tenant_channel_addresses_tenant_idx').on(table.tenantId),
 ]);
 
 // --- Tenant Users (cross-tenant user lookup) ---
@@ -262,6 +325,20 @@ export const quotationLinks = sqliteTable('quotation_links', {
 }, (table) => [
   index('idx_quotation_links_itinerary').on(table.itineraryId),
   index('idx_quotation_links_tenant').on(table.tenantId),
+]);
+
+// --- Public Links (R148: random-token links to the public booking and self-service pages) ---
+export const publicLinks = sqliteTable('public_links', {
+  token: text('token').primaryKey(), // 128 random bits, base64url; never a UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  kind: text('kind').notNull(), // departure_booking, booking_self_service, passenger_self_service
+  entityId: text('entity_id').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+  expiresAt: text('expires_at'),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  lastUsedAt: text('last_used_at'),
+}, (table) => [
+  index('idx_public_links_entity').on(table.tenantId, table.kind, table.entityId),
 ]);
 
 export const tenantUsers = sqliteTable('tenant_users', {
@@ -278,4 +355,384 @@ export const tenantUsers = sqliteTable('tenant_users', {
   index('tenant_users_email_idx').on(table.email),
   index('tenant_users_tenant_id_idx').on(table.tenantId),
   index('tenant_users_user_id_idx').on(table.userId),
+]);
+
+// --- Plan catalogue (R109, migration 0015) ---
+export const plans = sqliteTable('plans', {
+  key: text('key').primaryKey(), // trial, basic, pro, enterprise
+  name: text('name').notNull(),
+  description: text('description'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isPublic: integer('is_public').notNull().default(1),
+  trialDays: integer('trial_days').notNull().default(0),
+  isActive: integer('is_active').notNull().default(1),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
+
+export const planPrices = sqliteTable('plan_prices', {
+  id: text('id').primaryKey(), // UUIDv7
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  market: text('market').notNull(), // IN, UK, EU, ANZ, WEST, GULF, SG, MY_TH, LK_NP_BD
+  currency: text('currency').notNull(),
+  yearlyPrice: real('yearly_price').notNull(),
+  includedUsers: integer('included_users').notNull(),
+  extraUserYearlyPrice: real('extra_user_yearly_price'),
+  isActive: integer('is_active').notNull().default(1),
+  validFrom: text('valid_from').notNull(),
+}, (table) => [
+  index('plan_prices_plan_market_idx').on(table.planKey, table.market, table.isActive),
+]);
+
+export const planFeatures = sqliteTable('plan_features', {
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  featureKey: text('feature_key').notNull(),
+}, (table) => [primaryKey({ columns: [table.planKey, table.featureKey] })]);
+
+export const planAllowances = sqliteTable('plan_allowances', {
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  allowanceKey: text('allowance_key').notNull(), // ai_credits, sms, whatsapp, whatsapp_marketing, otp, call_minutes, email
+  monthlyAmount: integer('monthly_amount').notNull().default(0),
+  // R130: NULL = the amount holds in every market; a market key (IN, UK, EU, ...) overrides it for agencies in that market.
+  market: text('market'),
+}, (table) => [
+  uniqueIndex('plan_allowances_all_markets_uq').on(table.planKey, table.allowanceKey).where(sql`${table.market} IS NULL`),
+  uniqueIndex('plan_allowances_market_uq').on(table.planKey, table.allowanceKey, table.market).where(sql`${table.market} IS NOT NULL`),
+]);
+
+export const commUnitCosts = sqliteTable('comm_unit_costs', {
+  id: text('id').primaryKey(), // UUIDv7
+  channel: text('channel').notNull(), // sms, whatsapp, otp, call_minute, phone_number
+  market: text('market').notNull(),
+  provider: text('provider').notNull(),
+  unitCost: real('unit_cost').notNull(),
+  currency: text('currency').notNull(),
+  marginPct: real('margin_pct').notNull().default(20),
+  effectiveFrom: text('effective_from').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+});
+
+export const addonProducts = sqliteTable('addon_products', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(), // extra_user, ai_credit_pack, comm_pack
+  channel: text('channel'), // sms, whatsapp, otp, call_minute for comm packs
+  units: integer('units').notNull().default(1),
+  fixedPrice: real('fixed_price'), // NULL = computed from comm_unit_costs
+  currency: text('currency').notNull(),
+  market: text('market').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+});
+
+export const tenantAddons = sqliteTable('tenant_addons', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  productKey: text('product_key').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitsGranted: integer('units_granted').notNull().default(0),
+  periodKey: text('period_key'), // NULL = recurring (extra users); yyyy-mm for packs
+  source: text('source').notNull().default('super_admin_grant'), // super_admin_grant, purchase
+  grantedBy: text('granted_by'),
+  reference: text('reference'),
+  expiresAt: text('expires_at'), // extra users bought mid-term end with the paid year; NULL = no end
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [index('tenant_addons_tenant_period_idx').on(table.tenantId, table.periodKey)]);
+
+export const catalogueNotes = sqliteTable('catalogue_notes', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
+// --- Impersonation sessions (R111, migration 0017) ---
+export const impersonationSessions = sqliteTable('impersonation_sessions', {
+  id: text('id').primaryKey(), // UUIDv7, also the sid claim of the impersonation token
+  superAdminId: text('super_admin_id').notNull().references(() => superAdmins.id),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  userId: text('user_id').notNull(),
+  userEmail: text('user_email'),
+  reason: text('reason').notNull(),
+  startedAt: text('started_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  expiresAt: text('expires_at').notNull(),
+  endedAt: text('ended_at'),
+  endedBy: text('ended_by'),
+}, (table) => [
+  index('impersonation_sessions_tenant_idx').on(table.tenantId),
+  index('impersonation_sessions_admin_idx').on(table.superAdminId),
+]);
+
+// --- Communication caps (R110, migration 0016) ---
+export const otpRequests = sqliteTable('otp_requests', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id'),
+  destinationHash: text('destination_hash').notNull(), // SHA-256 of the digits; the number itself is never stored
+  ip: text('ip'),
+  purpose: text('purpose').notNull().default('login'),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  index('otp_requests_dest_idx').on(table.destinationHash, table.createdAt),
+  index('otp_requests_ip_idx').on(table.ip, table.createdAt),
+]);
+
+export const usageAlerts = sqliteTable('usage_alerts', {
+  tenantId: text('tenant_id').notNull(),
+  capKey: text('cap_key').notNull(),
+  periodKey: text('period_key').notNull(),
+  threshold: integer('threshold').notNull(), // 80 or 100
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  primaryKey({ columns: [table.tenantId, table.capKey, table.periodKey, table.threshold] }),
+]);
+
+export const meteredEvents = sqliteTable('metered_events', {
+  eventKey: text('event_key').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  channel: text('channel').notNull(),
+  units: integer('units').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
+
+// --- Landing page enquiries (R116, migration 0018) ---
+export const platformEnquiries = sqliteTable('platform_enquiries', {
+  id: text('id').primaryKey(), // UUIDv7
+  kind: text('kind').notNull().default('contact'), // contact | demo | signup
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone'),
+  company: text('company'),
+  country: text('country'),
+  agentsCount: integer('agents_count'),
+  message: text('message'),
+  sourceUrl: text('source_url'),
+  ipHash: text('ip_hash'),
+  status: text('status').notNull().default('new'), // new | contacted | converted | spam
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  index('platform_enquiries_status_idx').on(table.status, table.createdAt),
+  index('platform_enquiries_email_idx').on(table.email, table.createdAt),
+]);
+
+// --- Daily exchange rates (R202, migration 0019) ---
+export const exchangeRates = sqliteTable('exchange_rates', {
+  base: text('base').notNull(),
+  quote: text('quote').notNull(),
+  rate: real('rate').notNull(), // units of quote per one unit of base
+  asOf: text('as_of').notNull(), // YYYY-MM-DD
+  source: text('source').notNull().default('open.er-api.com'),
+  fetchedAt: text('fetched_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  primaryKey({ columns: [table.base, table.quote, table.asOf] }),
+  index('exchange_rates_pair_idx').on(table.base, table.quote, table.asOf),
+]);
+
+// --- Billing (R205, migration 0020) ---
+export const billingCustomers = sqliteTable('billing_customers', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  gateway: text('gateway').notNull(), // razorpay, stripe, mock
+  customerId: text('customer_id').notNull(),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('billing_customers_tenant_gateway_idx').on(table.tenantId, table.gateway),
+  index('billing_customers_customer_idx').on(table.gateway, table.customerId),
+]);
+
+export const billingEvents = sqliteTable('billing_events', {
+  id: text('id').primaryKey(), // UUIDv7
+  gateway: text('gateway').notNull(),
+  eventId: text('event_id').notNull(),
+  type: text('type').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  tenantId: text('tenant_id'),
+  outcome: text('outcome'),
+  receivedAt: text('received_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  processedAt: text('processed_at'),
+}, (table) => [
+  uniqueIndex('billing_events_gateway_event_idx').on(table.gateway, table.eventId),
+]);
+
+export const platformInvoices = sqliteTable('platform_invoices', {
+  id: text('id').primaryKey(), // UUIDv7
+  number: text('number').notNull(),
+  tenantId: text('tenant_id').notNull(),
+  subscriptionId: text('subscription_id'),
+  period: text('period'),
+  currency: text('currency').notNull(),
+  subtotal: real('subtotal').notNull(),
+  taxLines: text('tax_lines'), // JSON
+  total: real('total').notNull(),
+  status: text('status').notNull().default('paid'),
+  gateway: text('gateway'),
+  gatewayRef: text('gateway_ref'),
+  description: text('description'),
+  issuedAt: text('issued_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('platform_invoices_number_idx').on(table.number),
+  index('platform_invoices_tenant_idx').on(table.tenantId, table.issuedAt),
+]);
+
+export const billingCounters = sqliteTable('billing_counters', {
+  key: text('key').primaryKey(),
+  value: integer('value').notNull().default(0),
+});
+
+/** R206: one-off purchases of extra users, AI credit packs and communication packs. */
+export const addonOrders = sqliteTable('addon_orders', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  productKey: text('product_key').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitPrice: real('unit_price').notNull(),
+  currency: text('currency').notNull(),
+  subtotal: real('subtotal').notNull(),
+  taxTotal: real('tax_total').notNull().default(0),
+  taxLines: text('tax_lines'), // JSON
+  total: real('total').notNull(),
+  unitsGranted: integer('units_granted').notNull().default(0),
+  description: text('description'),
+  gateway: text('gateway').notNull(),
+  gatewayRef: text('gateway_ref'),
+  checkoutUrl: text('checkout_url'),
+  status: text('status').notNull().default('pending'), // pending | paid | failed
+  invoiceId: text('invoice_id'),
+  idempotencyKey: text('idempotency_key').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  paidAt: text('paid_at'),
+}, (table) => [
+  uniqueIndex('addon_orders_idempotency_idx').on(table.idempotencyKey),
+  index('addon_orders_tenant_idx').on(table.tenantId, table.createdAt),
+]);
+
+// --- VoIP sub-accounts, numbers, KYC and country policy (R304, migration 0022) ---
+const nowText = sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`;
+
+export const platformSettings = sqliteTable('platform_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  updatedBy: text('updated_by'),
+});
+
+export const voipAccounts = sqliteTable('voip_accounts', {
+  tenantId: text('tenant_id').primaryKey(),
+  provider: text('provider').notNull().default('twilio'),
+  subAccountId: text('sub_account_id'),
+  credentialsEnc: text('credentials_enc'), // sub-account auth token sealed with crypto-box
+  status: text('status').notNull().default('pending'), // pending | active | suspended | closed
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  suspendedAt: text('suspended_at'),
+  closedAt: text('closed_at'),
+});
+
+export const callCountryPolicy = sqliteTable('call_country_policy', {
+  country: text('country').primaryKey(),
+  position: text('position').notNull(), // resell | bridge | own_account | not_offered
+  provider: text('provider'),
+  kycRequired: integer('kyc_required').notNull().default(0),
+  notes: text('notes'),
+  recordingDefault: text('recording_default').notNull().default('announce'), // announce | off | on_request (R137)
+  kycRequirements: text('kyc_requirements'), // JSON [{ key, label, type: text|address|file|date, required }]; null = free-form upload (R137)
+  updatedAt: text('updated_at').notNull().default(nowText),
+});
+
+export const numberDocuments = sqliteTable('number_documents', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  country: text('country').notNull(),
+  status: text('status').notNull().default('pending'), // pending | approved | rejected
+  details: text('details'), // JSON
+  files: text('files'), // JSON [{ name, url }]
+  reviewNote: text('review_note'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: text('reviewed_at'),
+  providerBundleSid: text('provider_bundle_sid'), // R137: regulatory bundle at the phone provider
+  providerAddressSid: text('provider_address_sid'),
+  providerStatus: text('provider_status'), // pending-review | in-review | twilio-approved | twilio-rejected | submit_failed
+  providerStatusAt: text('provider_status_at'),
+  providerFailureReason: text('provider_failure_reason'),
+  numberType: text('number_type').notNull().default('local'), // local | mobile | national
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+}, (table) => [uniqueIndex('number_documents_tenant_country_idx').on(table.tenantId, table.country)]);
+
+export const voipNumberRegistry = sqliteTable('voip_number_registry', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  phoneNumber: text('phone_number').notNull(),
+  providerNumberId: text('provider_number_id'),
+  subAccountId: text('sub_account_id'),
+  country: text('country').notNull(),
+  status: text('status').notNull().default('pending'), // pending | active | release_scheduled | released
+  idempotencyKey: text('idempotency_key').notNull(),
+  addonId: text('addon_id'),
+  monthlyPrice: real('monthly_price'),
+  currency: text('currency'),
+  paidThrough: text('paid_through'),
+  releaseAt: text('release_at'),
+  releaseReason: text('release_reason'),
+  tenantNumberId: text('tenant_number_id'),
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  releasedAt: text('released_at'),
+}, (table) => [
+  uniqueIndex('voip_number_registry_idempotency_idx').on(table.idempotencyKey),
+  index('voip_number_registry_tenant_idx').on(table.tenantId, table.status),
+]);
+
+// R305: call minutes metered from the provider's records, and the fraud limits around calling.
+export const callUsage = sqliteTable('call_usage', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  providerCallId: text('provider_call_id').notNull(), // unique: a provider call is charged once
+  subAccountId: text('sub_account_id'),
+  direction: text('direction').notNull(), // inbound | outbound
+  leg: text('leg').notNull().default('customer'), // customer | agent
+  parentCallId: text('parent_call_id'),
+  remoteNumber: text('remote_number'),
+  destinationCountry: text('destination_country'),
+  destinationType: text('destination_type'), // standard | premium | unknown
+  billedSeconds: integer('billed_seconds').notNull().default(0),
+  providerCost: real('provider_cost').notNull().default(0),
+  currency: text('currency').notNull().default('USD'),
+  weight: real('weight').notNull().default(1),
+  minutesCounted: integer('minutes_counted').notNull().default(0),
+  startedAt: text('started_at').notNull(),
+  recordedAt: text('recorded_at').notNull().default(nowText),
+}, (table) => [
+  uniqueIndex('call_usage_provider_call_idx').on(table.providerCallId),
+  index('call_usage_tenant_started_idx').on(table.tenantId, table.startedAt),
+]);
+
+export const voipUsageCursor = sqliteTable('voip_usage_cursor', {
+  tenantId: text('tenant_id').primaryKey(),
+  cursorAt: text('cursor_at').notNull(),
+  lastRunAt: text('last_run_at'),
+  lastError: text('last_error'),
+  importedTotal: integer('imported_total').notNull().default(0),
+});
+
+export const voipAllowedCountries = sqliteTable('voip_allowed_countries', {
+  tenantId: text('tenant_id').notNull(),
+  country: text('country').notNull(),
+  createdAt: text('created_at').notNull().default(nowText),
+  createdBy: text('created_by'),
+}, (table) => [primaryKey({ columns: [table.tenantId, table.country] })]);
+
+export const voipFraudEvents = sqliteTable('voip_fraud_events', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  kind: text('kind').notNull(), // daily_minutes | spend_spike | platform_ceiling | velocity | blocked_destination
+  dayKey: text('day_key').notNull(),
+  blocking: integer('blocking').notNull().default(0),
+  status: text('status').notNull().default('active'), // active | lifted
+  detail: text('detail'), // JSON
+  occurrences: integer('occurrences').notNull().default(1),
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  liftedAt: text('lifted_at'),
+  liftedBy: text('lifted_by'),
+  notifiedAt: text('notified_at'),
+}, (table) => [
+  uniqueIndex('voip_fraud_events_unique_idx').on(table.tenantId, table.kind, table.dayKey),
+  index('voip_fraud_events_status_idx').on(table.status, table.createdAt),
 ]);

@@ -3,14 +3,16 @@ class TripListState {
   final List<Map<String, dynamic>> trips;
   final String? error;
   final bool hasMore;
-  final int offset;
+
+  /// Last page successfully loaded (0 = nothing loaded yet).
+  final int page;
 
   const TripListState({
     this.isLoading = false,
     this.trips = const [],
     this.error,
     this.hasMore = true,
-    this.offset = 0,
+    this.page = 0,
   });
 
   TripListState copyWith({
@@ -18,14 +20,14 @@ class TripListState {
     List<Map<String, dynamic>>? trips,
     String? error,
     bool? hasMore,
-    int? offset,
+    int? page,
   }) {
     return TripListState(
       isLoading: isLoading ?? this.isLoading,
       trips: trips ?? this.trips,
       error: error,
       hasMore: hasMore ?? this.hasMore,
-      offset: offset ?? this.offset,
+      page: page ?? this.page,
     );
   }
 }
@@ -36,11 +38,15 @@ class TripDetailState {
   final String? error;
   final bool isActionLoading;
 
+  /// The trip on screen is the copy saved on the phone (no signal).
+  final bool fromCache;
+
   const TripDetailState({
     this.isLoading = false,
     this.trip,
     this.error,
     this.isActionLoading = false,
+    this.fromCache = false,
   });
 
   TripDetailState copyWith({
@@ -48,12 +54,14 @@ class TripDetailState {
     Map<String, dynamic>? trip,
     String? error,
     bool? isActionLoading,
+    bool? fromCache,
   }) {
     return TripDetailState(
       isLoading: isLoading ?? this.isLoading,
       trip: trip ?? this.trip,
       error: error,
       isActionLoading: isActionLoading ?? this.isActionLoading,
+      fromCache: fromCache ?? this.fromCache,
     );
   }
 }

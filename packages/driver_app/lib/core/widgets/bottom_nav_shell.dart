@@ -20,16 +20,19 @@ class BottomNavShell extends StatelessWidget {
         },
         destinations: const [
           NavigationDestination(
+            key: Key('nav-trips'),
             icon: Icon(Icons.directions_car_outlined),
             selectedIcon: Icon(Icons.directions_car),
             label: 'Trips',
           ),
           NavigationDestination(
+            key: Key('nav-history'),
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: 'History',
           ),
           NavigationDestination(
+            key: Key('nav-profile'),
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Profile',

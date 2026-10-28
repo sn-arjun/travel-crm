@@ -1,0 +1,70 @@
+{
+  "slice": "settings-team",
+  "title": "Team & Users",
+  "status": "existing",
+  "showcaseOrder": 46,
+  "endpoints": [
+    "GET /api/v1/activity-logs",
+    "GET /api/v1/activity-logs/entity/:type/:id",
+    "GET /api/v1/activity-logs/user/:id",
+    "GET /api/v1/users",
+    "GET /api/v1/users/:id",
+    "GET /api/v1/users/:id/login-history",
+    "POST /api/v1/users",
+    "POST /api/v1/users/:id/unlock",
+    "PUT /api/v1/users/:id",
+    "PUT /api/v1/users/:id/activate",
+    "PUT /api/v1/users/:id/deactivate"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/users.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/team/page.tsx",
+    "desktop/src/app/(app)/settings/profile/page.tsx",
+    "desktop/src/app/(app)/settings/email-signature/page.tsx",
+    "desktop/src/app/(app)/settings/login-history/page.tsx",
+    "desktop/src/app/(app)/settings/activity-log/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/15-settings.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/settings-team.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/team/**",
+    "desktop/src/app/(app)/settings/profile/**",
+    "desktop/src/app/(app)/settings/email-signature/**",
+    "desktop/src/app/(app)/settings/login-history/**",
+    "desktop/src/app/(app)/settings/activity-log/**",
+    "desktop/src/lib/api/users.ts",
+    "desktop/e2e/settings-team.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "No relation fields, currency, dates, or outbound messaging in this slice, so those boxes stay N/A. GET /users has no server-side pagination (backend returns a plain array), so Team stays a single-fetch DataTable via ListPage without a real infinite-scroll page loop, and has no themed export — flagging for a future backend change to paginate /users if that's wanted. Login history (own and per-user) is similarly a capped, non-paginated array from the backend, so it renders as a plain DataTable, not a ListPage. Activity log IS backend-paginated and got the full ListPage + infinite scroll + filter dialog treatment. Added usersApi.invite/activate/deactivate/unlock/getLoginHistory/getMyLoginHistory/getSignature/updateSignature and a new activityLogsApi module (list/byUser/byEntity) to wire up every previously orphaned endpoint. Email signature now persists via PUT /users/me/signature (structured fields serialized into an HTML comment for round-trip) instead of localStorage. Removed the profile page's fake password-change form — there is no backend change-password endpoint, so it silently did nothing.",
+  "showcaseScript": [
+    "Open Settings → Team",
+    "Invite a user and assign the Sales Manager role",
+    "Deactivate a departed user",
+    "Open the activity log and filter by that user"
+  ]
+}

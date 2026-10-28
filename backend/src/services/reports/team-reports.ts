@@ -7,7 +7,7 @@ const teamReports: ReportDefinition[] = [
         name: 'Team Performance Dashboard',
         category: 'team',
         description: 'Summary of completed activities and won deals per team member.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['department'],
         allowedGroupBy: ['department'],
         dateColumn: 'u.created_at',
@@ -45,14 +45,14 @@ const teamReports: ReportDefinition[] = [
         name: 'Individual Performance Report',
         category: 'team',
         description: 'Deep-dive performance metrics per team member.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: [],
         defaultSort: { column: 'won_deals', order: 'desc' },
         baseQuery: `
       SELECT
         l.assigned_to,
-        strftime('%Y-%m', l.created_at) as month,
+        strftime('%Y-%m', l.created_at, '{TZ}') as month,
         COUNT(l.id) as total_leads,
         SUM(CASE WHEN l.status = 'won' THEN 1 ELSE 0 END) as won_deals,
         COALESCE(SUM(CASE WHEN l.status = 'won' THEN l.budget ELSE 0 END), 0) as revenue,
@@ -60,7 +60,7 @@ const teamReports: ReportDefinition[] = [
         COALESCE(AVG(CASE WHEN l.status = 'won' THEN CAST(julianday(l.updated_at) - julianday(l.created_at) AS REAL) END), 0) as avg_days_to_close
       FROM leads l
       WHERE l.is_deleted = 0 {DATE_FILTER}
-      GROUP BY l.assigned_to, strftime('%Y-%m', l.created_at)
+      GROUP BY l.assigned_to, strftime('%Y-%m', l.created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -78,7 +78,7 @@ const teamReports: ReportDefinition[] = [
         name: 'Response Time by User',
         category: 'team',
         description: 'Average response time to new leads per team member.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'avg_response_hours', order: 'asc' },
@@ -108,7 +108,7 @@ const teamReports: ReportDefinition[] = [
         name: 'Team Activity Report',
         category: 'team',
         description: 'Activities logged by each team member.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['type'],
         allowedGroupBy: ['type'],
         defaultSort: { column: 'activity_count', order: 'desc' },
@@ -134,7 +134,7 @@ const teamReports: ReportDefinition[] = [
         name: 'Task Completion Report',
         category: 'team',
         description: 'Task completion rates per team member.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: ['assigned_to'],
         defaultSort: { column: 'completion_rate', order: 'desc' },
@@ -144,7 +144,7 @@ const teamReports: ReportDefinition[] = [
         COUNT(id) as total_tasks,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
         SUM(CASE WHEN status = 'pending' OR status = 'in_progress' THEN 1 ELSE 0 END) as pending_tasks,
-        SUM(CASE WHEN due_date < date('now') AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks,
+        SUM(CASE WHEN due_date < '{TODAY}' AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks,
         COALESCE(SUM(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(id), 0) * 100, 0) as completion_rate
       FROM tasks
       WHERE 1 = 1 {DATE_FILTER}

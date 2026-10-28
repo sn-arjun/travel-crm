@@ -1,0 +1,83 @@
+{
+  "slice": "leads",
+  "title": "Leads",
+  "status": "existing",
+  "showcaseOrder": 4,
+  "endpoints": [
+    "DELETE /api/v1/leads/:id",
+    "DELETE /api/v1/leads/:id/notes/:noteId",
+    "GET /api/v1/leads",
+    "GET /api/v1/leads/:id",
+    "GET /api/v1/leads/:id/activities",
+    "GET /api/v1/leads/:id/follow-ups",
+    "GET /api/v1/leads/:id/notes",
+    "GET /api/v1/leads/filter-options",
+    "GET /api/v1/leads/unassigned",
+    "POST /api/v1/leads",
+    "POST /api/v1/leads/:id/activities",
+    "POST /api/v1/leads/:id/assign",
+    "POST /api/v1/leads/:id/notes",
+    "POST /api/v1/leads/bulk-assign",
+    "POST /api/v1/leads/bulk-delete",
+    "POST /api/v1/leads/bulk-status",
+    "PUT /api/v1/leads/:id",
+    "PUT /api/v1/leads/:id/notes/:noteId",
+    "PUT /api/v1/leads/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/leads.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/leads/page.tsx",
+    "desktop/src/app/(app)/leads/[id]/page.tsx",
+    "desktop/src/app/(app)/leads/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/leads/new/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/leads/unassigned/page.tsx"
+  ],
+  "stores": [
+    "desktop/src/stores/lead-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/04-leads.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/leads.spec.ts",
+  "seedHelpers": [
+    "seedLead",
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/leads/**",
+    "desktop/src/lib/api/leads.ts",
+    "desktop/src/stores/lead-store.ts",
+    "desktop/src/components/domain/leads/**",
+    "desktop/e2e/leads.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "GET /leads/unassigned and the bulk-assign/bulk-status/bulk-delete actions are client-only — no UI reaches them. Lead notes CRUD (PUT/DELETE /leads/:id/notes/:noteId) is orphaned. No PhoneInput on the lead form.",
+  "showcaseScript": [
+    "Open Leads from the sidebar and filter by status",
+    "Create a lead with source, budget and travel dates",
+    "Open the detail drawer and log an activity",
+    "Bulk-assign unassigned leads to a sales rep",
+    "Convert the lead into an itinerary"
+  ]
+}

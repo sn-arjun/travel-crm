@@ -1,0 +1,28 @@
+name: Deploy Agency Web App
+
+# Manual only. Production deploys follow the runbook (docs/GO-LIVE.md).
+# Builds the agency (desktop) Next.js app as a website with OpenNext and deploys the Worker travelcrm-app,
+# which app.<domain> points at (terraform: cloudflare_workers_domain.app).
+# The domain and optional download links are Worker variables in desktop/wrangler.toml (PLATFORM_DOMAIN,
+# INSTALLER_URL, DRIVER_APP_URL); no secret is needed besides the Cloudflare token.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and deploy the OpenNext Worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm -w @travelcrm/shared run build
+      - name: Deploy (opennextjs-cloudflare build + deploy)
+        run: npm -w travelcrm-desktop run deploy:web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

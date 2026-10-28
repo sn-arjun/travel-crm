@@ -1,0 +1,33 @@
+{
+  "id": "role-operations",
+  "title": "A day in operations",
+  "voice": "af_heart",
+  "recording": "role-operations",
+  "scenes": [
+    { "type": "logo", "dur": 2.6 },
+    { "type": "title", "kicker": "Roles", "title": "A day in operations", "subtitle": "Deepa runs the Kochi desk", "chapter": "Introduction", "short": false,
+      "narration": "Deepa runs operations at the Kochi desk. Once a trip is sold, she makes sure it happens: cars, vouchers, visas and the tasks in between." },
+    { "type": "screen", "step": "ops-today", "chapter": "Today's trips",
+      "narration": "She starts on the fleet dashboard: trips running today, cars free, and alerts that need her.",
+      "lowerThird": { "feature": "Fleet today", "role": "Operations", "plan": "All plans" },
+      "features": ["fleet.dashboard"] },
+    { "type": "screen", "step": "ops-trips",
+      "narration": "The trip list shows each pickup with its driver and status, updated live as drivers move through the trip.",
+      "lowerThird": { "feature": "Trips", "role": "Operations", "plan": "All plans" },
+      "features": ["fleet.trips"] },
+    { "type": "screen", "step": "ops-vouchers", "chapter": "Vouchers",
+      "narration": "A hotel has confirmed, so she marks the voucher confirmed.",
+      "lowerThird": { "feature": "Voucher status", "role": "Operations", "plan": "All plans" },
+      "features": ["vouchers.status"] },
+    { "type": "screen", "step": "ops-tasks", "chapter": "Her tasks",
+      "narration": "Her tasks are on a board by status. She moves one along as it gets done.",
+      "lowerThird": { "feature": "Task board", "role": "Operations", "plan": "All plans" },
+      "features": ["tasks.list"] },
+    { "type": "screen", "step": "ops-visa", "chapter": "Visas",
+      "narration": "And she checks the visa dashboard for applications waiting on documents.",
+      "lowerThird": { "feature": "Visa dashboard", "role": "Operations", "plan": "All plans" },
+      "features": ["visa.dashboard"] },
+    { "type": "end", "headline": "Sold trips that run smoothly.", "cta": "Bring your operations in", "chapter": "Thank you", "short": false,
+      "narration": "TravelCRM Pro. Sold trips that run smoothly." }
+  ]
+}

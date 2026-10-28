@@ -1,0 +1,65 @@
+{
+  "slice": "campaigns",
+  "title": "Email Campaigns",
+  "status": "existing",
+  "showcaseOrder": 30,
+  "endpoints": [
+    "DELETE /api/v1/campaigns/:id",
+    "GET /api/v1/campaigns",
+    "GET /api/v1/campaigns/:id",
+    "GET /api/v1/campaigns/:id/recipients",
+    "POST /api/v1/campaigns",
+    "POST /api/v1/campaigns/:id/cancel",
+    "POST /api/v1/campaigns/:id/schedule",
+    "POST /api/v1/campaigns/:id/send",
+    "PUT /api/v1/campaigns/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/campaigns.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/campaigns/page.tsx",
+    "desktop/src/app/(app)/campaigns/[id]/page.tsx",
+    "desktop/src/app/(app)/campaigns/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/09-m9-campaigns-email.spec.ts",
+    "desktop/e2e/13-campaigns.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/campaigns.spec.ts",
+  "seedHelpers": [
+    "seedCampaign"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/campaigns/**",
+    "desktop/src/lib/api/campaigns.ts",
+    "desktop/e2e/campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Rebuilt onto ListPage/DetailPage/EntityForm archetypes. Detail page now reads real sentCount/deliveredCount/openedCount/clickedCount fields and a live paginated recipients table (no mock data). Added edit page (desktop/src/app/(app)/campaigns/[id]/edit/page.tsx) wired to the previously-orphaned PUT /campaigns/:id; delete row action wired to DELETE. List export pages through the full filtered dataset client-side as CSV (no dedicated /exports/campaigns backend endpoint exists). detailDrawer intentionally false — this slice uses a dedicated detail page/route (contract-sanctioned alternative to onRowClick navigation) rather than a drawer. sendMessageDialog/phoneInput/addressAutocomplete/currencyInput are not applicable — campaigns has no phone/address/currency fields and outbound sending goes through the campaign send/schedule API, not ad-hoc messaging.",
+  "showcaseScript": [
+    "Open Campaigns and filter by status",
+    "Create an email campaign targeting a segment",
+    "Schedule it and show the recipient list",
+    "Open a sent campaign and read its open and click rates"
+  ]
+}

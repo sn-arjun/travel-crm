@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Locale = 'en' | 'hi' | 'ar';
+export type Locale = 'en' | 'hi' | 'ar' | 'nl';
 
 interface I18nStore {
   locale: Locale;

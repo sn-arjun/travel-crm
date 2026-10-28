@@ -5,11 +5,15 @@
  *   1. Cloudflare Workers AI (default, free/included with Workers plan)
  *   2. Anthropic Claude API (when ANTHROPIC_API_KEY is set in env)
  *
- * Tracks token usage and costs per tenant.
+ * Tracks token usage and cost per call (price list: ai-pricing.ts) and, when built with a
+ * tenant id, meters the tenant's monthly AI credits (ai-credits.ts).
  */
 
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
+import { CF_TRANSCRIBE_MODEL, TRANSCRIBE_USD_PER_MINUTE, creditClassFor, estimateCostUsd, priceFor, type AiCreditClass } from './ai-pricing';
+import { DeepgramService } from './deepgram';
+import { assertCredits, chargeCredits } from './ai-credits';
 
 export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal_likelihood' | 'transcription'
   | 'lead_extraction' | 'whatsapp_parse' | 'email_parse' | 'business_card_ocr' | 'bulk_lead_extraction'
@@ -27,9 +31,26 @@ export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal
   | 'revenue_pulse' | 'ai_recommendation_gen'
   | 'social_content_instagram' | 'social_content_facebook' | 'social_content_linkedin'
   | 'social_content_twitter' | 'social_content_blog'
-  | 'marketing_suggestion' | 'whatsapp_campaign_template';
+  | 'marketing_suggestion' | 'whatsapp_campaign_template'
+  | 'message_triage' | 'message_understand' | 'call_summary';
 
 export type AIProvider = 'cloudflare' | 'anthropic';
+
+export const AI_UNAVAILABLE_CODE = 'AI_UNAVAILABLE';
+export const AI_UNAVAILABLE_MESSAGE = 'AI is not configured for this workspace yet.';
+
+/**
+ * Thrown when no AI provider can serve a request (no Workers AI binding / binding not functional,
+ * and no Anthropic key). Routes translate it into HTTP 503 with code AI_UNAVAILABLE. It is thrown
+ * BEFORE any usage/quota counter is incremented, and stub text is never returned as content.
+ */
+export class AiUnavailableError extends Error {
+  readonly code = AI_UNAVAILABLE_CODE;
+  constructor(message: string = AI_UNAVAILABLE_MESSAGE) {
+    super(message);
+    this.name = 'AiUnavailableError';
+  }
+}
 
 export interface ModelConfig {
   provider: AIProvider;
@@ -56,43 +77,33 @@ const VISION_TASKS: Set<AITask> = new Set([
 // Cloudflare Workers AI models
 const CF_TEXT_MODEL = '@cf/meta/llama-3.1-70b-instruct';
 const CF_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+// Small, cheap model that labels every received message (stage 1 of the assistant).
+const CF_TRIAGE_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8-fast';
+// Extraction into a fixed shape: a model that supports Workers AI JSON mode, so the reply is always valid JSON.
+const CF_JSON_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // Anthropic models
 const CLAUDE_HAIKU = 'claude-haiku-4-5-20251001';
 
-// Cloudflare AI is included in Workers plan — effectively $0 for bundled usage
-// Anthropic Haiku: $0.80/MTok input, $4.00/MTok output
-const CF_CONFIG: ModelConfig = {
-  provider: 'cloudflare',
-  model: CF_TEXT_MODEL,
-  maxTokens: 2048,
-  costPerInputToken: 0,
-  costPerOutputToken: 0,
-};
+function modelConfig(provider: AIProvider, model: string, maxTokens: number): ModelConfig {
+  const price = priceFor(model);
+  return {
+    provider,
+    model,
+    maxTokens,
+    costPerInputToken: price.inputPerMTok / 1_000_000,
+    costPerOutputToken: price.outputPerMTok / 1_000_000,
+  };
+}
 
-const CF_VISION_CONFIG: ModelConfig = {
-  provider: 'cloudflare',
-  model: CF_VISION_MODEL,
-  maxTokens: 1024,
-  costPerInputToken: 0,
-  costPerOutputToken: 0,
-};
-
-const CLAUDE_CONFIG: ModelConfig = {
-  provider: 'anthropic',
-  model: CLAUDE_HAIKU,
-  maxTokens: 2048,
-  costPerInputToken: 0.0000008,
-  costPerOutputToken: 0.000004,
-};
-
-const CLAUDE_VISION_CONFIG: ModelConfig = {
-  provider: 'anthropic',
-  model: CLAUDE_HAIKU,
-  maxTokens: 1024,
-  costPerInputToken: 0.0000008,
-  costPerOutputToken: 0.000004,
-};
+const CF_CONFIG = modelConfig('cloudflare', CF_TEXT_MODEL, 2048);
+const CF_VISION_CONFIG = modelConfig('cloudflare', CF_VISION_MODEL, 1024);
+const CF_TRIAGE_CONFIG = modelConfig('cloudflare', CF_TRIAGE_MODEL, 256);
+const CF_JSON_CONFIG = modelConfig('cloudflare', CF_JSON_MODEL, 1024);
+// Call summary (R306): the same cheap JSON model, whatever else is configured, so a summary never lands on a pricier model unmetered.
+const CF_CALL_SUMMARY_CONFIG = modelConfig('cloudflare', CF_JSON_MODEL, 1536);
+const CLAUDE_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 2048);
+const CLAUDE_VISION_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 1024);
 
 // Tasks that benefit from larger context / better reasoning — use Claude when available
 const PREFER_CLAUDE_TASKS: Set<AITask> = new Set([
@@ -103,18 +114,47 @@ const PREFER_CLAUDE_TASKS: Set<AITask> = new Set([
   'business_health_score', 'ai_recommendation_gen',
 ]);
 
+/** Workers AI hands back JSON output already parsed for some models; callers always get text. */
+function asText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return JSON.stringify(value);
+}
+
+function base64Of(bytes: ArrayBuffer): string {
+  const view = new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < view.length; i += 0x8000) binary += String.fromCharCode(...view.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 export class AIRouter {
   private env: Env;
   private hasAnthropicKey: boolean;
   private tenantOverrides?: Partial<Record<AITask, Partial<ModelConfig>>>;
+  private tenantId?: string;
 
+  /**
+   * @param tenantId when given, every call checks and then charges the tenant's AI credits.
+   */
   constructor(
     env: Env,
     tenantOverrides?: Partial<Record<AITask, Partial<ModelConfig>>>,
+    tenantId?: string,
   ) {
     this.env = env;
     this.hasAnthropicKey = !!env.ANTHROPIC_API_KEY;
     this.tenantOverrides = tenantOverrides;
+    this.tenantId = tenantId;
+  }
+
+  /** Check credits, run the call, charge on success. A failed call costs the tenant nothing. `units` multiplies the class weight (started minutes of audio, started 5-minute blocks of a call). */
+  private async metered(task: AITask, call: () => Promise<AIResponse>, units = 1, creditClass: AiCreditClass = creditClassFor(task)): Promise<AIResponse> {
+    if (!this.tenantId) return call();
+    await assertCredits(this.env, this.tenantId, creditClass, units);
+    const response = await call();
+    await chargeCredits(this.env, this.tenantId, creditClass, units);
+    return response;
   }
 
   /**
@@ -131,6 +171,11 @@ export class AIRouter {
   }
 
   private resolveBaseConfig(task: AITask): ModelConfig {
+    // Triage runs on every message, so it stays on the small model whatever else is configured.
+    if (task === 'message_triage') return CF_TRIAGE_CONFIG;
+    if (task === 'message_understand') return CF_JSON_CONFIG;
+    if (task === 'call_summary') return CF_CALL_SUMMARY_CONFIG;
+
     const isVision = VISION_TASKS.has(task);
     const preferClaude = PREFER_CLAUDE_TASKS.has(task);
 
@@ -154,13 +199,57 @@ export class AIRouter {
     task: AITask,
     input: string,
     systemPrompt: string,
+    /** `jsonSchema`: ask the provider to return JSON matching this schema (Workers AI JSON mode). */
+    options: { jsonSchema?: Record<string, unknown>; units?: number } = {},
   ): Promise<AIResponse> {
     const config = this.getModelConfig(task);
 
-    if (config.provider === 'anthropic') {
-      return this.routeAnthropic(config, input, systemPrompt);
-    }
-    return this.routeCloudflare(config, input, systemPrompt);
+    return this.metered(task, () =>
+      config.provider === 'anthropic'
+        ? this.routeAnthropic(config, input, systemPrompt)
+        : this.routeCloudflare(config, input, systemPrompt, options.jsonSchema),
+      options.units ?? 1,
+    );
+  }
+
+  /**
+   * Speech to text (R306). Charged per started minute of audio: transcribe_standard (Workers AI Whisper, the default) or
+   * transcribe_premium (Deepgram, only when the key is set and the agency chose premium; otherwise the standard engine runs).
+   * Throws AiUnavailableError when no engine can serve it and AiQuotaExceededError before any audio is sent when credits are short.
+   */
+  async transcribe(
+    audio: ArrayBuffer,
+    options: { durationSeconds: number; engine?: 'standard' | 'premium'; mimeType?: string },
+  ): Promise<AIResponse & { language: string | null; confidence: number | null; engine: 'standard' | 'premium' }> {
+    const premium = options.engine === 'premium' && !!this.env.DEEPGRAM_API_KEY;
+    const engine = premium ? 'premium' : 'standard';
+    const minutes = Math.max(1, Math.ceil(options.durationSeconds / 60));
+    let language: string | null = null;
+    let confidence: number | null = null;
+    const response = await this.metered(
+      'transcription',
+      async () => {
+        if (premium) {
+          const out = await new DeepgramService({ DEEPGRAM_API_KEY: this.env.DEEPGRAM_API_KEY }).transcribeAudio(audio, options.mimeType ?? 'audio/mpeg', { diarize: false });
+          language = out.language || null;
+          confidence = out.confidence ?? null;
+          return { result: out.transcript, model: 'deepgram-nova-3', provider: 'cloudflare' as AIProvider, inputTokens: 0, outputTokens: 0, cost: minutes * TRANSCRIBE_USD_PER_MINUTE.premium };
+        }
+        if (!this.env.AI) throw new AiUnavailableError();
+        let out: any;
+        try {
+          out = await this.env.AI.run(CF_TRANSCRIBE_MODEL as any, { audio: base64Of(audio) } as any);
+        } catch (aiErr) {
+          console.warn('[AI Router] Workers AI transcription failed:', (aiErr as Error).message);
+          throw new AiUnavailableError();
+        }
+        language = out?.transcription_info?.language ?? out?.language ?? null;
+        return { result: asText(out?.text ?? out?.response), model: CF_TRANSCRIBE_MODEL, provider: 'cloudflare' as AIProvider, inputTokens: 0, outputTokens: 0, cost: minutes * TRANSCRIBE_USD_PER_MINUTE.standard };
+      },
+      minutes,
+      premium ? 'transcribe_premium' : 'transcribe_standard',
+    );
+    return { ...response, language, confidence, engine };
   }
 
   /**
@@ -174,10 +263,11 @@ export class AIRouter {
   ): Promise<AIResponse> {
     const config = this.getModelConfig(task);
 
-    if (config.provider === 'anthropic') {
-      return this.routeAnthropicVision(config, imageBase64, mimeType, textPrompt);
-    }
-    return this.routeCloudflareVision(config, imageBase64, textPrompt);
+    return this.metered(task, () =>
+      config.provider === 'anthropic'
+        ? this.routeAnthropicVision(config, imageBase64, mimeType, textPrompt)
+        : this.routeCloudflareVision(config, imageBase64, textPrompt),
+    );
   }
 
   // ── Cloudflare Workers AI ──────────────────────────────
@@ -186,18 +276,11 @@ export class AIRouter {
     config: ModelConfig,
     input: string,
     systemPrompt: string,
+    jsonSchema?: Record<string, unknown>,
   ): Promise<AIResponse> {
-    // If AI binding is not available (e.g., local dev without CF AI), return a stub response
+    // No Workers AI binding (e.g. local dev / e2e config): there is no provider to answer.
     if (!this.env.AI) {
-      const stub = `{"note":"Cloudflare AI not available in this environment. Configure Workers AI binding."}`;
-      return {
-        result: stub,
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      throw new AiUnavailableError();
     }
 
     const messages = [
@@ -211,25 +294,18 @@ export class AIRouter {
         messages,
         max_tokens: config.maxTokens,
         temperature: 0.3,
+        ...(jsonSchema ? { response_format: { type: 'json_schema', json_schema: jsonSchema } } : {}),
       });
     } catch (aiErr) {
       // AI binding is present but not functional (e.g. local dev stub with --local flag)
-      // Return empty string so any downstream JSON.parse() uses its fallback
-      console.warn('[AI Router] Cloudflare AI run failed (likely --local mode):', (aiErr as Error).message);
-      return {
-        result: '',
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      console.warn('[AI Router] Cloudflare AI run failed:', (aiErr as Error).message);
+      throw new AiUnavailableError();
     }
 
-    const text = response?.response || response?.result || '';
-    // Cloudflare AI doesn't provide detailed token counts, estimate from text length
-    const inputTokens = Math.ceil((systemPrompt.length + input.length) / 4);
-    const outputTokens = Math.ceil(text.length / 4);
+    const text = asText(response?.response ?? response?.result);
+    // Use the reported token counts; older models omit them, so fall back to a length estimate.
+    const inputTokens = response?.usage?.prompt_tokens ?? Math.ceil((systemPrompt.length + input.length) / 4);
+    const outputTokens = response?.usage?.completion_tokens ?? Math.ceil(text.length / 4);
 
     return {
       result: text,
@@ -237,7 +313,7 @@ export class AIRouter {
       provider: 'cloudflare',
       inputTokens,
       outputTokens,
-      cost: 0, // Cloudflare AI bundled with Workers plan
+      cost: estimateCostUsd(config.model, inputTokens, outputTokens),
     };
   }
 
@@ -246,16 +322,8 @@ export class AIRouter {
     imageBase64: string,
     textPrompt: string,
   ): Promise<AIResponse> {
-    // If AI binding is not available, return a stub response
     if (!this.env.AI) {
-      return {
-        result: `{"note":"Cloudflare AI not available","category":"other","confidence":0}`,
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      throw new AiUnavailableError();
     }
 
     // Cloudflare vision model expects image as URL or base64
@@ -269,20 +337,13 @@ export class AIRouter {
         max_tokens: config.maxTokens,
       });
     } catch (aiErr) {
-      console.warn('[AI Router] Cloudflare Vision AI run failed (likely --local mode):', (aiErr as Error).message);
-      return {
-        result: '',
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      console.warn('[AI Router] Cloudflare Vision AI run failed:', (aiErr as Error).message);
+      throw new AiUnavailableError();
     }
 
-    const text = response?.response || response?.description || '';
-    const inputTokens = Math.ceil(textPrompt.length / 4) + 500; // rough image token estimate
-    const outputTokens = Math.ceil(text.length / 4);
+    const text = asText(response?.response ?? response?.description);
+    const inputTokens = response?.usage?.prompt_tokens ?? Math.ceil(textPrompt.length / 4) + 500; // rough image token estimate
+    const outputTokens = response?.usage?.completion_tokens ?? Math.ceil(text.length / 4);
 
     return {
       result: text,
@@ -290,7 +351,7 @@ export class AIRouter {
       provider: 'cloudflare',
       inputTokens,
       outputTokens,
-      cost: 0,
+      cost: estimateCostUsd(config.model, inputTokens, outputTokens),
     };
   }
 
@@ -324,9 +385,7 @@ export class AIRouter {
     const data = await response.json() as any;
     const inputTokens = data.usage?.input_tokens || 0;
     const outputTokens = data.usage?.output_tokens || 0;
-    const cost =
-      inputTokens * config.costPerInputToken +
-      outputTokens * config.costPerOutputToken;
+    const cost = estimateCostUsd(config.model, inputTokens, outputTokens);
 
     const text =
       data.content?.[0]?.type === 'text' ? data.content[0].text : '';
@@ -378,9 +437,7 @@ export class AIRouter {
     const data = await response.json() as any;
     const inputTokens = data.usage?.input_tokens || 0;
     const outputTokens = data.usage?.output_tokens || 0;
-    const cost =
-      inputTokens * config.costPerInputToken +
-      outputTokens * config.costPerOutputToken;
+    const cost = estimateCostUsd(config.model, inputTokens, outputTokens);
 
     const text = data.content?.[0]?.text || '';
 
@@ -443,10 +500,12 @@ export class AIRouter {
   /**
    * Get a summary of provider status for diagnostics.
    */
-  getProviderStatus(): { anthropic: boolean; cloudflare: boolean; defaultProvider: AIProvider } {
+  getProviderStatus(): { anthropic: boolean; cloudflare: boolean; available: boolean; defaultProvider: AIProvider } {
+    const cloudflare = !!this.env.AI;
     return {
       anthropic: this.hasAnthropicKey,
-      cloudflare: true, // Always available via Workers AI binding
+      cloudflare,
+      available: this.hasAnthropicKey || cloudflare,
       defaultProvider: this.hasAnthropicKey ? 'anthropic' : 'cloudflare',
     };
   }

@@ -1,0 +1,106 @@
+{
+  "id": "R151",
+  "tier": 4,
+  "step": 8,
+  "title": "Website chat widget asks for name, phone or email (configurable) so a chat can become a lead, with consent recorded",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An agency chooses when the website chat asks for contact details and which fields are required; the visitor's details are stored on the conversation with consent, and the chat becomes a lead by one click or automatically.",
+  "why": "Gap 8: the widget sends only the message, so 'Create lead' fails with \"Add the visitor's name, phone or email before creating a lead\" (routes/chatbot.ts ~429). Design: TOUR-OPERATOR-DESIGN.md sections 4.8 and 13.1.",
+  "featuresToWorks": ["chatbot.widget-channels", "chatbot.contact-capture", "chatbot.create-lead"],
+  "featureKeys": ["ai_chatbot (existing)"],
+  "dependsOn": ["R136"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R150"],
+  "size": "S",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0061_chatbot_contact_capture.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/routes/chatbot.ts",
+      "backend/src/routes/public-chatbot.ts",
+      "desktop/src/app/(app)/settings/chatbot/page.tsx",
+      "desktop/src/app/(app)/chatbot/** (conversation contact panel only)",
+      "desktop/src/lib/api/chatbot.ts",
+      "desktop/src/messages/en/chatbot.json",
+      "desktop/src/messages/nl/chatbot.json",
+      "desktop/e2e/chatbot.spec.ts"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0061_chatbot_contact_capture.sql",
+      "backend/src/services/domain/chatbot-leads.ts",
+      "backend/test/chatbot-contact-capture.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/public-booking.ts",
+      "backend/src/services/departures/**",
+      "desktop/src/app/(public)/**",
+      "desktop/src/app/(app)/departures/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R151-1",
+      "what": "Config and API",
+      "steps": [
+        "0061: chatbot_config ADD contact_capture TEXT; schema; bundle. Defaults of design 4.8 (mode off = today's behaviour).",
+        "GET /public/chatbot/:widgetKey/config returns the capture config (mode, fields, consent text, labels) in addition to today's fields.",
+        "POST /public/chatbot/:widgetKey/contact {visitorId, conversationId, name?, email?, phone?, consent: true, marketingOptIn?}: same widget key resolution, origin allow-list and ai_chatbot check as /messages; 10 per 10 minutes per IP; email format; phone normalised with the agency default country; required fields per config and requireOneOf; stores on the conversation; consent row source chatbot (marketing only when opted in); event chatbot.contact_captured.",
+        "services/domain/chatbot-leads.ts: the lead-from-conversation logic moved out of routes/chatbot.ts (findOrCreateContact, createLead, link conversation); the staff route calls it (behaviour unchanged); autoCreateLead calls it after capture."
+      ]
+    },
+    {
+      "id": "R151-2",
+      "what": "Widget and screens",
+      "steps": [
+        "widgetScript renders a small form at the configured moment (before_chat, after_first_reply, before_handoff) with the agency's labels and consent text; text-only DOM (no innerHTML of agency strings), keyboard accessible, works on mobile widths.",
+        "Settings > Chatbot: a 'Ask for contact details' section (mode, each field required/optional/hidden, at least one of email or phone, consent text, marketing opt-in, auto-create lead).",
+        "Chatbot conversations: the visitor's name, email and phone in the side panel; Create lead enabled when details exist."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/chatbot-contact-capture.test.ts: config defaults; required field missing 400; phone normalised for an NL agency; consent recorded (and marketing only when ticked); autoCreateLead creates one contact and lead and links the conversation, a second capture does not duplicate; origin not allowed 403; rate limit; mode off keeps today's behaviour.",
+    "Existing chatbot-create-lead and public-chatbot tests stay green.",
+    "e2e/chatbot.spec.ts: with mode before_chat the widget asks for name and phone, the conversation shows them and Create lead works; auto-create makes the lead without a click."
+  ],
+  "acceptance": [
+    "A website chat can become a lead without staff asking for details.",
+    "Agencies that leave the setting off see no change."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/chatbot.spec.ts e2e/marketing-opt-out.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/chatbot.spec.ts", "e2e/marketing-opt-out.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: ai_chatbot as today; the capture is an agency setting, default off.",
+    "Public route: tenant from the widget key first; origin allow-list; rate limits; no tenant data in answers.",
+    "Backend: tenant migration 0061 only; regenerate the bundle; consent records written.",
+    "Desktop: CONTRACT.md; t() with en and nl keys in chatbot.json; RTL-safe classes.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.8 and 13.1, routes/public-chatbot.ts, routes/chatbot.ts (handleChatbotMessage, create-lead), backend/test/public-chatbot.test.ts.",
+    "The widget must never call AI for the contact form; only /messages may."
+  ],
+  "goLiveVerify": []
+}

@@ -4,6 +4,10 @@ import worker from '../src/index';
 
 const testEnv = env as any;
 
+// These suites exercise the success path of every AI route, so they run with a working Workers AI binding.
+// The no-provider behaviour (503 AI_UNAVAILABLE) is covered in b36-ai-unavailable.test.ts.
+const fakeAiBinding = { run: async () => ({ response: '{}' }) };
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 async function authRequest(
@@ -24,7 +28,7 @@ async function authRequest(
   const ctx = createExecutionContext();
   const res = await worker.fetch(
     new Request(`http://localhost/api/v1${path}`, opts),
-    testEnv,
+    { ...testEnv, AI: fakeAiBinding },
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -293,7 +297,7 @@ describe('AI Routes — Full E2E Integration Tests', () => {
       if (res.status === 403) return;
       // If AI is working, should return 200 with extracted data
       // If AI binding is mocked/empty, may return 200 with empty extraction
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -309,7 +313,7 @@ describe('AI Routes — Full E2E Integration Tests', () => {
         message: '[11/3/24, 2:30 PM] Priya: Hi, we are a group of 8 people looking for Kerala backwaters trip in April. Budget 2 lakhs.',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -324,7 +328,7 @@ describe('AI Routes — Full E2E Integration Tests', () => {
         subject: 'Rajasthan Tour Inquiry',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -339,7 +343,7 @@ Lead 2: Sneha, sneha@company.com, corporate offsite in Udaipur for 20 pax, 5 lak
 Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -372,7 +376,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         preferences: ['history', 'food', 'photography'],
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -393,7 +397,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         enrichments: ['restaurants', 'tips'],
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -427,7 +431,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         markupPercent: 15,
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -456,7 +460,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         },
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -475,7 +479,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         context: { customerName: 'Priya Singh', destination: 'Kerala' },
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('POST /ai/compose-message should validate channel enum', async () => {
@@ -500,7 +504,7 @@ Lead 3: Ahmed, 8765432109, Hajj package for 4, budget 6 lakhs`,
         customerName: 'Amit Kumar',
       });
       if (res.status === 403) return;
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);

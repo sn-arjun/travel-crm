@@ -4,8 +4,10 @@
  */
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
-import { success, error } from '../utils/response';
+import { success, error, paginated } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
+import { generateId } from '../utils/uuid';
+import { tenantToday, localDayWindowUtc } from '../utils/tz';
 
 const taskRoutes = new Hono<AppContext>();
 
@@ -17,12 +19,38 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'done': ['in_progress', 'todo'],
 };
 
+// ─── camelCase aliases (additive) ───────────────────────────
+// The desktop client and the Flutter apps send camelCase keys; the original contract is snake_case.
+// Both are accepted. When both are present the snake_case value wins.
+
+const CAMEL_TO_SNAKE: Record<string, string> = {
+    dueDate: 'due_date',
+    assignedTo: 'assigned_to',
+    relatedLeadId: 'related_lead_id',
+    leadId: 'related_lead_id',
+    parentTaskId: 'parent_task_id',
+};
+
+function normalizeTaskBody(body: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = { ...body };
+    for (const [camel, snake] of Object.entries(CAMEL_TO_SNAKE)) {
+        if (out[snake] === undefined && body[camel] !== undefined) out[snake] = body[camel];
+    }
+    return out;
+}
+
 // ─── List Tasks ─────────────────────────────────────────────
 
 taskRoutes.get('/', async (c) => {
     try {
-        const { status, priority, category, assigned_to, related_lead_id,
-            due_date_from, due_date_to, overdue, view, page, limit: lim, search } = c.req.query();
+        const q = c.req.query();
+        const { status, priority, category, view, page, limit: lim, search, contactId } = q;
+        // snake_case wins over camelCase when both are sent
+        const assigned_to = q.assigned_to ?? q.assignedTo;
+        const related_lead_id = q.related_lead_id ?? q.relatedLeadId;
+        const due_date_from = q.due_date_from ?? q.dueDateFrom;
+        const due_date_to = q.due_date_to ?? q.dueDateTo;
+        const overdue = q.overdue;
         const userId = c.get('userId');
         const role = c.get('role');
         const db = c.get('tenantDb');
@@ -50,23 +78,33 @@ taskRoutes.get('/', async (c) => {
         if (category) { query += ' AND t.category = ?'; params.push(category); }
         if (assigned_to) { query += ' AND t.assigned_to = ?'; params.push(assigned_to); }
         if (related_lead_id) { query += ' AND t.related_lead_id = ?'; params.push(related_lead_id); }
+        // Tasks relate to a contact through their lead
+        if (contactId) {
+            query += ' AND t.related_lead_id IN (SELECT id FROM leads WHERE contact_id = ? AND is_deleted = 0)';
+            params.push(contactId);
+        }
         if (due_date_from) { query += ' AND t.due_date >= ?'; params.push(due_date_from); }
         if (due_date_to) { query += ' AND t.due_date <= ?'; params.push(due_date_to); }
         if (overdue === 'true') {
-            const today = new Date().toISOString().split('T')[0];
+            const { today } = await tenantToday(c);
             query += " AND t.due_date < ? AND t.status != 'done'";
             params.push(today);
         }
 
+        const countQuery = 'SELECT COUNT(*) as total ' + query.slice(query.indexOf('FROM tasks t'));
+        const countRow = await db.prepare(countQuery).bind(...params).first<{ total: number }>();
+        const total = countRow?.total ?? 0;
+
         query += ' ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date ASC';
 
         const limit = parseInt(lim || '20');
-        const offset = (parseInt(page || '1') - 1) * limit;
+        const pageNum = parseInt(page || '1');
+        const offset = (pageNum - 1) * limit;
         query += ' LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
         const result = await db.prepare(query).bind(...params).all();
-        return success(c, result.results || []);
+        return paginated(c, result.results || [], total, pageNum, limit);
     } catch (e: any) {
         console.error('Tasks list error:', e);
         return error(c, e.message || 'Failed to fetch tasks', 500);
@@ -101,13 +139,13 @@ taskRoutes.get('/:id', async (c) => {
 
 taskRoutes.post('/', async (c) => {
     try {
-        const body = await c.req.json();
+        const body = normalizeTaskBody(await c.req.json());
         const userId = c.get('userId');
         const db = c.get('tenantDb');
 
         if (!body.title) return error(c, 'Title is required', 400);
 
-        const taskId = crypto.randomUUID();
+        const taskId = generateId();
         await db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, category, due_date,
         assigned_to, related_lead_id, parent_task_id, created_by)
@@ -128,7 +166,7 @@ taskRoutes.post('/', async (c) => {
 
         // Auto-create calendar event if due_date is set
         if (body.due_date) {
-            const eventId = crypto.randomUUID();
+            const eventId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, event_type, start_at, all_day, related_task_id,
           assigned_to, created_by, color)
@@ -152,7 +190,7 @@ taskRoutes.post('/', async (c) => {
         // Notify assignee if different from creator
         const assigneeId = body.assigned_to || userId;
         if (assigneeId !== userId) {
-            const notifId = crypto.randomUUID();
+            const notifId = generateId();
             await db.prepare(`
         INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
         VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
@@ -186,7 +224,7 @@ taskRoutes.post('/', async (c) => {
 taskRoutes.put('/:id', async (c) => {
     try {
         const { id } = c.req.param();
-        const body = await c.req.json();
+        const body = normalizeTaskBody(await c.req.json());
         const userId = c.get('userId');
         const db = c.get('tenantDb');
 
@@ -226,7 +264,7 @@ taskRoutes.put('/:id', async (c) => {
                     'UPDATE events SET start_at = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
                 ).bind(body.due_date, `Task: ${body.title || existing.title}`, existingEvent.id).run();
             } else if (body.due_date && !existingEvent) {
-                const eventId = crypto.randomUUID();
+                const eventId = generateId();
                 await db.prepare(`
           INSERT INTO events (id, title, event_type, start_at, all_day, related_task_id,
             assigned_to, created_by, color)
@@ -249,7 +287,7 @@ taskRoutes.put('/:id', async (c) => {
         if (body.assigned_to && body.assigned_to !== existing.assigned_to) {
             const taskTitle = body.title || existing.title;
             // Notify new assignee
-            const notifNew = crypto.randomUUID();
+            const notifNew = generateId();
             await db.prepare(`
         INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
         VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
@@ -260,7 +298,7 @@ taskRoutes.put('/:id', async (c) => {
 
             // Notify old assignee if they had the task
             if (existing.assigned_to && existing.assigned_to !== userId) {
-                const notifOld = crypto.randomUUID();
+                const notifOld = generateId();
                 await db.prepare(`
           INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
           VALUES (?, ?, 'task_reassigned', ?, ?, ?, 0)
@@ -415,7 +453,7 @@ taskRoutes.post('/:taskId/comments', async (c) => {
       )
     `).run();
 
-        const id = crypto.randomUUID();
+        const id = generateId();
         await db.prepare(`
       INSERT INTO task_comments (id, task_id, user_id, content)
       VALUES (?, ?, ?, ?)
@@ -538,7 +576,8 @@ taskRoutes.get('/dashboard/summary', async (c) => {
         const userId = c.get('userId');
         const role = c.get('role');
         const db = c.get('tenantDb');
-        const today = new Date().toISOString().split('T')[0];
+        const { timeZone: tz, today } = await tenantToday(c);
+        const dayWindow = localDayWindowUtc(tz);
 
         const isManager = role === 'admin' || role === 'manager' || role === 'sales_manager';
         const userFilter = isManager ? '' : 'AND t.assigned_to = ?';
@@ -574,10 +613,10 @@ taskRoutes.get('/dashboard/summary', async (c) => {
             : await db.prepare(statusQuery).all();
 
         // Completed today
-        const completedParams = isManager ? [`${today}%`] : [`${today}%`, userId];
+        const completedParams = isManager ? [dayWindow.startIso, dayWindow.endIso] : [dayWindow.startIso, dayWindow.endIso, userId];
         const completedResult = await db.prepare(`
       SELECT COUNT(*) as count FROM tasks t
-      WHERE t.completed_at LIKE ? AND t.is_deleted = 0
+      WHERE t.completed_at >= ? AND t.completed_at < ? AND t.is_deleted = 0
       ${userFilter}
     `).bind(...completedParams).first();
 

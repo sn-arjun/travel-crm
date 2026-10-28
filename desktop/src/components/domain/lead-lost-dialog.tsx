@@ -1,13 +1,15 @@
 'use client';
 
 import * as React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import {
+  AlertTriangle, Wallet, Trophy, CalendarX, PhoneOff, Clock, HelpCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 export type LostReason =
@@ -26,43 +28,20 @@ interface LeadLostDialogProps {
   isLoading?: boolean;
 }
 
-const lostReasons = [
-  {
-    id: 'budget_issues' as const,
-    label: 'Budget Issues',
-    description: 'Client couldn\'t afford the package',
-    icon: '💰',
-  },
-  {
-    id: 'chose_competitor' as const,
-    label: 'Chose Competitor',
-    description: 'Client went with another travel company',
-    icon: '🏆',
-  },
-  {
-    id: 'changed_plans' as const,
-    label: 'Changed Plans',
-    description: 'Client decided not to travel',
-    icon: '📅',
-  },
-  {
-    id: 'no_response' as const,
-    label: 'No Response',
-    description: 'Client stopped responding',
-    icon: '📞',
-  },
-  {
-    id: 'poor_timing' as const,
-    label: 'Poor Timing',
-    description: 'Timing wasn\'t right for the client',
-    icon: '⏰',
-  },
-  {
-    id: 'other' as const,
-    label: 'Other',
-    description: 'Different reason',
-    icon: '❓',
-  },
+interface LostReasonOption {
+  id: LostReason;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}
+
+const lostReasons: LostReasonOption[] = [
+  { id: 'budget_issues', label: 'Budget Issues', description: "Client couldn't afford the package", icon: Wallet },
+  { id: 'chose_competitor', label: 'Chose Competitor', description: 'Client went with another travel company', icon: Trophy },
+  { id: 'changed_plans', label: 'Changed Plans', description: 'Client decided not to travel', icon: CalendarX },
+  { id: 'no_response', label: 'No Response', description: 'Client stopped responding', icon: PhoneOff },
+  { id: 'poor_timing', label: 'Poor Timing', description: "Timing wasn't right for the client", icon: Clock },
+  { id: 'other', label: 'Other', description: 'Different reason', icon: HelpCircle },
 ];
 
 export function LeadLostDialog({
@@ -74,22 +53,25 @@ export function LeadLostDialog({
 }: LeadLostDialogProps) {
   const [selectedReason, setSelectedReason] = React.useState<LostReason | null>(null);
   const [notes, setNotes] = React.useState('');
+  const [showReasonError, setShowReasonError] = React.useState(false);
+
+  const reset = () => {
+    setSelectedReason(null);
+    setNotes('');
+    setShowReasonError(false);
+  };
 
   const handleConfirm = () => {
     if (!selectedReason) {
-      alert('Please select a reason');
+      setShowReasonError(true);
       return;
     }
     onConfirm(selectedReason, notes);
-    // Reset form
-    setSelectedReason(null);
-    setNotes('');
+    reset();
   };
 
   const handleCancel = () => {
-    // Reset form
-    setSelectedReason(null);
-    setNotes('');
+    reset();
     onCancel();
   };
 
@@ -98,73 +80,76 @@ export function LeadLostDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
+            <AlertTriangle className="h-5 w-5 text-ds-danger" aria-hidden="true" />
             Mark Lead as Lost
           </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-2">
-            You\'re marking
-            {' '}
-            <span className="font-semibold">{leadName}</span>
-            {' '}
-            as lost. Please provide a reason.
+          <p className="mt-2 text-sm text-ds-foreground-muted">
+            You&apos;re marking <span className="font-semibold text-ds-foreground">{leadName}</span> as lost. Please provide a reason.
           </p>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Reason Selection */}
-          <div>
-            <label className="block text-sm font-semibold mb-3">Why is this lead lost?</label>
+          <fieldset>
+            <legend className="mb-3 block text-sm font-semibold">Why is this lead lost? <span className="text-ds-danger">*</span></legend>
             <div className="space-y-2">
-              {lostReasons.map((reason: any) => (
-                <button
-                  key={reason.id}
-                  onClick={() => setSelectedReason(reason.id)}
-                  disabled={isLoading}
-                  className={cn(
-                    'w-full text-left p-3 rounded-lg border-2 transition-all',
-                    selectedReason === reason.id
-                      ? 'border-primary bg-primary/5'
-                      : 'border-input hover:border-muted-foreground/50',
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg shrink-0">{reason.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{reason.label}</p>
-                      <p className="text-xs text-muted-foreground">{reason.description}</p>
-                    </div>
-                    {selectedReason === reason.id && (
-                      <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
-                        <div className="h-2 w-2 rounded-full bg-primary-foreground" />
-                      </div>
+              {lostReasons.map((reason) => {
+                const Icon = reason.icon;
+                const selected = selectedReason === reason.id;
+                return (
+                  <button
+                    key={reason.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => { setSelectedReason(reason.id); setShowReasonError(false); }}
+                    disabled={isLoading}
+                    className={cn(
+                      'w-full rounded-ds-lg border-2 p-3 text-start transition-all',
+                      selected
+                        ? 'border-ds-primary bg-ds-primary-subtle'
+                        : 'border-ds-border hover:border-ds-border-strong',
                     )}
-                  </div>
-                </button>
-              ))}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Icon className="mt-0.5 size-5 shrink-0 text-ds-foreground-muted" aria-hidden="true" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{reason.label}</p>
+                        <p className="text-xs text-ds-foreground-muted">{reason.description}</p>
+                      </div>
+                      {selected && (
+                        <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-ds-primary">
+                          <div className="size-2 rounded-full bg-ds-primary-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
+            {showReasonError && (
+              <p role="alert" className="mt-2 text-xs text-ds-danger">Select a reason to continue.</p>
+            )}
+          </fieldset>
 
-          {/* Additional Notes */}
           <div>
-            <label className="block text-sm font-semibold mb-2">Additional Notes (Optional)</label>
+            <label htmlFor="lead-lost-notes" className="mb-2 block text-sm font-semibold">Additional Notes (Optional)</label>
             <textarea
+              id="lead-lost-notes"
               placeholder="Add any additional context about why this lead was lost..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={isLoading}
-              className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+              className="h-24 w-full rounded-ds-md border border-ds-border bg-ds-surface px-3 py-2 text-sm placeholder:text-ds-foreground-subtle focus:outline-none focus:ring-2 focus:ring-ds-ring disabled:opacity-50"
             />
-            <p className="text-xs text-muted-foreground mt-1">{notes.length} characters</p>
+            <p className="mt-1 text-xs text-ds-foreground-muted">{notes.length} characters</p>
           </div>
 
-          {/* Warning */}
-          <Card className="border-destructive/50 bg-destructive/5">
+          <Card className="border-ds-danger bg-ds-danger-subtle">
             <div className="p-3">
-              <p className="text-sm text-destructive font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
+              <p className="flex items-center gap-2 text-sm font-medium text-ds-danger-on-subtle">
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 This action cannot be undone
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-ds-foreground-muted">
                 The lead will be moved to lost status and will no longer appear in active pipelines.
               </p>
             </div>
@@ -172,18 +157,10 @@ export function LeadLostDialog({
         </div>
 
         <DialogFooter className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={isLoading}
-          >
+          <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleConfirm}
-            disabled={isLoading || !selectedReason}
-          >
+          <Button variant="destructive" onClick={handleConfirm} disabled={isLoading}>
             {isLoading ? 'Marking as Lost...' : 'Mark as Lost'}
           </Button>
         </DialogFooter>

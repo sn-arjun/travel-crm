@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { authApi, type ResetPasswordRequest } from '@/lib/api/auth';
+import { authApi, passwordPolicyError, type ResetPasswordRequest } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 
 export default function ResetPasswordPageWrapper() {
   return (
@@ -19,6 +20,7 @@ export default function ResetPasswordPageWrapper() {
 }
 
 function ResetPasswordPage() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams?.get('token') || '';
@@ -36,22 +38,23 @@ function ResetPasswordPage() {
     if (/[A-Z]/.test(password)) score++;
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    const labels = ['', t('auth.password.strength.weak'), t('auth.password.strength.fair'), t('auth.password.strength.good'), t('auth.password.strength.strong')];
     return { score, label: labels[score] || '' };
-  }, [password]);
+  }, [password, t]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('auth.password.mismatch'));
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const policy = passwordPolicyError(password, t);
+    if (policy) {
+      setError(policy);
       return;
     }
     if (!token) {
-      setError('Reset token is missing. Please use the link from your email.');
+      setError(t('auth.reset.tokenMissing'));
       return;
     }
     setIsLoading(true);
@@ -65,12 +68,12 @@ function ResetPasswordPage() {
       await authApi.resetPassword(request);
 
       setSuccess(true);
-      toast.success('Password reset successfully');
+      toast.success(t('auth.reset.success'));
     } catch (error) {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : 'Failed to reset password. The link may have expired.';
+          : t('auth.reset.failed');
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -81,15 +84,15 @@ function ResetPasswordPage() {
   if (success) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-          <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ds-success-subtle">
+          <CheckCircle2 className="h-8 w-8 text-ds-success" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Password reset!</h2>
-          <p className="text-muted-foreground text-sm mt-2">Your password has been successfully reset.</p>
+          <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{t('auth.reset.doneTitle')}</h2>
+          <p className="text-muted-foreground text-sm mt-2">{t('auth.reset.doneBody')}</p>
         </div>
         <Button className="w-full" onClick={() => router.push('/login')}>
-          Sign in with new password
+          {t('auth.reset.signInWithNew')}
         </Button>
       </div>
     );
@@ -98,8 +101,8 @@ function ResetPasswordPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Reset password</h2>
-        <p className="text-muted-foreground text-sm mt-1">Enter your new password below</p>
+        <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{t('auth.reset.title')}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{t('auth.reset.subtitle')}</p>
       </div>
 
       {error && (
@@ -110,23 +113,23 @@ function ResetPasswordPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="password">New password</Label>
+          <Label htmlFor="password">{t('auth.fields.newPassword')}</Label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="At least 8 characters"
+              placeholder={t('auth.password.placeholder')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-9 pr-10"
+              className="ps-9 pe-10"
               required
               autoFocus
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -134,8 +137,8 @@ function ResetPasswordPage() {
           {password && (
             <div className="space-y-1">
               <div className="flex gap-1">
-                {[1, 2, 3, 4].map((i: any) => (
-                  <div key={i} className={`h-1 flex-1 rounded-full ${i <= passwordStrength.score ? (passwordStrength.score <= 1 ? 'bg-red-500' : passwordStrength.score <= 2 ? 'bg-amber-500' : 'bg-green-500') : 'bg-muted'}`} />
+                {[1, 2, 3, 4].map((i: number) => (
+                  <div key={i} className={`h-1 flex-1 rounded-full ${i <= passwordStrength.score ? (passwordStrength.score <= 1 ? 'bg-ds-danger' : passwordStrength.score <= 2 ? 'bg-ds-warning' : 'bg-ds-success') : 'bg-muted'}`} />
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">{passwordStrength.label}</p>
@@ -144,29 +147,29 @@ function ResetPasswordPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="confirmPassword">Confirm password</Label>
+          <Label htmlFor="confirmPassword">{t('auth.fields.confirmPassword')}</Label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Re-enter your password"
+              placeholder={t('auth.password.reenter')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="pl-9"
+              className="ps-9"
               required
             />
           </div>
         </div>
 
         <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Reset password
+          {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
+          {t('auth.reset.submit')}
         </Button>
       </form>
 
       <Link href="/login" className="block text-center text-sm text-primary hover:underline">
-        Back to sign in
+        {t('auth.common.backToSignIn')}
       </Link>
     </div>
   );

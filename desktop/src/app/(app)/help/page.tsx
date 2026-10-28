@@ -2,10 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import {
-  Search, BookOpen, Video, Mail, Lightbulb, ArrowUpRight,
-  ChevronDown,
-} from 'lucide-react';
+import { Search, BookOpen, HelpCircle, Sparkles, Mail, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,9 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
+import { formatDisplayDate } from '@/lib/dates';
 import { toast } from 'sonner';
+import { PLACEHOLDER_DOMAIN } from '@/lib/web-config';
 
 
 interface FAQItem {
@@ -88,11 +87,21 @@ const faqItems: FAQItem[] = [
   },
 ];
 
+// Build-time NEXT_PUBLIC_SUPPORT_EMAIL, else the placeholder domain (web-config.ts is the one place it is named).
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || `support@${PLACEHOLDER_DOMAIN}`;
+
+// In-page shortcuts: every destination exists on this page.
 const quickLinks = [
-  { label: 'Documentation', icon: BookOpen, href: '#' },
-  { label: 'Video Tutorials', icon: Video, href: '#' },
-  { label: 'Contact Support', icon: Mail, href: '#' },
-  { label: 'Feature Requests', icon: Lightbulb, href: '#' },
+  { label: 'Getting Started', icon: BookOpen, href: '#getting-started' },
+  { label: 'FAQ', icon: HelpCircle, href: '#faq' },
+  { label: "What's New", icon: Sparkles, href: '#whats-new' },
+  { label: 'Contact Support', icon: Mail, href: '#contact' },
+];
+
+const gettingStarted = [
+  { step: 1, title: 'Set Up Your Profile', description: 'Configure your user profile, team, and organization settings in Settings.' },
+  { step: 2, title: 'Add Your First Lead', description: 'Create a lead with customer details, destination, and travel dates. Set priority and assign to team member.' },
+  { step: 3, title: 'Start Managing', description: 'Track the lead through pipeline, create tasks, send proposals, and close deals. Monitor KPIs on dashboard.' },
 ];
 
 const recentUpdates = [
@@ -119,7 +128,7 @@ export default function HelpPage() {
   });
   const [submitMessage, setSubmitMessage] = React.useState('');
 
-  const filteredFAQ = faqItems.filter((item: any) => {
+  const filteredFAQ = faqItems.filter((item) => {
     const query = searchQuery.toLowerCase();
     return item.question.toLowerCase().includes(query) || item.answer.toLowerCase().includes(query);
   });
@@ -127,34 +136,19 @@ export default function HelpPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate form
     if (!formData.name || !formData.email || !formData.subject || !formData.message) {
       toast.error('Please fill in all fields');
       return;
     }
 
-    // Submit feedback/ticket
+    const body = `From: ${formData.name} <${formData.email}>\nSubject: ${formData.subject}\n\n${formData.message}`;
     try {
-      // Submit to API - using a simple POST request pattern
-      const response = await fetch('/api/support-tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit support ticket');
-      }
-
-      setSubmitMessage('Thank you! Your message has been sent. We will respond within 24 hours.');
-      setFormData({ name: '', email: '', subject: '', message: '' });
-      toast.success('Support ticket created successfully');
-      // Clear message after 5 seconds
-      const timer = setTimeout(() => setSubmitMessage(''), 5000);
-      return () => clearTimeout(timer);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to submit form';
-      toast.error(errorMessage);
+      await navigator.clipboard.writeText(body);
+      setSubmitMessage(`Copied to clipboard — paste it into an email to ${SUPPORT_EMAIL}.`);
+      toast.success('Message copied — send it to support from your email client');
+    } catch {
+      setSubmitMessage(`Please email ${SUPPORT_EMAIL} directly with your message.`);
+      toast.info(`Email ${SUPPORT_EMAIL} directly — clipboard access unavailable`);
     }
   };
 
@@ -164,15 +158,9 @@ export default function HelpPage() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* Header */}
-      <div className="px-6 py-4 border-b">
-        <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Help Center</h1>
-        <p className="text-sm text-muted-foreground">Find answers, tutorials, and support</p>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 p-6 space-y-8 overflow-y-auto">
+    <PageContainer className="gap-ds-6">
+      <PageHeader title="Help Center" description="Find answers, tutorials, and support" />
+      <div className="flex flex-col gap-ds-6">
         {/* Search */}
         <div className="max-w-2xl">
           <div className="relative">
@@ -190,7 +178,7 @@ export default function HelpPage() {
         <div>
           <h2 className="text-sm font-semibold mb-3">Quick Links</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {quickLinks.map((link: any) => {
+            {quickLinks.map((link) => {
               const LinkIcon = link.icon;
               return (
                 <Link key={link.label} href={link.href}>
@@ -208,14 +196,10 @@ export default function HelpPage() {
         </div>
 
         {/* Getting Started */}
-        <div>
+        <div id="getting-started" className="scroll-mt-ds-4">
           <h2 className="text-sm font-semibold mb-3">Getting Started</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { step: 1, title: 'Set Up Your Profile', description: 'Configure your user profile, team, and organization settings in Settings.' },
-              { step: 2, title: 'Add Your First Lead', description: 'Create a lead with customer details, destination, and travel dates. Set priority and assign to team member.' },
-              { step: 3, title: 'Start Managing', description: 'Track the lead through pipeline, create tasks, send proposals, and close deals. Monitor KPIs on dashboard.' },
-            ].map((item: any) => (
+            {gettingStarted.map((item) => (
               <Card key={item.step}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
@@ -234,15 +218,15 @@ export default function HelpPage() {
         </div>
 
         {/* FAQ */}
-        <div>
+        <div id="faq" className="scroll-mt-ds-4">
           <h2 className="text-sm font-semibold mb-3">Frequently Asked Questions</h2>
           {filteredFAQ.length > 0 ? (
             <Accordion type="single" collapsible className="w-full space-y-2">
-              {filteredFAQ.map((item: any) => (
+              {filteredFAQ.map((item) => (
                 <AccordionItem key={item.id} value={item.id} className="border rounded-lg px-4">
                   <AccordionTrigger className="hover:no-underline py-4">
                     <div className="flex items-center gap-3 text-left flex-1">
-                      <Badge variant="secondary" className="text-[10px]">{item.category}</Badge>
+                      <Badge variant="secondary" className="text-xs">{item.category}</Badge>
                       <span className="font-medium text-sm">{item.question}</span>
                     </div>
                   </AccordionTrigger>
@@ -260,14 +244,14 @@ export default function HelpPage() {
         </div>
 
         {/* What's New */}
-        <div>
+        <div id="whats-new" className="scroll-mt-ds-4">
           <h2 className="text-sm font-semibold mb-3">What's New</h2>
           <div className="space-y-3">
             {recentUpdates.map((update, index) => (
               <div key={index} className="border rounded-lg p-4">
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-medium text-sm">{update.title}</h3>
-                  <Badge variant="outline" className="text-[10px]">{new Date(update.date).toLocaleDateString('en-IN')}</Badge>
+                  <Badge variant="outline" className="text-xs">{formatDisplayDate(update.date)}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">{update.description}</p>
               </div>
@@ -276,7 +260,7 @@ export default function HelpPage() {
         </div>
 
         {/* Contact Form */}
-        <div>
+        <div id="contact" className="scroll-mt-ds-4">
           <h2 className="text-sm font-semibold mb-3">Still need help?</h2>
           <Card>
             <CardHeader>
@@ -333,7 +317,7 @@ export default function HelpPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   {submitMessage && (
-                    <p className="text-xs text-green-600">{submitMessage}</p>
+                    <p className="text-xs text-ds-success">{submitMessage}</p>
                   )}
                   <Button type="submit" className="ml-auto">
                     Send Message
@@ -344,6 +328,6 @@ export default function HelpPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

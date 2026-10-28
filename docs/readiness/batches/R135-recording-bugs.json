@@ -1,0 +1,59 @@
+{
+  "id": "R135",
+  "title": "Bugs found while recording the video catalogue",
+  "tier": 3,
+  "why": "The 2026-10-21 recording run hit these on camera and worked around them. A client demo film (Skanda Travels) is recorded next and must not need workarounds.",
+  "items": [
+    {
+      "id": "R135-1",
+      "bug": "Team report (/reports/team) answers 403 for the sales_manager role",
+      "cause": "The route or report definition requires role 'manager'; the real role id is 'sales_manager'.",
+      "fix": "Use the real role ids from backend/src/constants/permissions.ts. Grep the backend and desktop for any other check against 'manager' that should be 'sales_manager' and fix those too.",
+      "test": "Backend test: sales_manager gets 200 on the team report, salesperson keeps its current answer."
+    },
+    {
+      "id": "R135-2",
+      "bug": "Inbox list does not update when a new message arrives; the notification bell does",
+      "fix": "Make the inbox list (and an open thread) refresh on the same realtime event the bell uses, or invalidate the inbox query when that event arrives.",
+      "test": "e2e: with the inbox open, POST /test/inbound a WhatsApp message; the new thread appears without reload."
+    },
+    {
+      "id": "R135-3",
+      "bug": "AI itinerary generation takes about 60 s; the UI shows 'Failed to generate itinerary' although the server returned 200 with a plan",
+      "fix": "Find the client-side timeout (desktop/src/lib/api) that aborts the request. Give AI generation calls a timeout above the server's own limit, show a progress state while it runs, and show the plan when it arrives. Do not change the AI model or prompt.",
+      "test": "Unit test on the api client timeout for AI routes; no live AI request in tests."
+    },
+    {
+      "id": "R135-4",
+      "bug": "Ending a simulated inbound call from the call panel returns 500 '[mock] Call not found'",
+      "fix": "The mock provider must find calls created by the call simulator (same store / same id). Real providers unchanged.",
+      "test": "Backend test: simulate inbound, answer, hang up through the call-panel route: 200 and call status completed."
+    },
+    {
+      "id": "R135-5",
+      "bug": "The app requests /voip/token on every page and gets 403 where calling is off",
+      "fix": "Only request the softphone token when calling is enabled for the agency (the feature/settings the app already knows).",
+      "test": "Desktop unit or e2e: no /voip/token request on an agency where calling is off."
+    },
+    {
+      "id": "R135-6",
+      "bug": "Call detail with no transcript yet: GET transcript returns 404 and the page logs an error",
+      "fix": "Return an empty/pending state (200 with null, or the UI treats 404 as 'no transcript yet' without an error).",
+      "test": "Covered by an existing or new calls test."
+    },
+    {
+      "id": "R135-7",
+      "bug": "Mock checkout URL is built without the API port, so the tab cannot load (mock billing only)",
+      "fix": "Build the mock checkout URL from the API's own base URL.",
+      "test": "Backend test on the returned URL."
+    },
+    {
+      "id": "R135-8",
+      "bug": "A zero amount (for example '£0', 'AED 0', '€0') on the dashboard is shown in red like an error",
+      "fix": "Zero is neutral, only negative or overdue values are red.",
+      "test": "Desktop unit test on the formatting/colour helper if one exists."
+    }
+  ],
+  "outOfScope": ["Landing footer 'LEGAL (DRAFTS)' stays until the owner's legal pages are final"],
+  "gates": ["backend tsc + vitest", "desktop typecheck + vitest + lint-gate + i18n-check", "targeted e2e for inbox, calls, reports on a local stack (single slot)"]
+}

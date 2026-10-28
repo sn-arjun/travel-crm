@@ -1,32 +1,35 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-  Upload,
-  Loader2,
-  CheckCircle2,
-  FileText,
   BookOpen,
-  DollarSign,
   Camera,
+  CheckCircle2,
+  DollarSign,
+  FileText,
   X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { toast } from 'sonner';
 import {
+  Badge,
+  Button,
+  Input,
+  Label,
+  Progress,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+} from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
-import { aiApi, type OcrPassportResult, type OcrVisaClassification, type OcrSupplierInvoiceResult } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type OcrPassportResult, type OcrVisaClassification, type OcrSupplierInvoiceResult } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability, useNotConfiguredError } from '@/components/domain/ai/use-ai-availability';
 
 type DocumentType = 'passport' | 'visa' | 'invoice';
 type OCRStatus = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
@@ -59,65 +62,29 @@ function ocrResultToExtractedData(
   if (documentType === 'passport' && 'firstName' in result) {
     const passportResult = result as OcrPassportResult;
     fields['Full Name'] = {
-      value: [passportResult.firstName, passportResult.lastName].filter(Boolean).join(' ') ?? 'Unknown',
+      value: [passportResult.firstName, passportResult.lastName].filter(Boolean).join(' ') || 'Unknown',
       confidence: passportResult.confidence,
     };
-    fields['Passport Number'] = {
-      value: passportResult.passportNumber ?? 'Unknown',
-      confidence: passportResult.confidence,
-    };
-    fields['Date of Birth'] = {
-      value: passportResult.dateOfBirth ?? 'Unknown',
-      confidence: passportResult.confidence,
-    };
-    fields['Nationality'] = {
-      value: passportResult.nationality ?? 'Unknown',
-      confidence: passportResult.confidence,
-    };
-    fields['Expiry Date'] = {
-      value: passportResult.expiryDate ?? 'Unknown',
-      confidence: passportResult.confidence,
-    };
+    fields['Passport Number'] = { value: passportResult.passportNumber ?? 'Unknown', confidence: passportResult.confidence };
+    fields['Date of Birth'] = { value: passportResult.dateOfBirth ?? 'Unknown', confidence: passportResult.confidence };
+    fields['Nationality'] = { value: passportResult.nationality ?? 'Unknown', confidence: passportResult.confidence };
+    fields['Expiry Date'] = { value: passportResult.expiryDate ?? 'Unknown', confidence: passportResult.confidence };
   } else if (documentType === 'visa' && 'country' in result) {
     const visaResult = result as OcrVisaClassification;
-    fields['Country'] = {
-      value: visaResult.country ?? 'Unknown',
-      confidence: visaResult.confidence,
-    };
-    fields['Visa Type'] = {
-      value: visaResult.visaType ?? 'Unknown',
-      confidence: visaResult.confidence,
-    };
-    fields['Issue Date'] = {
-      value: visaResult.issueDate ?? 'Unknown',
-      confidence: visaResult.confidence,
-    };
-    fields['Expiry Date'] = {
-      value: visaResult.expiryDate ?? 'Unknown',
-      confidence: visaResult.confidence,
-    };
-    fields['Status'] = {
-      value: visaResult.status ?? 'Unknown',
-      confidence: visaResult.confidence,
-    };
+    fields['Country'] = { value: visaResult.country ?? 'Unknown', confidence: visaResult.confidence };
+    fields['Visa Type'] = { value: visaResult.visaType ?? 'Unknown', confidence: visaResult.confidence };
+    fields['Issue Date'] = { value: visaResult.issueDate ?? 'Unknown', confidence: visaResult.confidence };
+    fields['Expiry Date'] = { value: visaResult.expiryDate ?? 'Unknown', confidence: visaResult.confidence };
+    fields['Status'] = { value: visaResult.status ?? 'Unknown', confidence: visaResult.confidence };
   } else if (documentType === 'invoice' && 'supplierName' in result) {
     const invoiceResult = result as OcrSupplierInvoiceResult;
-    fields['Supplier Name'] = {
-      value: invoiceResult.supplierName ?? 'Unknown',
-      confidence: invoiceResult.confidence,
-    };
-    fields['Invoice Number'] = {
-      value: invoiceResult.invoiceNumber ?? 'Unknown',
-      confidence: invoiceResult.confidence,
-    };
+    fields['Supplier Name'] = { value: invoiceResult.supplierName ?? 'Unknown', confidence: invoiceResult.confidence };
+    fields['Invoice Number'] = { value: invoiceResult.invoiceNumber ?? 'Unknown', confidence: invoiceResult.confidence };
     fields['Amount'] = {
       value: `${invoiceResult.currency ?? ''} ${invoiceResult.totalAmount ?? 0}`,
       confidence: invoiceResult.confidence,
     };
-    fields['Date'] = {
-      value: invoiceResult.issueDate ?? 'Unknown',
-      confidence: invoiceResult.confidence,
-    };
+    fields['Date'] = { value: invoiceResult.issueDate ?? 'Unknown', confidence: invoiceResult.confidence };
     fields['Line Items'] = {
       value: invoiceResult.items ? `${invoiceResult.items.length} line items` : 'No items',
       confidence: invoiceResult.confidence,
@@ -127,13 +94,17 @@ function ocrResultToExtractedData(
   return { fields };
 }
 
-export default function OCRPage() {
+function OcrContent() {
+  const router = useRouter();
   const [documentType, setDocumentType] = React.useState<DocumentType>('passport');
   const [status, setStatus] = React.useState<OCRStatus>('idle');
   const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
   const [extractedData, setExtractedData] = React.useState<ExtractedData | null>(null);
   const [progress, setProgress] = React.useState(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
+  const notConfigured = useNotConfiguredError();
 
   const config = DOCUMENT_CONFIGS[documentType];
 
@@ -152,15 +123,15 @@ export default function OCRPage() {
     }
 
     setUploadedFile(file);
-    handleProcessDocument(file);
+    void handleProcessDocument(file);
   };
 
   const handleProcessDocument = async (file: File) => {
     setStatus('uploading');
     setProgress(20);
+    setUnavailable(null);
 
     try {
-      // Send file to API based on document type
       let result: OcrPassportResult | OcrVisaClassification | OcrSupplierInvoiceResult | null = null;
 
       if (documentType === 'passport') {
@@ -177,8 +148,7 @@ export default function OCRPage() {
       setProgress(100);
 
       if (result) {
-        const extractedData = ocrResultToExtractedData(result, documentType);
-        setExtractedData(extractedData);
+        setExtractedData(ocrResultToExtractedData(result, documentType));
         setStatus('complete');
         toast.success(`${config.label} scanned successfully!`);
       } else {
@@ -186,21 +156,17 @@ export default function OCRPage() {
         toast.error('Failed to extract data from document');
       }
     } catch (error) {
+      if (isAiUnavailableError(error)) {
+        setUnavailable(error);
+        setStatus('idle');
+        setUploadedFile(null);
+        setProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
       setStatus('error');
       const errorMessage = error instanceof Error ? error.message : 'Failed to process document';
       toast.error(errorMessage);
-    }
-  };
-
-  const handleCreateLead = () => {
-    if (documentType === 'passport' && extractedData) {
-      toast.success('Lead created from passport data');
-    }
-  };
-
-  const handleCreateInvoice = () => {
-    if (documentType === 'invoice' && extractedData) {
-      toast.success('Supplier invoice created');
     }
   };
 
@@ -209,16 +175,7 @@ export default function OCRPage() {
     setUploadedFile(null);
     setExtractedData(null);
     setProgress(0);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 95) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400';
-    if (confidence >= 90) return 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400';
-    if (confidence >= 80) return 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400';
-    return 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const documentIcons: Record<DocumentType, React.ReactNode> = {
@@ -228,202 +185,171 @@ export default function OCRPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <PageContainer>
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Document OCR Scanning</h1>
-        <p className="text-muted-foreground mt-1">
-          Upload documents to extract data automatically using AI
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-ds-foreground">Document OCR Scanning</h1>
+        <p className="mt-ds-1 text-ds-foreground-muted">Upload documents to extract data automatically using AI</p>
+        <Link href="/ai/document-scans" className="mt-ds-1 inline-block text-sm text-ds-primary hover:underline">
+          View scan history →
+        </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 max-w-2xl">
-        {/* Upload Card */}
-        <Card className="col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg">Upload Document</CardTitle>
-            <CardDescription>Support: JPG, PNG, PDF (max 10MB)</CardDescription>
-          </CardHeader>
+      {(unavailable || availability.unavailable) && (
+        <AiUnavailableNotice
+          className="max-w-2xl"
+          error={unavailable ?? notConfigured}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
 
-          <CardContent className="space-y-4">
-            {/* Document Type Selector */}
-            <div className="space-y-2">
-              <Label htmlFor="doc-type" className="text-sm font-medium">
-                Document Type
-              </Label>
-              <Select
-                value={documentType}
-                onValueChange={(value) => {
-                  setDocumentType(value as DocumentType);
-                  handleReset();
-                }}
-                disabled={status !== 'idle'}
-              >
-                <SelectTrigger id="doc-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="passport">Passport</SelectItem>
-                  <SelectItem value="visa">Visa Document</SelectItem>
-                  <SelectItem value="invoice">Supplier Invoice</SelectItem>
-                </SelectContent>
-              </Select>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4 max-w-2xl">
+        <div className="sm:col-span-2 rounded-ds-lg border border-ds-border p-ds-6 flex flex-col gap-ds-4">
+          <div>
+            <p className="text-lg font-semibold text-ds-foreground">Upload document</p>
+            <p className="text-sm text-ds-foreground-muted">Support: JPG, PNG, PDF (max 10MB)</p>
+          </div>
+
+          <div className="flex flex-col gap-ds-2">
+            <Label htmlFor="doc-type" className="text-sm font-medium">
+              Document Type
+            </Label>
+            <Select
+              value={documentType}
+              onValueChange={(value) => {
+                setDocumentType(value as DocumentType);
+                handleReset();
+              }}
+              disabled={status !== 'idle'}
+            >
+              <SelectTrigger id="doc-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="passport">Passport</SelectItem>
+                <SelectItem value="visa">Visa Document</SelectItem>
+                <SelectItem value="invoice">Supplier Invoice</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {status === 'idle' || !uploadedFile ? (
+            <div
+              className="rounded-ds-lg border-2 border-dashed border-ds-border p-ds-8 text-center cursor-pointer transition-colors hover:border-ds-primary hover:bg-ds-surface-sunken"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Camera className="h-10 w-10 text-ds-foreground-muted mx-auto mb-ds-3" />
+              <p className="font-medium text-ds-foreground">Upload or scan document</p>
+              <p className="text-sm text-ds-foreground-muted mt-ds-1">Click to select or drag and drop</p>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
             </div>
-
-            {/* Upload Area */}
-            {status === 'idle' || !uploadedFile ? (
-              <div
-                className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/50"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Camera className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="font-medium text-foreground">Upload or scan document</p>
-                <p className="text-sm text-muted-foreground mt-1">Click to select or drag and drop</p>
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* File Info */}
-                <div className="rounded-lg bg-muted/50 p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    <div className="text-sm">
-                      <p className="font-medium text-foreground">{uploadedFile.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
+          ) : (
+            <div className="flex flex-col gap-ds-4">
+              <div className="rounded-ds-lg bg-ds-surface-sunken p-ds-3 flex items-center justify-between">
+                <div className="flex items-center gap-ds-2">
+                  <FileText className="h-5 w-5 text-ds-foreground-muted" />
+                  <div className="text-sm">
+                    <p className="font-medium text-ds-foreground">{uploadedFile.name}</p>
+                    <p className="text-xs text-ds-foreground-muted">{(uploadedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
-                  {status === 'complete' && (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  )}
                 </div>
+                {status === 'complete' && <CheckCircle2 className="h-5 w-5 text-ds-success" />}
+              </div>
 
-                {/* Progress */}
-                {status !== 'complete' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">
-                        {status === 'uploading' ? 'Uploading...' : 'Processing...'}
-                      </span>
-                      <span className="text-sm text-muted-foreground">{progress}%</span>
-                    </div>
-                    <Progress value={progress} className="h-2" />
+              {status !== 'complete' && (
+                <div className="flex flex-col gap-ds-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-ds-foreground">
+                      {status === 'uploading' ? 'Uploading...' : 'Processing...'}
+                    </span>
+                    <span className="text-sm text-ds-foreground-muted">{progress}%</span>
                   </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleReset}
-                    variant="outline"
-                    className="flex-1 gap-2"
-                    disabled={status !== 'complete'}
-                  >
-                    <X className="h-4 w-4" />
-                    Upload Different
-                  </Button>
+                  <Progress value={progress} className="h-2" />
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
 
-        {/* Info Card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{config.label}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-muted-foreground">{documentIcons[documentType]}</div>
+              <Button onClick={handleReset} variant="outline" className="gap-ds-2" disabled={status !== 'complete'}>
+                <X className="h-4 w-4" />
+                Upload Different
+              </Button>
             </div>
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Extraction Fields
-              </p>
-              <div className="space-y-1">
-                {config.fields.map((field, idx) => (
-                  <p key={idx} className="text-xs text-foreground">
-                    • {field}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </div>
 
-      {/* Results Card */}
-      {extractedData && status === 'complete' && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">Extracted Data</CardTitle>
-                <CardDescription className="mt-1">Review and confirm the extracted information</CardDescription>
-              </div>
-              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            {/* Fields Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(extractedData.fields).map(([fieldName, data]) => (
-                <div
-                  key={fieldName}
-                  className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-sm font-medium text-foreground">{fieldName}</label>
-                    <Badge
-                      variant="outline"
-                      className={cn('text-xs font-semibold px-1.5 py-0.5', getConfidenceColor(data.confidence))}
-                    >
-                      {data.confidence}%
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-foreground font-semibold">{data.value}</p>
-                </div>
+        <div className="rounded-ds-lg border border-ds-border p-ds-4 flex flex-col gap-ds-3">
+          <p className="text-base font-semibold text-ds-foreground">{config.label}</p>
+          <div className="flex justify-center p-ds-4 bg-ds-surface-sunken rounded-ds-lg">
+            <div className="text-ds-foreground-muted">{documentIcons[documentType]}</div>
+          </div>
+          <div className="flex flex-col gap-ds-2">
+            <p className="text-xs font-semibold uppercase tracking-widest text-ds-foreground-muted">Extraction Fields</p>
+            <div className="flex flex-col gap-ds-1">
+              {config.fields.map((field, idx) => (
+                <p key={idx} className="text-xs text-ds-foreground">
+                  • {field}
+                </p>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
 
-            {/* Info Box */}
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-4 border border-blue-200/50 dark:border-blue-800/30 space-y-2">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Data Quality</p>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                All fields have high confidence scores (90%+). Data is ready to be auto-filled.
-              </p>
+      {extractedData && status === 'complete' && (
+        <div className="rounded-ds-lg border border-ds-border p-ds-6 flex flex-col gap-ds-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-lg font-semibold text-ds-foreground">Extracted Data</p>
+              <p className="text-sm text-ds-foreground-muted mt-ds-1">Review and confirm the extracted information</p>
             </div>
+            <CheckCircle2 className="h-6 w-6 text-ds-success" />
+          </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-2">
-              <Button onClick={handleReset} variant="outline" className="flex-1">
-                Scan Another Document
-              </Button>
-              {documentType === 'passport' && (
-                <Button onClick={handleCreateLead} className="flex-1 gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Auto-fill Traveller
-                </Button>
-              )}
-              {documentType === 'invoice' && (
-                <Button onClick={handleCreateInvoice} className="flex-1 gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Create Supplier Invoice
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-ds-4">
+            {Object.entries(extractedData.fields).map(([fieldName, data]) => (
+              <div key={fieldName} className="rounded-ds-lg border border-ds-border bg-ds-surface-sunken p-ds-4 flex flex-col gap-ds-2">
+                <div className="flex items-center justify-between gap-ds-2">
+                  <label className="text-sm font-medium text-ds-foreground">{fieldName}</label>
+                  <Badge className={cn('text-xs font-semibold px-ds-1.5 py-0.5')}>{data.confidence}%</Badge>
+                </div>
+                <p className="text-sm text-ds-foreground font-semibold">{data.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-ds-lg bg-ds-info-subtle p-ds-4 border border-ds-info-subtle flex flex-col gap-ds-2">
+            <p className="text-sm font-medium text-ds-info-on-subtle">Data Quality</p>
+            <p className="text-xs text-ds-info-on-subtle">
+              Review each field's confidence score before applying. High-confidence fields are ready to auto-fill.
+            </p>
+          </div>
+
+          <div className="flex gap-ds-3 pt-ds-2">
+            <Button onClick={handleReset} variant="outline" className="flex-1">
+              Scan Another Document
+            </Button>
+            <Button onClick={() => router.push('/ai/document-scans')} className="flex-1 gap-ds-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Review in scan queue
+            </Button>
+          </div>
+        </div>
       )}
-    </div>
+    </PageContainer>
+  );
+}
+
+export default function OCRPage() {
+  return (
+    <AiFeaturePageGate feature="ai_intelligence" title="Document OCR" featureName="AI Intelligence" benefit="AI-powered document scanning">
+      <OcrContent />
+    </AiFeaturePageGate>
   );
 }

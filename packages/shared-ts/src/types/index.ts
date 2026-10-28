@@ -80,7 +80,12 @@ export interface Tenant {
   slug: string;
   logo?: string;
   currency: SupportedCurrency;
+  /** IANA zone: the user's own when set, else the agency's. */
   timezone: string;
+  /** BCP 47 tag: the user's own when set, else the agency's. Absent on sessions saved before R202. */
+  locale?: string;
+  country?: string;
+  phoneDefaultCountry?: string;
   language: string;
   plan: string;
   isActive: boolean;
@@ -620,3 +625,5 @@ export interface ReportConfig {
   dateRange: { start: string; end: string };
   filters?: Record<string, unknown>;
 }
+
+export * from './departures';

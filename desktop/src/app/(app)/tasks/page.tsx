@@ -1,44 +1,41 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Plus, Link2, Calendar, AlertCircle, Loader2, CheckSquare, Eye, Pencil,
-  MoreHorizontal, ChevronDown, ChevronUp, LayoutGrid, List,
+  Plus, Link2, Calendar, CheckSquare, Eye, Pencil, Trash2,
+  LayoutGrid, List as ListIcon, Loader2,
 } from 'lucide-react';
+import { ListPage, RelationCombobox } from '@/components/domain';
+import { PageContainer } from '@/components/layout/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import type { Lead, User } from '@travelcrm/shared';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { KanbanBoard } from '@/components/domain/kanban-board';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from '@/components/ui/sheet';
-import { Separator } from '@/components/ui/separator';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FilterBar } from '@/components/domain/filter-bar';
-import { Combobox } from '@/components/ui/combobox';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { tasksApi, type Task } from '@/lib/api/tasks';
+import { useApiMutation } from '@/hooks/use-api';
+import { tasksApi, type CreateTaskRequest, type Task } from '@/lib/api/tasks';
 import { usersApi } from '@/lib/api/users';
+import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-
-const REF_DATE = Date.now();
 
 const CATEGORY_OPTIONS = [
   { value: 'general', label: 'General' },
@@ -50,147 +47,104 @@ const CATEGORY_OPTIONS = [
 ];
 
 const PRIORITY_COLORS: Record<string, string> = {
-  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  low: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  high: 'bg-ds-danger-subtle text-ds-danger-on-subtle',
+  medium: 'bg-ds-warning-subtle text-ds-warning-on-subtle',
+  low: 'bg-ds-info-subtle text-ds-info-on-subtle',
 };
 
+const STATUS_LABELS: Record<string, string> = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
 const STATUS_MAP: Record<string, string> = {
-  todo: 'todo',
-  in_progress: 'in_progress',
-  done: 'done',
-  // legacy aliases
-  pending: 'todo',
-  completed: 'done',
-  cancelled: 'todo',
+  todo: 'todo', in_progress: 'in_progress', done: 'done',
+  pending: 'todo', completed: 'done', cancelled: 'todo',
 };
 
-function normalizeTask(t: any): Task {
+/** Initials from the first letter of the first and last name ("Demo Admin" -> "DA"). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last) return '?';
+  if (first === last) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
+}
+
+type TaskScope = 'all' | 'mine';
+
+/** The tasks client already returns camelCase rows; only the legacy status names need mapping. */
+function normalizeTask(t: Task): Task {
   return {
     ...t,
-    dueDate: t.dueDate || t.due_date,
-    due_date: t.due_date || t.dueDate,
-    assignedTo: t.assignedTo || t.assigned_to,
-    assignee_name: t.assignee_name,
-    leadId: t.leadId || t.related_lead_id,
-    lead_title: t.lead_title,
-    related_lead_id: t.related_lead_id || t.leadId,
-    createdBy: t.createdBy || t.created_by,
-    createdAt: t.createdAt || t.created_at || '',
-    updatedAt: t.updatedAt || t.updated_at || '',
-    subtask_count: t.subtask_count ?? 0,
-    completed_subtask_count: t.completed_subtask_count ?? 0,
     status: (STATUS_MAP[t.status ?? 'todo'] || 'todo') as Task['status'],
   };
 }
 
-/* ─── Kanban Card ─── */
-function TaskCard({ task, onSelect, onStatusChange, onDelete, onDragStart }: {
-  task: Task
-  onSelect: (task: Task) => void
-  onStatusChange: (status: string) => Promise<void>
-  onDelete: () => Promise<void>
-  onDragStart?: (e: React.DragEvent, task: Task) => void
+function TaskCard({ task, onSelect, onDragStart }: {
+  task: Task;
+  onSelect: (task: Task) => void;
+  onDragStart: (e: React.DragEvent, task: Task) => void;
 }) {
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-  const isOverdue = dueDate && dueDate < new Date(REF_DATE) && task.status !== 'done';
-  const daysUntilDue = dueDate ? Math.ceil((dueDate.getTime() - REF_DATE) / (1000 * 60 * 60 * 24)) : null;
-  const assigneeName = task.assignee_name || task.assignedTo || 'Unassigned';
-  const leadDisplay = task.lead_title || (task.leadId ? `Lead #${task.leadId.slice(0, 8)}` : null);
-  const subtaskCount = task.subtask_count ?? 0;
-  const completedSubtasks = task.completed_subtask_count ?? 0;
+  const isOverdue = !!dueDate && dueDate < new Date() && task.status !== 'done';
+  const assigneeName = task.assigneeName || 'Unassigned';
+  const leadDisplay = task.leadTitle || null;
+  const subtaskCount = task.subtaskCount ?? 0;
+  const completedSubtasks = task.completedSubtaskCount ?? 0;
 
   return (
     <Card
       className={cn(
-        'hover:shadow-md transition-shadow group cursor-grab active:cursor-grabbing',
-        isOverdue && 'ring-2 ring-red-200 dark:ring-red-900/50 bg-red-50/30 dark:bg-red-950/10',
+        'cursor-grab transition-shadow hover:shadow-ds-2 active:cursor-grabbing',
+        isOverdue && 'ring-2 ring-ds-danger',
       )}
       draggable
-      onDragStart={(e) => onDragStart?.(e, task)}
+      onDragStart={(e) => onDragStart(e, task)}
+      onClick={() => onSelect(task)}
     >
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-sm flex-1 leading-snug">{task.title}</h3>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100 shrink-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onSelect(task)}>
-                <Eye className="h-4 w-4 mr-2" /> View Details
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onStatusChange('done')}>
-                <CheckSquare className="h-4 w-4 mr-2" /> Mark Complete
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onClick={onDelete}>Delete</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      <CardContent className="space-y-ds-2 p-ds-4">
+        <div className="flex items-start justify-between gap-ds-2">
+          <h3 className="flex-1 text-sm font-semibold leading-snug">{task.title}</h3>
+          {isOverdue && <Tag tone="danger">Overdue</Tag>}
         </div>
 
-        {isOverdue && (
-          <Badge variant="destructive" className="text-[9px] px-1.5 py-0">OVERDUE</Badge>
-        )}
-
         {task.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
-        )}
-
-        {task.category && task.category !== 'general' && (
-          <Badge variant="outline" className="text-[10px] capitalize">{task.category.replace('_', ' ')}</Badge>
+          <p className="line-clamp-2 text-xs text-ds-foreground-muted">{task.description}</p>
         )}
 
         {leadDisplay && (
           <Link
-            href={`/leads/${task.leadId || task.related_lead_id}`}
-            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+            href={`/leads/${task.leadId}`}
+            className="flex items-center gap-ds-1 text-xs text-ds-primary hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
-            <Link2 className="h-3 w-3" />
+            <Link2 className="size-3" />
             {leadDisplay}
           </Link>
         )}
 
         {subtaskCount > 0 && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <CheckSquare className="h-3 w-3" />
+          <div className="flex items-center gap-ds-2 text-xs text-ds-foreground-muted">
+            <CheckSquare className="size-3" />
             <span>{completedSubtasks}/{subtaskCount} subtasks</span>
-            <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full"
-                style={{ width: `${subtaskCount > 0 ? (completedSubtasks / subtaskCount) * 100 : 0}%` }}
-              />
-            </div>
           </div>
         )}
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Avatar className="h-6 w-6">
-              <AvatarFallback className="text-[9px]">
-                {assigneeName.substring(0, 2).toUpperCase()}
-              </AvatarFallback>
+          <div className="flex items-center gap-ds-2">
+            <Avatar className="size-6">
+              <AvatarFallback className="text-xs">{task.assigneeName ? initialsOf(assigneeName) : '?'}</AvatarFallback>
             </Avatar>
-            <span className="text-xs text-muted-foreground truncate max-w-[80px]">{assigneeName}</span>
+            <span className="max-w-20 truncate text-xs text-ds-foreground-muted">{assigneeName}</span>
           </div>
-          <Badge variant="outline" className={cn('text-[10px] font-medium border-transparent', PRIORITY_COLORS[task.priority])}>
+          <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-xs font-medium', PRIORITY_COLORS[task.priority])}>
             {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-          </Badge>
+          </span>
         </div>
 
         {dueDate && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className={cn(isOverdue ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
-              {isOverdue && daysUntilDue != null
-                ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? '' : 's'}`
-                : daysUntilDue === 0 ? 'Today'
-                : daysUntilDue != null && daysUntilDue > 0 ? `${daysUntilDue} days left`
-                : dueDate.toLocaleDateString()}
+          <div className="flex items-center gap-ds-1 text-xs">
+            <Calendar className="size-3 text-ds-foreground-muted" />
+            <span className={cn(isOverdue ? 'font-semibold text-ds-danger' : 'text-ds-foreground-muted')}>
+              {formatDisplayDate(dueDate)}
             </span>
           </div>
         )}
@@ -199,352 +153,84 @@ function TaskCard({ task, onSelect, onStatusChange, onDelete, onDragStart }: {
   );
 }
 
-/* ─── Kanban Column ─── */
-function KanbanColumn({
-  title, status, tasks, onTaskSelect, onStatusChange, onDelete, onDragStart, onDrop,
-}: {
-  title: string
-  status: 'todo' | 'in_progress' | 'done'
-  tasks: Task[]
-  onTaskSelect: (task: Task) => void
-  onStatusChange: (task: Task, newStatus: string) => Promise<void>
-  onDelete: (taskId: string) => Promise<void>
-  onDragStart: (e: React.DragEvent, task: Task) => void
-  onDrop: (status: string) => void
-}) {
-  const [dragOver, setDragOver] = React.useState(false);
-  const columnTasks = tasks.filter((t) => t.status === status);
-
-  return (
-    <div
-      className={cn(
-        'flex flex-col flex-1 min-w-0 bg-muted/30 rounded-lg p-4 space-y-3 transition-colors min-w-[280px]',
-        dragOver && 'bg-primary/10 ring-2 ring-primary/30',
-      )}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); onDrop(status); }}
-    >
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-sm">{title}</h2>
-        <Badge variant="secondary" className="text-xs">{columnTasks.length}</Badge>
-      </div>
-
-      <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-        {columnTasks.length > 0 ? (
-          columnTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onSelect={onTaskSelect}
-              onStatusChange={(s) => onStatusChange(task, s)}
-              onDelete={() => onDelete(task.id)}
-              onDragStart={onDragStart}
-            />
-          ))
-        ) : (
-          <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
-            <CheckSquare className="h-8 w-8 opacity-30" />
-            <p className="text-xs">No tasks here</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Task Detail Panel ─── */
-function TaskDetailPanel({ task, open, onOpenChange, onRefetch }: {
-  task: Task | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onRefetch: () => void
-}) {
-  const STATUS_LABELS: Record<string, string> = {
-    todo: 'To Do',
-    in_progress: 'In Progress',
-    done: 'Done',
-  };
-
-  const updateStatusMutation = useApiMutation((s: string) =>
-    tasksApi.updateStatus(task!.id, { status: s as 'todo' | 'in_progress' | 'done' }),
-  );
-
-  const deleteMutation = useApiMutation(() => tasksApi.delete(task!.id));
-
-  if (!task) return null;
-
-  const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-  const leadDisplay = task.lead_title || (task.leadId ? `Lead #${task.leadId.slice(0, 8)}` : null);
-  const assigneeName = task.assignee_name || task.assignedTo || 'Unassigned';
-
-  const handleStatusChange = async (newStatus: string) => {
-    try {
-      await updateStatusMutation.mutate(newStatus);
-      toast.success('Status updated');
-      onRefetch();
-    } catch {
-      toast.error('Failed to update status');
-    }
-  };
-
-  const handleDelete = async () => {
-    try {
-      await deleteMutation.mutate(undefined);
-      toast.success('Task deleted');
-      onOpenChange(false);
-      onRefetch();
-    } catch {
-      toast.error('Failed to delete task');
-    }
-  };
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:w-[420px] overflow-y-auto p-0">
-        <div className="p-6 pb-4 border-b">
-          <SheetHeader>
-            <SheetTitle className="text-left pr-4">{task.title}</SheetTitle>
-          </SheetHeader>
-
-          {/* Actions */}
-          <div className="flex gap-2 mt-4">
-            <Select value={task.status} onValueChange={handleStatusChange}>
-              <SelectTrigger className="h-8 text-xs flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todo">To Do</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="done">Done</SelectItem>
-              </SelectContent>
-            </Select>
-            <Link href={`/tasks/${task.id}`}>
-              <Button variant="outline" size="sm" className="h-8">
-                <Eye className="h-3.5 w-3.5 mr-1" /> Full View
-              </Button>
-            </Link>
-            <Button variant="destructive" size="sm" className="h-8" onClick={handleDelete} disabled={deleteMutation.loading}>
-              Delete
-            </Button>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-5">
-          {/* Status & Priority */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
-              <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}>
-                {STATUS_LABELS[task.status] ?? task.status}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Priority</p>
-              <Badge className={cn('text-[10px]', PRIORITY_COLORS[task.priority])}>
-                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Category */}
-          {task.category && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Category</p>
-              <p className="text-sm capitalize">{task.category.replace('_', ' ')}</p>
-            </div>
-          )}
-
-          {/* Description */}
-          {task.description && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Description</p>
-              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
-            </div>
-          )}
-
-          <Separator />
-
-          {/* Due Date & Assignee */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Due Date</p>
-              {dueDate ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>{dueDate.toLocaleDateString('en-IN')}</span>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Not set</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Assigned To</p>
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm">{assigneeName}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Linked Lead */}
-          {leadDisplay && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Linked Lead</p>
-              <Link
-                href={`/leads/${task.leadId || task.related_lead_id}`}
-                className="text-sm text-primary hover:underline flex items-center gap-1"
-              >
-                <Link2 className="h-3.5 w-3.5" />
-                {leadDisplay}
-              </Link>
-            </div>
-          )}
-
-          {/* Subtasks progress */}
-          {(task.subtask_count ?? 0) > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">Subtasks</p>
-              <div className="flex items-center gap-2 text-sm">
-                <span>{task.completed_subtask_count}/{task.subtask_count} completed</span>
-                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full"
-                    style={{ width: `${((task.completed_subtask_count ?? 0) / (task.subtask_count ?? 1)) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-/* ─── Skeleton Cards ─── */
 function KanbanSkeleton() {
   return (
-    <div className="flex gap-6 h-full overflow-x-auto p-6">
+    <div className="flex gap-ds-4 overflow-x-auto">
       {['todo', 'in_progress', 'done'].map((col) => (
-        <div key={col} className="flex flex-col flex-1 min-w-[280px] bg-muted/30 rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-5 w-8 rounded-full" />
-          </div>
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg border bg-card p-4 space-y-3">
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-full" />
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-6 w-6 rounded-full" />
-                <Skeleton className="h-5 w-14 rounded-full" />
-              </div>
-            </div>
-          ))}
+        <div key={col} className="w-80 shrink-0 space-y-ds-3 rounded-ds-md border border-dashed border-ds-border bg-ds-surface-sunken p-ds-3">
+          <Skeleton className="h-4 w-20" />
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 w-full rounded-ds-md" />)}
         </div>
       ))}
     </div>
   );
 }
 
-/* ─── Table Skeleton ─── */
-function TableSkeleton() {
-  return (
-    <div className="p-6 space-y-3">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
-          <Skeleton className="h-4 w-[30%]" />
-          <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-5 w-14 rounded-full" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-6 w-6 rounded-full" />
-          <Skeleton className="h-5 w-16 rounded-full" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ─── Main Page ─── */
 export default function TasksPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillLeadId = searchParams.get('leadId');
   const prefillLeadTitle = searchParams.get('leadTitle');
 
-  const [filterSearch, setFilterSearch] = React.useState('');
-  const [filterStatus, setFilterStatus] = React.useState('all');
-  const [filterPriority, setFilterPriority] = React.useState('all');
-  const [viewMode, setViewMode] = React.useState<'all' | 'my'>('my');
-  const [layoutView, setLayoutView] = React.useState<'kanban' | 'table'>('kanban');
-  const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
-  const [detailOpen, setDetailOpen] = React.useState(false);
+  const [scope, setScope] = React.useState<TaskScope>('all');
+  const [layoutView, setLayoutView] = React.useState<'kanban' | 'table'>('table');
+  const [statusFilter, setStatusFilter] = React.useState('all');
+  const [priorityFilter, setPriorityFilter] = React.useState('all');
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  // Create form state
+  // Quick Add links to /tasks?new=1: open the dialog once, then drop the param so a refresh does not reopen it.
+  const wantsNew = searchParams.get('new') === '1';
+  React.useEffect(() => {
+    if (!wantsNew) return;
+    setCreateOpen(true);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('new');
+    const qs = params.toString();
+    router.replace(qs ? `/tasks?${qs}` : '/tasks');
+  }, [wantsNew, router]);
+  const [kanbanTasks, setKanbanTasks] = React.useState<Task[]>([]);
+  const [kanbanLoading, setKanbanLoading] = React.useState(true);
+  const [listKey, setListKey] = React.useState(0);
+  const draggedTaskRef = React.useRef<Task | null>(null);
+
   const [newTask, setNewTask] = React.useState({
     title: '',
     description: '',
     priority: 'medium',
     category: 'general',
-    dueDate: '',
+    dueDate: undefined as Date | undefined,
     assignedTo: '',
     leadId: prefillLeadId || '',
     leadTitle: prefillLeadTitle || '',
   });
 
-  // Users for assignee combobox
-  const { data: usersResp } = useApiQuery(
-    () => usersApi.list({ limit: 100 }),
-    [],
-  );
-  const users = React.useMemo(() => {
-    const raw = (usersResp as any)?.data?.data ?? (usersResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [usersResp]);
-  const userOptions = users.map((u: any) => ({ value: u.id, label: u.name || u.email }));
-
-  // Leads for lead combobox
-  const [leadSearch, setLeadSearch] = React.useState('');
-  const { data: leadsResp } = useApiQuery(
-    () => import('@/lib/api/leads').then((m) => m.leadsApi.list({ search: leadSearch || undefined, limit: 30 })),
-    [leadSearch],
-  );
-  const leads = React.useMemo(() => {
-    const raw = (leadsResp as any)?.data?.data ?? (leadsResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [leadsResp]);
-  const leadOptions = leads.map((l: any) => ({ value: l.id, label: l.title || l.name || l.id }));
-
-  // Stable fetcher — only changes when filters actually change
-  const taskFetcher = React.useCallback(
-    (page: number, limit: number) => tasksApi.list({
-      page,
-      limit,
-      search: filterSearch || undefined,
-      status: filterStatus !== 'all' ? filterStatus : undefined,
-      priority: filterPriority !== 'all' ? filterPriority : undefined,
-      view: viewMode === 'my' ? 'my' : 'all',
-    }),
-    [filterSearch, filterStatus, filterPriority, viewMode],
-  );
-
-  // Infinite scroll for tasks
-  const { items: tasks, loading, loadingMore, error, sentinelRef, refetch, total } = useInfiniteScroll<Task>({
-    fetcher: taskFetcher,
-  });
-
-  const normalizedTasks = React.useMemo(() => tasks.map(normalizeTask), [tasks]);
-
-  const createMutation = useApiMutation((data: any) => tasksApi.create(data));
+  const createMutation = useApiMutation((data: CreateTaskRequest) => tasksApi.create(data));
   const updateStatusMutation = useApiMutation((input: { taskId: string; status: string }) =>
     tasksApi.updateStatus(input.taskId, { status: input.status as 'todo' | 'in_progress' | 'done' }),
   );
   const deleteMutation = useApiMutation((taskId: string) => tasksApi.delete(taskId));
-  const draggedTaskRef = React.useRef<Task | null>(null);
+
+  const loadKanban = React.useCallback(async () => {
+    setKanbanLoading(true);
+    try {
+      // The board shows every task, so walk all pages (capped) rather than truncating at one page.
+      const all: Task[] = [];
+      for (let pageNum = 1; pageNum <= 10; pageNum++) {
+        const res = unwrapList<Task>(await tasksApi.list({ page: pageNum, limit: 200, view: scope }), { page: pageNum, limit: 200 });
+        all.push(...res.data);
+        if (res.data.length === 0 || all.length >= res.pagination.total) break;
+      }
+      setKanbanTasks(all.map(normalizeTask));
+    } catch {
+      toast.error('Failed to load tasks');
+    } finally {
+      setKanbanLoading(false);
+    }
+  }, [scope]);
+
+  React.useEffect(() => {
+    if (layoutView === 'kanban') void loadKanban();
+  }, [layoutView, loadKanban]);
 
   const handleCreateTask = async () => {
     if (!newTask.title.trim()) {
@@ -555,27 +241,29 @@ export default function TasksPage() {
       await createMutation.mutate({
         title: newTask.title,
         description: newTask.description || undefined,
-        priority: newTask.priority,
+        priority: newTask.priority as CreateTaskRequest['priority'],
         category: newTask.category,
-        due_date: newTask.dueDate || undefined,
-        assigned_to: newTask.assignedTo || undefined,
-        related_lead_id: newTask.leadId || undefined,
+        dueDate: newTask.dueDate ? toLocalDateString(newTask.dueDate) : undefined,
+        assignedTo: newTask.assignedTo || undefined,
+        relatedLeadId: newTask.leadId || undefined,
         status: 'todo',
       });
       toast.success('Task created');
       setCreateOpen(false);
-      setNewTask({ title: '', description: '', priority: 'medium', category: 'general', dueDate: '', assignedTo: '', leadId: '', leadTitle: '' });
-      refetch();
+      setNewTask({ title: '', description: '', priority: 'medium', category: 'general', dueDate: undefined, assignedTo: '', leadId: '', leadTitle: '' });
+      setListKey((k) => k + 1);
+      if (layoutView === 'kanban') void loadKanban();
     } catch {
       toast.error('Failed to create task');
     }
   };
 
-  const handleStatusChange = async (task: Task, newStatus: string) => {
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
     try {
-      await updateStatusMutation.mutate({ taskId: task.id, status: newStatus });
+      await updateStatusMutation.mutate({ taskId, status: newStatus });
       toast.success('Status updated');
-      refetch();
+      setListKey((k) => k + 1);
+      if (layoutView === 'kanban') void loadKanban();
     } catch {
       toast.error('Failed to update status');
     }
@@ -585,7 +273,8 @@ export default function TasksPage() {
     try {
       await deleteMutation.mutate(taskId);
       toast.success('Task deleted');
-      refetch();
+      setListKey((k) => k + 1);
+      if (layoutView === 'kanban') void loadKanban();
     } catch {
       toast.error('Failed to delete task');
     }
@@ -595,291 +284,237 @@ export default function TasksPage() {
     draggedTaskRef.current = task;
   };
 
-  const handleDrop = async (targetStatus: string) => {
+  const handleDrop = async (status: string) => {
     const task = draggedTaskRef.current;
-    if (!task) return;
     draggedTaskRef.current = null;
-    if (task.status === targetStatus) return;
-    await handleStatusChange(task, targetStatus);
+    if (!task || task.status === status) return;
+    setKanbanTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: status as Task['status'] } : t)));
+    await handleStatusChange(task.id, status);
   };
 
+  const columns: DataTableColumn<Task>[] = [
+    { key: 'title', header: 'Title', sortable: true,
+      cell: (t) => (
+        <div className="flex min-w-0 items-center gap-ds-2">
+          <span className="max-w-70 truncate text-sm font-medium">{t.title}</span>
+          {(t.subtaskCount ?? 0) > 0 && (
+            <span className="shrink-0 text-xs text-ds-foreground-muted">
+              {t.completedSubtaskCount}/{t.subtaskCount}
+            </span>
+          )}
+        </div>
+      ) },
+    { key: 'status', header: 'Status', sortable: true,
+      cell: (t) => (
+        <Tag tone={t.status === 'done' ? 'success' : t.status === 'in_progress' ? 'info' : 'neutral'}>
+          {STATUS_LABELS[t.status]}
+        </Tag>
+      ) },
+    { key: 'priority', header: 'Priority', sortable: true,
+      cell: (t) => (
+        <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-xs font-medium', PRIORITY_COLORS[t.priority])}>
+          {t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}
+        </span>
+      ) },
+    { key: 'dueDate', header: 'Due Date', sortable: true,
+      cell: (t) => {
+        const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+        const isOverdue = !!dueDate && dueDate < new Date() && t.status !== 'done';
+        return dueDate ? (
+          <span className={cn('text-sm', isOverdue ? 'font-semibold text-ds-danger' : 'text-ds-foreground-muted')}>
+            {formatDisplayDate(dueDate)}
+          </span>
+        ) : <span className="text-sm text-ds-foreground-muted">--</span>;
+      } },
+    { key: 'assignee', header: 'Assignee',
+      cell: (t) => (
+        <div className="flex items-center gap-ds-2">
+          <Avatar className="size-6">
+            <AvatarFallback className="text-xs">
+              {t.assigneeName ? initialsOf(t.assigneeName) : '?'}
+            </AvatarFallback>
+          </Avatar>
+          <span className="max-w-30 truncate text-sm">{t.assigneeName || 'Unassigned'}</span>
+        </div>
+      ) },
+    { key: 'category', header: 'Category', hideable: true,
+      cell: (t) => t.category
+        ? <Tag tone="neutral">{t.category.replace('_', ' ')}</Tag>
+        : <span className="text-sm text-ds-foreground-muted">--</span> },
+  ];
+
+  const viewToggle = (
+    <>
+      <div className="flex items-center gap-ds-1 rounded-ds-md border border-ds-border p-0.5" role="group" aria-label="Task scope">
+        <Button variant={scope === 'mine' ? 'secondary' : 'ghost'} size="sm" onClick={() => setScope('mine')} aria-pressed={scope === 'mine'}>
+          My tasks
+        </Button>
+        <Button variant={scope === 'all' ? 'secondary' : 'ghost'} size="sm" onClick={() => setScope('all')} aria-pressed={scope === 'all'}>
+          All tasks
+        </Button>
+      </div>
+      <div className="flex items-center gap-ds-1 rounded-ds-md border border-ds-border p-0.5">
+        <Button variant={layoutView === 'table' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('table')} aria-label="Table view">
+          <ListIcon className="size-4" />
+        </Button>
+        <Button variant={layoutView === 'kanban' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('kanban')} aria-label="Kanban view">
+          <LayoutGrid className="size-4" />
+        </Button>
+      </div>
+    </>
+  );
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">
-            Tasks {!loading && <span className="text-muted-foreground font-normal text-base">({total})</span>}
-          </h1>
-          <p className="text-sm text-muted-foreground">Manage team tasks and assignments</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* My Tasks / All Tasks toggle */}
-          <div className="flex rounded-md border overflow-hidden text-xs font-medium">
-            <button
-              className={cn('px-3 py-1.5 transition-colors', viewMode === 'my' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
-              onClick={() => setViewMode('my')}
-            >
-              My Tasks
-            </button>
-            <button
-              className={cn('px-3 py-1.5 transition-colors', viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
-              onClick={() => setViewMode('all')}
-            >
-              All Tasks
-            </button>
-          </div>
-          {/* Kanban / Table toggle */}
-          <div className="flex items-center gap-1 border rounded-md p-0.5">
-            <Button variant={layoutView === 'kanban' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2" onClick={() => setLayoutView('kanban')}>
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button variant={layoutView === 'table' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2" onClick={() => setLayoutView('table')}>
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-          <Button className="gap-1.5" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Task
-          </Button>
-        </div>
-      </div>
+    <>
 
-      {/* Filter Bar */}
-      <div className="px-6 py-3 border-b bg-muted/30 space-y-2">
-        <FilterBar
-          searchValue={filterSearch}
-          onSearchChange={setFilterSearch}
-          searchPlaceholder="Search tasks..."
-          activeFilters={[
-            ...(filterStatus !== 'all' ? [{ id: 'status', label: 'Status', value: filterStatus }] : []),
-            ...(filterPriority !== 'all' ? [{ id: 'priority', label: 'Priority', value: filterPriority }] : []),
-          ]}
-          onRemoveFilter={(filterId) => {
-            if (filterId === 'status') setFilterStatus('all');
-            if (filterId === 'priority') setFilterPriority('all');
+      {layoutView === 'table' ? (
+        <ListPage<Task>
+          refreshKey={`${listKey}-${scope}`}
+          title="Tasks"
+          description="Manage team tasks and assignments."
+          getRowId={(t) => t.id}
+          fetcher={({ page, limit, search, filters }) => {
+            const status = filters.find((f) => f.id === 'status')?.value;
+            const priority = filters.find((f) => f.id === 'priority')?.value;
+            return tasksApi.list({ page, limit, search, status, priority, view: scope });
           }}
-          onClearFilters={() => { setFilterStatus('all'); setFilterPriority('all'); }}
+          extractItems={(r) => unwrapList<Task>(r).data.map(normalizeTask)}
+          extractTotal={(r) => unwrapList<Task>(r).pagination.total}
+          columns={columns}
+          primaryAction={
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
+              <Plus aria-hidden="true" /> Add task
+            </Button>
+          }
+          searchPlaceholder="Search tasks…"
+          filters={[
+            ...(statusFilter !== 'all' ? [{ id: 'status', label: 'Status', value: statusFilter }] : []),
+            ...(priorityFilter !== 'all' ? [{ id: 'priority', label: 'Priority', value: priorityFilter }] : []),
+          ]}
+          onRemoveFilter={(id) => {
+            if (id === 'status') setStatusFilter('all');
+            if (id === 'priority') setPriorityFilter('all');
+          }}
+          onClearFilters={() => { setStatusFilter('all'); setPriorityFilter('all'); }}
+          headerActions={
+            <div className="flex flex-wrap items-center gap-ds-2">
+              {viewToggle}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="todo">To Do</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+          rowActions={(t) => (
+            <>
+              <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/tasks/${t.id}`)}>
+                <Eye />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/tasks/${t.id}`)}>
+                <Pencil />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => handleDelete(t.id)}>
+                <Trash2 />
+              </Button>
+            </>
+          )}
+          onRowClick={(t) => router.push(`/tasks/${t.id}`)}
+          bulkActions={[{
+            label: 'Delete', destructive: true,
+            onSelect: (rows) => Promise.all(rows.map((r) => tasksApi.delete(r.id))).then(() => { setListKey((k) => k + 1); toast.success('Tasks deleted'); }),
+          }, {
+            label: 'Mark complete',
+            onSelect: (rows) => Promise.all(rows.map((r) => tasksApi.updateStatus(r.id, { status: 'done' }))).then(() => { setListKey((k) => k + 1); toast.success('Tasks marked complete'); }),
+          }]}
+          onExport={async (rows) => {
+            const header = ['Title', 'Status', 'Priority', 'Due Date', 'Assignee', 'Category'];
+            const lines = rows.map((t) => [
+              t.title, STATUS_LABELS[t.status], t.priority,
+              t.dueDate ? formatDisplayDate(t.dueDate) : '',
+              t.assigneeName || '', t.category || '',
+            ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+            const csv = [header.join(','), ...lines].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'tasks.csv'; a.click();
+            URL.revokeObjectURL(url);
+          }}
+          emptyTitle="No tasks yet"
+          emptyDescription="Create your first task to start tracking work."
         />
-        <div className="flex gap-2 flex-wrap">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-36 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="todo">To Do</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="done">Done</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterPriority} onValueChange={setFilterPriority}>
-            <SelectTrigger className="w-36 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && !loading && (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <p className="text-muted-foreground">{error.message}</p>
-            <Button size="sm" onClick={() => refetch()} className="mt-4">Retry</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Loading Skeleton */}
-      {loading && (layoutView === 'kanban' ? <KanbanSkeleton /> : <TableSkeleton />)}
-
-      {/* Kanban Board */}
-      {!loading && !error && layoutView === 'kanban' && (
-        <div className="flex-1 overflow-hidden">
-          <div className="flex gap-6 h-full overflow-x-auto p-6">
-            <KanbanColumn
-              title="To Do"
-              status="todo"
-              tasks={normalizedTasks}
-              onTaskSelect={(t) => { setSelectedTask(t); setDetailOpen(true); }}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-            />
-            <KanbanColumn
-              title="In Progress"
-              status="in_progress"
-              tasks={normalizedTasks}
-              onTaskSelect={(t) => { setSelectedTask(t); setDetailOpen(true); }}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-            />
-            <KanbanColumn
-              title="Done"
-              status="done"
-              tasks={normalizedTasks}
-              onTaskSelect={(t) => { setSelectedTask(t); setDetailOpen(true); }}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-            />
-          </div>
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-1" />
-        </div>
-      )}
-
-      {/* Table View */}
-      {!loading && !error && layoutView === 'table' && (
-        <div className="flex-1 overflow-auto p-6">
-          {normalizedTasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-              <CheckSquare className="h-10 w-10 opacity-30" />
-              <p className="text-sm">No tasks found</p>
-              {(filterSearch || filterStatus !== 'all' || filterPriority !== 'all') && (
-                <Button variant="outline" size="sm" onClick={() => { setFilterSearch(''); setFilterStatus('all'); setFilterPriority('all'); }}>Clear filters</Button>
-              )}
-            </div>
+      ) : (
+        <PageContainer>
+          <PageHeader
+            title="Tasks"
+            description="Manage team tasks and assignments."
+            actions={
+              <>
+                {viewToggle}
+                <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
+                  <Plus aria-hidden="true" /> Add task
+                </Button>
+              </>
+            }
+          />
+          {kanbanLoading ? (
+            <KanbanSkeleton />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {normalizedTasks.map((task) => {
-                  const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-                  const isOverdue = dueDate && dueDate < new Date(REF_DATE) && task.status !== 'done';
-                  const assigneeName = task.assignee_name || task.assignedTo || 'Unassigned';
-                  return (
-                    <TableRow
-                      key={task.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/tasks/${task.id}`)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-medium truncate max-w-[300px]">{task.title}</span>
-                          {(task.subtask_count ?? 0) > 0 && (
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              <CheckSquare className="h-3 w-3 inline mr-0.5" />
-                              {task.completed_subtask_count}/{task.subtask_count}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'} className="text-[10px]">
-                          {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Done'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn('text-[10px] font-medium border-transparent', PRIORITY_COLORS[task.priority])}>
-                          {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {dueDate ? (
-                          <span className={cn('text-sm', isOverdue ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
-                            {isOverdue && 'Overdue: '}
-                            {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">--</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm truncate max-w-[120px]">{assigneeName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {task.category ? (
-                          <Badge variant="outline" className="text-[10px] capitalize">{task.category.replace('_', ' ')}</Badge>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">--</span>
-                        )}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => { setSelectedTask(task); setDetailOpen(true); }}>
-                              <Eye className="h-4 w-4 mr-2" /> Quick View
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/tasks/${task.id}`)}>
-                              <Pencil className="h-4 w-4 mr-2" /> Full Details
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleStatusChange(task, 'done')}>
-                              <CheckSquare className="h-4 w-4 mr-2" /> Mark Complete
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(task.id)}>
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <KanbanBoard
+              columns={[
+                { id: 'todo', title: 'To Do', color: 'var(--ds-foreground-muted)', count: kanbanTasks.filter((t) => t.status === 'todo').length,
+                  children: (
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('todo')}>
+                      {kanbanTasks.filter((t) => t.status === 'todo').map((t) => (
+                        <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
+                      ))}
+                    </div>
+                  ) },
+                { id: 'in_progress', title: 'In Progress', color: 'var(--ds-info)', count: kanbanTasks.filter((t) => t.status === 'in_progress').length,
+                  children: (
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('in_progress')}>
+                      {kanbanTasks.filter((t) => t.status === 'in_progress').map((t) => (
+                        <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
+                      ))}
+                    </div>
+                  ) },
+                { id: 'done', title: 'Done', color: 'var(--ds-success)', count: kanbanTasks.filter((t) => t.status === 'done').length,
+                  children: (
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('done')}>
+                      {kanbanTasks.filter((t) => t.status === 'done').map((t) => (
+                        <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
+                      ))}
+                    </div>
+                  ) },
+              ]}
+            />
           )}
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-4" />
-          {loadingMore && (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          )}
-        </div>
+        </PageContainer>
       )}
-
-      {/* Task Detail Panel */}
-      <TaskDetailPanel
-        task={selectedTask}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onRefetch={refetch}
-      />
 
       {/* Create Task Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create Task</DialogTitle>
+            <DialogTitle>Create task</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="taskTitle">Title <span className="text-destructive">*</span></Label>
+          <div className="space-y-ds-4">
+            <div className="space-y-ds-1">
+              <Label htmlFor="taskTitle">Title <span className="text-ds-danger">*</span></Label>
               <Input
                 id="taskTitle"
                 placeholder="Enter task title"
@@ -887,7 +522,7 @@ export default function TasksPage() {
                 onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-1">
               <Label htmlFor="taskDesc">Description</Label>
               <Textarea
                 id="taskDesc"
@@ -898,8 +533,8 @@ export default function TasksPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-ds-4">
+              <div className="space-y-ds-1">
                 <Label>Priority</Label>
                 <Select value={newTask.priority} onValueChange={(v) => setNewTask((p) => ({ ...p, priority: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -910,7 +545,7 @@ export default function TasksPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-ds-1">
                 <Label>Category</Label>
                 <Select value={newTask.category} onValueChange={(v) => setNewTask((p) => ({ ...p, category: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -923,54 +558,56 @@ export default function TasksPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Assign To</Label>
-              <Combobox
-                options={userOptions}
-                value={newTask.assignedTo}
-                onValueChange={(v) => setNewTask((p) => ({ ...p, assignedTo: v }))}
-                placeholder="Search team members..."
-                searchPlaceholder="Search by name..."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Linked Lead</Label>
-              <Combobox
-                options={[
-                  ...(newTask.leadId && newTask.leadTitle ? [{ value: newTask.leadId, label: newTask.leadTitle }] : []),
-                  ...leadOptions.filter((o: any) => o.value !== newTask.leadId),
-                ]}
-                value={newTask.leadId}
-                onValueChange={(v) => {
-                  const lead = leads.find((l: any) => l.id === v);
-                  setNewTask((p) => ({ ...p, leadId: v, leadTitle: lead?.title || lead?.name || '' }));
+            <div className="space-y-ds-1">
+              <Label>Assign to</Label>
+              <RelationCombobox<User>
+                value={newTask.assignedTo || null}
+                onChange={(id) => setNewTask((p) => ({ ...p, assignedTo: id ?? '' }))}
+                fetcher={async (q, page) => {
+                  const r = await usersApi.list({ search: q, page, limit: 20 });
+                  return { items: r.data, total: r.pagination.total };
                 }}
-                onSearch={setLeadSearch}
-                placeholder="Search leads..."
-                searchPlaceholder="Search by lead title..."
+                getOptionId={(u) => u.id}
+                getOptionLabel={(u) => u.name || u.email}
+                getOptionDescription={(u) => u.email}
+                resolveSelected={async (id) => unwrapEntity<User>(await usersApi.getById(id))}
+                placeholder="Search team members…"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="taskDue">Due Date</Label>
-              <Input
-                id="taskDue"
-                type="date"
+            <div className="space-y-ds-1">
+              <Label>Linked lead</Label>
+              <RelationCombobox<Lead>
+                value={newTask.leadId || null}
+                onChange={(id, item) => setNewTask((p) => ({ ...p, leadId: id ?? '', leadTitle: item?.title || '' }))}
+                fetcher={async (q, page) => {
+                  const list = unwrapList<Lead>(await leadsApi.list({ search: q, page, limit: 20 }), { page, limit: 20 });
+                  return { items: list.data, total: list.pagination.total };
+                }}
+                getOptionId={(l) => l.id}
+                getOptionLabel={(l) => l.title || l.id}
+                resolveSelected={async (id) => unwrapEntity<Lead>(await leadsApi.getById(id))}
+                placeholder="Search leads…"
+              />
+            </div>
+
+            <div className="space-y-ds-1">
+              <Label>Due date</Label>
+              <DatePicker
                 value={newTask.dueDate}
-                onChange={(e) => setNewTask((p) => ({ ...p, dueDate: e.target.value }))}
+                onChange={(d) => setNewTask((p) => ({ ...p, dueDate: d }))}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateTask} disabled={createMutation.loading}>
-              {createMutation.loading && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              Create Task
+              {createMutation.loading && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              Create task
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

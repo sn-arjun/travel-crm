@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { invoicesApi } from './invoices';
+import { invoicesApi, normalizeInvoiceDetail } from './invoices';
 
 describe('invoicesApi', () => {
   beforeEach(() => {
@@ -355,6 +355,39 @@ describe('invoicesApi', () => {
       await invoicesApi.fromItinerary({ itineraryId: 'itn-abc' });
 
       expect(client.post).toHaveBeenCalledWith('/invoices/from-itinerary', { itineraryId: 'itn-abc' });
+    });
+  });
+
+  // ─── tax regime (R201) ─────────────────────────────────────────
+  describe('tax regime on the invoice', () => {
+    it('reads the stored regime, breakdown, notes and tax ids from the API row', () => {
+      const inv = normalizeInvoiceDetail({
+        id: 'i1', invoice_number: 'INV-1', total: 1000, total_tax: 0, items: [],
+        tax_regime: 'vat',
+        tax_breakdown: JSON.stringify([{ code: 'VAT', rate: 0, base: 1000, amount: 0, label: 'VAT' }]),
+        tax_notes: JSON.stringify(['Reverse charge: the customer accounts for VAT']),
+        seller_tax_id: 'DE811111111', buyer_tax_id: 'FR12345678901', place_of_supply: 'FR',
+      });
+      expect(inv?.taxRegime).toBe('vat');
+      expect(inv?.taxBreakdown).toEqual([{ code: 'VAT', rate: 0, base: 1000, amount: 0, label: 'VAT' }]);
+      expect(inv?.taxNotes).toEqual(['Reverse charge: the customer accounts for VAT']);
+      expect([inv?.sellerTaxId, inv?.buyerTaxId, inv?.placeOfSupply]).toEqual(['DE811111111', 'FR12345678901', 'FR']);
+    });
+
+    it('treats an invoice from before the tax engine as GST with no breakdown', () => {
+      const inv = normalizeInvoiceDetail({ id: 'i2', total: 118, total_tax: 18, cgst: 9, sgst: 9, items: [] });
+      expect(inv?.taxRegime).toBe('gst');
+      expect(inv?.taxBreakdown).toEqual([]);
+      expect(inv?.taxNotes).toEqual([]);
+      expect(inv?.buyerTaxId).toBeNull();
+    });
+
+    it('asks the API for the tax preview and returns it', async () => {
+      const body = { regime: 'sales_tax', treatment: 'sales_tax', taxLines: [], notes: [], total: 1088.75, defaultRate: 8.875 };
+      vi.mocked(client.post).mockResolvedValue({ data: body });
+      const preview = await invoicesApi.taxPreview({ contactId: 'c1', items: [{ rate: 1000, quantity: 1 }], gstRate: 18 });
+      expect(client.post).toHaveBeenCalledWith('/invoices/tax-preview', { contactId: 'c1', items: [{ rate: 1000, quantity: 1 }], gstRate: 18 });
+      expect(preview?.regime).toBe('sales_tax');
     });
   });
 });

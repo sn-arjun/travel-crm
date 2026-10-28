@@ -1,12 +1,15 @@
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import type { Env } from '../types';
+import { resolveTenantDb as resolveTenantD1 } from '../services/tenant-db';
+import { loadLocaleContext } from '../utils/money';
 import * as schema from '../db/tenant-schema';
 import { FileParser } from '../services/imports/file-parser';
 import { ImportValidator } from '../services/imports/import-validator';
 import { DuplicateDetector, type DuplicateStrategy } from '../services/imports/duplicate-detector';
 import { RowInserter } from '../services/imports/row-inserter';
 import { broadcastToTenant } from '../utils/realtime';
+import { generateId } from '../utils/uuid';
 
 export interface ImportJobMessage {
     jobId: string;
@@ -26,19 +29,24 @@ export async function handleImportQueue(batch: MessageBatch<any>, env: Env): Pro
     }
 }
 
-function resolveTenantDb(env: Env, tenantId?: string): ReturnType<typeof drizzle> {
-    if (tenantId) {
-        const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
-        const binding = (env as any)[bindingKey];
-        if (binding) return drizzle(binding, { schema });
-    }
-    return drizzle(env.MASTER_DB, { schema });
+type TenantDb = DrizzleD1Database<typeof schema>;
+
+/** Tenant database for a queue message. Null (job dropped, never run on MASTER_DB) when the tenant does not resolve. */
+async function resolveTenantDb(env: Env, tenantId?: string): Promise<TenantDb | null> {
+    if (!tenantId) return null;
+    const binding = await resolveTenantD1(env, tenantId);
+    return binding ? drizzle(binding, { schema }) : null;
 }
 
 export async function handleImportJob(data: ImportJobMessage, env: Env): Promise<void> {
     const jobId = data.jobId;
     // Use tenantId from the queue message to resolve the correct tenant DB
-    const db = resolveTenantDb(env, data.tenantId || undefined);
+    const rawDb = data.tenantId ? await resolveTenantD1(env, data.tenantId) : null;
+    const db: TenantDb | null = rawDb ? drizzle(rawDb, { schema }) : null;
+    if (!db || !rawDb) {
+        console.error(`Import job ${jobId}: tenant ${data.tenantId} has no resolvable database; dropped`);
+        return;
+    }
 
     const job = await db.query.importJobs.findFirst({
         where: eq(schema.importJobs.id, jobId)
@@ -64,10 +72,11 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
         const buffer = await object.arrayBuffer();
 
         // 3. Initialize Services
+        const agencyCurrency = (await loadLocaleContext(rawDb)).currency;
         const parser = new FileParser();
         const validator = new ImportValidator();
         const duplicateDetector = new DuplicateDetector();
-        const rowInserter = new RowInserter();
+        const rowInserter = new RowInserter(agencyCurrency);
 
         // 4. Parse file
         const parseResult = await parser.parseFile(buffer, job.fileName);
@@ -90,7 +99,7 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
             if (!validationRes.isValid) {
                 errorCount++;
                 await db.insert(schema.importErrors).values({
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     importJobId: jobId,
                     rowNumber: rowNum,
                     rowData: JSON.stringify(rawRow),
@@ -175,7 +184,7 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
 
         // Optionally create a general error row
         await db.insert(schema.importErrors).values({
-            id: crypto.randomUUID(),
+            id: generateId(),
             importJobId: jobId,
             rowNumber: 0, // 0 for general error
             rowData: '{}',

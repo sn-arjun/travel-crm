@@ -1,0 +1,62 @@
+{
+  "slice": "payments",
+  "title": "Payments",
+  "status": "existing",
+  "showcaseOrder": 11,
+  "endpoints": [
+    "DELETE /api/v1/payments/:id",
+    "GET /api/v1/payments",
+    "GET /api/v1/payments/:id",
+    "POST /api/v1/payments",
+    "POST /api/v1/payments/:id/link-invoice"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/payments.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/payments/page.tsx",
+    "desktop/src/app/(app)/payments/new/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/payments/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-payments.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/payments.spec.ts",
+  "seedHelpers": [
+    "seedPayment",
+    "seedInvoice"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/payments/**",
+    "desktop/src/lib/api/payments.ts",
+    "desktop/e2e/payments.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "",
+  "showcaseScript": [
+    "Open Payments and filter by method",
+    "Record a payment against an outstanding invoice",
+    "Open the payment detail and confirm the invoice link",
+    "Show the invoice balance update"
+  ]
+}

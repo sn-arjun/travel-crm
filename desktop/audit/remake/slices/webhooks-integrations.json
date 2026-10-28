@@ -1,0 +1,50 @@
+{
+  "slice": "webhooks-integrations",
+  "title": "Webhooks & Integrations",
+  "status": "new",
+  "showcaseOrder": 48,
+  "endpoints": [
+    "POST /api/v1/leads/webhook",
+    "POST /api/v1/webhooks/sendgrid/events",
+    "POST /api/v1/webhooks/twilio/status"
+  ],
+  "gates": [],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/settings/integrations/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/webhooks-integrations.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/integrations/**",
+    "desktop/src/lib/api/config.ts",
+    "desktop/e2e/webhooks-integrations.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Built desktop/src/app/(app)/settings/integrations/page.tsx: informational settings page listing the 3 webhook endpoints (lead capture, SendGrid events, Twilio status) with copy-to-clipboard URLs and per-endpoint auth notes. Not a ListPage/EntityForm/DetailPage archetype because there is no backing CRUD API for these entries (no apiModules, no endpoints beyond the pre-auth receivers themselves) -- most uxContract booleans are structurally N/A for a static reference page and left false. NOT WIRED INTO NAVIGATION: settings/integrations is outside fileAllowlist for both sidebar.tsx and settings/page.tsx, so a user cannot reach this page through the UI yet -- someone with access to those files needs to link the existing (mocked) Integrations tab's 'Manage' button and/or add a settings sub-nav entry to /settings/integrations. Remaining gaps noted in manifest (P0 #8 tenant context, P0 #9 Twilio signature verification) are backend-only and out of scope here.",
+  "showcaseScript": [
+    "Open Settings → Integrations",
+    "Copy the lead-capture webhook URL for the website form",
+    "Show recent inbound webhook deliveries",
+    "Confirm Twilio and SendGrid callback status"
+  ]
+}

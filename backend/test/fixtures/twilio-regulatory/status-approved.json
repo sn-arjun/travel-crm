@@ -1,0 +1,11 @@
+{
+  "note": "Bundle status poll, approved. Written from Twilio's documentation; verify at go-live.",
+  "account": "ACsub0000000000000000000000000000",
+  "calls": [
+    {
+      "request": { "method": "GET", "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001" },
+      "response": { "status": 200, "body": { "sid": "BU00000000000000000000000000000001", "status": "twilio-approved", "valid_until": null } }
+    }
+  ],
+  "result": { "status": "twilio-approved", "failureReason": null }
+}

@@ -1,4 +1,17 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787/api/v1';
+const DEFAULT_API_URL = 'http://localhost:8787/api/v1';
+
+/**
+ * API base URL, resolved at call time (never at module load):
+ * packaged desktop runtime config, then the build-time NEXT_PUBLIC_API_URL, then localhost.
+ * Do not render this during SSR; use it in effects and handlers.
+ */
+export function getApiBaseUrl(): string {
+  const runtime = typeof window !== 'undefined' ? window.travelcrmConfig?.apiUrl : undefined;
+  return runtime || process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
+}
+
+/** @deprecated Use getApiBaseUrl(); this value is frozen at module load. */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
 
 export const API_ENDPOINTS = {
   // Auth
@@ -8,10 +21,18 @@ export const API_ENDPOINTS = {
     refreshToken: '/auth/refresh-token',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
+    changePassword: '/auth/change-password',
     resolveTenant: '/auth/resolve-tenant',
     sendOtp: '/auth/send-otp',
     verifyOtp: '/auth/verify-otp',
     sessions: '/auth/sessions',
+    twoFactorVerify: '/auth/2fa/verify',
+    twoFactorStatus: '/auth/2fa/status',
+    twoFactorSetup: '/auth/2fa/setup',
+    twoFactorEnable: '/auth/2fa/enable',
+    twoFactorDisable: '/auth/2fa/disable',
+    twoFactorRecoveryCodes: '/auth/2fa/recovery-codes',
+    twoFactorPolicy: '/auth/2fa/policy',
   },
   // Users
   users: {
@@ -35,6 +56,9 @@ export const API_ENDPOINTS = {
     share: (id: string) => `/contacts/${id}/share`,
     upcomingOccasions: '/contacts/upcoming-occasions',
     customFields: '/contacts/custom-fields',
+    customFieldById: (id: string) => `/contacts/custom-fields/${id}`,
+    sharedWithMe: '/contacts/shared-with-me',
+    bulkTag: '/contacts/bulk-tag',
   },
   // Leads
   leads: {
@@ -80,6 +104,7 @@ export const API_ENDPOINTS = {
     void: (id: string) => `/invoices/${id}/void`,
     duplicate: (id: string) => `/invoices/${id}/duplicate`,
     send: (id: string) => `/invoices/${id}/send`,
+    paymentLink: (id: string) => `/invoices/${id}/payment-link`,
     summary: '/invoices/summary',
     fromItinerary: '/invoices/from-itinerary',
   },
@@ -245,6 +270,17 @@ export const API_ENDPOINTS = {
     cancel: (id: string) => `/campaigns/${id}/cancel`,
     recipients: (id: string) => `/campaigns/${id}/recipients`,
   },
+  // WhatsApp Campaigns
+  whatsappCampaigns: {
+    list: '/whatsapp-campaigns',
+    create: '/whatsapp-campaigns',
+    byId: (id: string) => `/whatsapp-campaigns/${id}`,
+    send: (id: string) => `/whatsapp-campaigns/${id}/send`,
+    pause: (id: string) => `/whatsapp-campaigns/${id}/pause`,
+    cancel: (id: string) => `/whatsapp-campaigns/${id}/cancel`,
+    analytics: (id: string) => `/whatsapp-campaigns/${id}/analytics`,
+    recipients: (id: string) => `/whatsapp-campaigns/${id}/recipients`,
+  },
   // Marketing
   marketing: {
     segments: '/marketing/segments',
@@ -364,6 +400,8 @@ export const API_ENDPOINTS = {
   // Settings
   settings: {
     company: '/settings/company',
+    usage: '/settings/usage',
+    requestUpgrade: '/settings/usage/request-upgrade',
     logo: '/settings/logo',
     assignmentRules: '/settings/assignment-rules',
     routingRules: '/settings/routing-rules',
@@ -371,6 +409,38 @@ export const API_ENDPOINTS = {
     invoiceDefaults: '/settings/invoice-defaults',
     itineraryDefaults: '/settings/itinerary-defaults',
     numbering: '/settings/numbering',
+  },
+  // Assistant (suggestions on every screen) and the automations library
+  assistant: {
+    suggestions: '/assistant/suggestions',
+    count: '/assistant/suggestions/count',
+    apply: (id: string) => `/assistant/suggestions/${id}/apply`,
+    dismiss: (id: string) => `/assistant/suggestions/${id}/dismiss`,
+    undo: (id: string) => `/assistant/suggestions/${id}/undo`,
+    analyze: '/assistant/analyze',
+    activity: '/assistant/activity',
+  },
+  automations: {
+    list: '/automations',
+    byKey: (key: string) => `/automations/${key}`,
+    runScheduled: '/automations/run-scheduled',
+    pause: '/automations/pause',
+    custom: '/automations/custom',
+    customById: (id: string) => `/automations/custom/${id}`,
+  },
+  // Integrations (receiving numbers / mailboxes, website-form API keys)
+  integrations: {
+    channels: '/integrations/channels',
+    channelById: (id: string) => `/integrations/channels/${id}`,
+    apiKeys: '/integrations/api-keys',
+    apiKeyById: (id: string) => `/integrations/api-keys/${id}`,
+    paymentGateways: '/integrations/payment-gateways',
+    paymentGatewayById: (gateway: string) => `/integrations/payment-gateways/${gateway}`,
+    paymentGatewayTest: (gateway: string) => `/integrations/payment-gateways/${gateway}/test`,
+    whatsapp: '/integrations/whatsapp',
+    whatsappProvider: '/integrations/whatsapp/provider',
+    whatsappMeta: '/integrations/whatsapp/meta',
+    whatsappMetaTest: '/integrations/whatsapp/meta/test',
   },
   // Bookmarks & Notes
   bookmarks: {
@@ -394,47 +464,5 @@ export const API_ENDPOINTS = {
   notificationPreferences: {
     me: '/notification-preferences/me',
     quietHours: '/notification-preferences/me/quiet-hours',
-  },
-  // Admin & Super Admin
-  admin: {
-    // Dashboard
-    dashboard: '/admin/dashboard',
-    stats: '/admin/stats',
-    platformHealth: '/admin/platform/health',
-    // Tenants
-    tenants: '/admin/tenants',
-    tenantById: (id: string) => `/admin/tenants/${id}`,
-    tenantActivate: (id: string) => `/admin/tenants/${id}/activate`,
-    tenantSuspend: (id: string) => `/admin/tenants/${id}/suspend`,
-    tenantUpdate: (id: string) => `/admin/tenants/${id}`,
-    tenantCreate: '/admin/tenants',
-    // Users (across all tenants)
-    allUsers: '/admin/users',
-    userById: (id: string) => `/admin/users/${id}`,
-    userUpdate: (id: string) => `/admin/users/${id}`,
-    userDelete: (id: string) => `/admin/users/${id}`,
-    userActivate: (id: string) => `/admin/users/${id}/activate`,
-    userSuspend: (id: string) => `/admin/users/${id}/suspend`,
-    // Plans
-    plans: '/admin/plans',
-    planById: (id: string) => `/admin/plans/${id}`,
-    planCreate: '/admin/plans',
-    planUpdate: (id: string) => `/admin/plans/${id}`,
-    planDelete: (id: string) => `/admin/plans/${id}`,
-    // Billing & Revenue
-    billing: '/admin/billing',
-    billingStats: '/admin/billing/stats',
-    invoices: '/admin/billing/invoices',
-    payments: '/admin/billing/payments',
-    revenue: '/admin/billing/revenue',
-    // System
-    systemHealth: '/admin/system/health',
-    systemLogs: '/admin/system/logs',
-    systemMetrics: '/admin/system/metrics',
-    // Configuration
-    globalConfig: '/admin/config',
-    configUpdate: '/admin/config',
-    // Audit Logs
-    auditLogs: '/admin/audit-logs',
   },
 } as const;

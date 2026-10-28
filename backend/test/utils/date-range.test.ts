@@ -1,174 +1,135 @@
 import { describe, it, expect } from 'vitest';
 import { resolveDateRange } from '../../src/utils/date-range';
 
-describe('resolveDateRange', () => {
-  it('should return today range for "today" preset', () => {
-    const result = resolveDateRange('today');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
+// Fixed instants. Tenant zone is Asia/Kolkata (UTC+05:30, no DST).
+//   2026-10-06T19:00:00Z = Tue 7 Oct 2026, 00:30 IST   (UTC date is still 6 Oct)
+//   2026-10-07T18:00:00Z = Wed 7 Oct 2026, 23:30 IST
+const IST_0030 = new Date('2026-10-06T19:00:00Z'); // Wed 7 Oct 2026 local
+const IST_2330 = new Date('2026-10-07T18:00:00Z'); // Wed 7 Oct 2026 local
+const TZ = 'Asia/Kolkata';
 
-    expect(from.getHours()).toBe(0);
-    expect(from.getMinutes()).toBe(0);
-    expect(from.getSeconds()).toBe(0);
-    expect(to.getHours()).toBe(23);
-    expect(to.getMinutes()).toBe(59);
-    expect(to.getSeconds()).toBe(59);
-
-    // Both should be same day
-    expect(from.getDate()).toBe(to.getDate());
-    expect(from.getMonth()).toBe(to.getMonth());
+describe('resolveDateRange (tenant-local, fixed clock)', () => {
+  it('today covers the local day at 00:30 IST (not the UTC day)', () => {
+    const r = resolveDateRange('today', undefined, undefined, TZ, IST_0030);
+    expect(r.fromDate).toBe('2026-10-07');
+    expect(r.toDate).toBe('2026-10-07');
+    expect(r.from).toBe('2026-10-06T18:30:00.000Z');
+    expect(r.to).toBe('2026-10-07T18:29:59.999Z');
   });
 
-  it('should return yesterday range for "yesterday" preset', () => {
-    const result = resolveDateRange('yesterday');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-    const today = new Date();
-
-    // Yesterday should be one day before today
-    const expectedDate = new Date(today);
-    expectedDate.setDate(expectedDate.getDate() - 1);
-
-    expect(from.getDate()).toBe(expectedDate.getDate());
-    expect(to.getDate()).toBe(expectedDate.getDate());
-    expect(from.getHours()).toBe(0);
-    expect(to.getHours()).toBe(23);
+  it('today is the same range at 23:30 IST', () => {
+    const r = resolveDateRange('today', undefined, undefined, TZ, IST_2330);
+    expect(r.fromDate).toBe('2026-10-07');
+    expect(r.from).toBe('2026-10-06T18:30:00.000Z');
+    expect(r.to).toBe('2026-10-07T18:29:59.999Z');
   });
 
-  it('should return this week range for "this_week" preset (Monday start)', () => {
-    const result = resolveDateRange('this_week');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-
-    // Week starts on Monday (day 1)
-    expect(from.getDay()).toBe(1); // Monday
-    expect(to.getDay()).toBe(0); // Sunday (end of week)
+  it('a result just before and just after local midnight resolve to different days', () => {
+    const before = resolveDateRange('today', undefined, undefined, TZ, new Date('2026-10-06T18:29:59Z'));
+    const after = resolveDateRange('today', undefined, undefined, TZ, new Date('2026-10-06T18:30:00Z'));
+    expect(before.fromDate).toBe('2026-10-06');
+    expect(after.fromDate).toBe('2026-10-07');
   });
 
-  it('should return last week range for "last_week" preset', () => {
-    const result = resolveDateRange('last_week');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-
-    // Last week should be entirely before this week
-    const thisWeek = resolveDateRange('this_week');
-    const thisWeekFrom = new Date(thisWeek.from);
-
-    expect(to.getTime()).toBeLessThan(thisWeekFrom.getTime());
-    expect(from.getDay()).toBe(1); // Monday
-    expect(to.getDay()).toBe(0); // Sunday
+  it('yesterday', () => {
+    const r = resolveDateRange('yesterday', undefined, undefined, TZ, IST_0030);
+    expect(r.fromDate).toBe('2026-10-06');
+    expect(r.toDate).toBe('2026-10-06');
   });
 
-  it('should return this month range for "this_month" preset', () => {
-    const result = resolveDateRange('this_month');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-    const now = new Date();
-
-    expect(from.getDate()).toBe(1); // First day of month
-    expect(from.getMonth()).toBe(now.getMonth());
-    expect(to.getMonth()).toBe(now.getMonth());
+  it('this_week starts on Monday and ends on Sunday', () => {
+    const r = resolveDateRange('this_week', undefined, undefined, TZ, IST_0030);
+    expect(r.fromDate).toBe('2026-10-05'); // Monday
+    expect(r.toDate).toBe('2026-10-11'); // Sunday
   });
 
-  it('should return last month range for "last_month" preset', () => {
-    const result = resolveDateRange('last_month');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-    const now = new Date();
-
-    // Should be the month before current
-    const expectedMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    expect(from.getMonth()).toBe(expectedMonth);
-    expect(from.getDate()).toBe(1); // First day
-    expect(to.getMonth()).toBe(expectedMonth); // Same month
+  it('last_week is the week before', () => {
+    const r = resolveDateRange('last_week', undefined, undefined, TZ, IST_0030);
+    expect(r.fromDate).toBe('2026-09-28');
+    expect(r.toDate).toBe('2026-10-04');
   });
 
-  it('should return this quarter range for "this_quarter" preset', () => {
-    const result = resolveDateRange('this_quarter');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-
-    // Quarter start months: 0 (Jan), 3 (Apr), 6 (Jul), 9 (Oct)
-    expect([0, 3, 6, 9]).toContain(from.getMonth());
-    expect(from.getDate()).toBe(1);
+  it('a Sunday-night UTC instant that is Monday locally belongs to the new week', () => {
+    // 2026-10-04T19:00Z = Mon 5 Oct 00:30 IST
+    const r = resolveDateRange('this_week', undefined, undefined, TZ, new Date('2026-10-04T19:00:00Z'));
+    expect(r.fromDate).toBe('2026-10-05');
   });
 
-  it('should return last quarter range for "last_quarter" preset', () => {
-    const result = resolveDateRange('last_quarter');
-    const from = new Date(result.from);
-
-    // Should start on the first of a quarter month
-    expect([0, 3, 6, 9]).toContain(from.getMonth());
-    expect(from.getDate()).toBe(1);
-
-    // Should be before this quarter
-    const thisQuarter = resolveDateRange('this_quarter');
-    const thisQuarterFrom = new Date(thisQuarter.from);
-    expect(from.getTime()).toBeLessThan(thisQuarterFrom.getTime());
+  it('this_month / last_month', () => {
+    const t = resolveDateRange('this_month', undefined, undefined, TZ, IST_0030);
+    expect([t.fromDate, t.toDate]).toEqual(['2026-10-01', '2026-10-31']);
+    expect(t.from).toBe('2026-09-30T18:30:00.000Z');
+    expect(t.to).toBe('2026-10-31T18:29:59.999Z');
+    const l = resolveDateRange('last_month', undefined, undefined, TZ, IST_0030);
+    expect([l.fromDate, l.toDate]).toEqual(['2026-09-01', '2026-09-30']);
   });
 
-  it('should return this year range for "this_year" preset', () => {
-    const result = resolveDateRange('this_year');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-    const now = new Date();
-
-    expect(from.getMonth()).toBe(0); // January
-    expect(from.getDate()).toBe(1);
-    expect(from.getFullYear()).toBe(now.getFullYear());
-    expect(to.getMonth()).toBe(11); // December
-    expect(to.getFullYear()).toBe(now.getFullYear());
+  it('this_month at 00:30 IST on the 1st is the new month even though UTC is still the old one', () => {
+    const r = resolveDateRange('this_month', undefined, undefined, TZ, new Date('2026-09-30T19:00:00Z'));
+    expect(r.fromDate).toBe('2026-10-01');
   });
 
-  it('should return last year range for "last_year" preset', () => {
-    const result = resolveDateRange('last_year');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-    const now = new Date();
-
-    expect(from.getFullYear()).toBe(now.getFullYear() - 1);
-    expect(from.getMonth()).toBe(0);
-    expect(from.getDate()).toBe(1);
-    expect(to.getFullYear()).toBe(now.getFullYear() - 1);
-    expect(to.getMonth()).toBe(11);
+  it('last_month across a year boundary', () => {
+    const l = resolveDateRange('last_month', undefined, undefined, TZ, new Date('2026-01-10T06:00:00Z'));
+    expect([l.fromDate, l.toDate]).toEqual(['2025-12-01', '2025-12-31']);
   });
 
-  it('should handle custom range with valid dates', () => {
-    const result = resolveDateRange('custom', '2024-01-15', '2024-02-15');
-    const from = new Date(result.from);
-    const to = new Date(result.to);
-
-    expect(from.getFullYear()).toBe(2024);
-    expect(from.getMonth()).toBe(0); // January
-    expect(from.getDate()).toBe(15);
-    expect(to.getMonth()).toBe(1); // February
-    expect(to.getDate()).toBe(15);
+  it('quarters', () => {
+    const t = resolveDateRange('this_quarter', undefined, undefined, TZ, IST_0030);
+    expect([t.fromDate, t.toDate]).toEqual(['2026-10-01', '2026-12-31']);
+    const l = resolveDateRange('last_quarter', undefined, undefined, TZ, IST_0030);
+    expect([l.fromDate, l.toDate]).toEqual(['2026-07-01', '2026-09-30']);
+    const wrap = resolveDateRange('last_quarter', undefined, undefined, TZ, new Date('2026-02-10T06:00:00Z'));
+    expect([wrap.fromDate, wrap.toDate]).toEqual(['2025-10-01', '2025-12-31']);
   });
 
-  it('should throw for custom range without dates', () => {
-    expect(() => resolveDateRange('custom')).toThrow(
-      'Custom date range requires customFrom and customTo'
-    );
+  it('years', () => {
+    const t = resolveDateRange('this_year', undefined, undefined, TZ, IST_0030);
+    expect([t.fromDate, t.toDate]).toEqual(['2026-01-01', '2026-12-31']);
+    const l = resolveDateRange('last_year', undefined, undefined, TZ, IST_0030);
+    expect([l.fromDate, l.toDate]).toEqual(['2025-01-01', '2025-12-31']);
   });
 
-  it('should throw for custom range with only from date', () => {
-    expect(() => resolveDateRange('custom', '2024-01-15')).toThrow(
-      'Custom date range requires customFrom and customTo'
-    );
+  it('custom date-only range is read as local days (inclusive)', () => {
+    const r = resolveDateRange('custom', '2024-01-15', '2024-02-15', TZ, IST_0030);
+    expect(r.fromDate).toBe('2024-01-15');
+    expect(r.toDate).toBe('2024-02-15');
+    expect(r.from).toBe('2024-01-14T18:30:00.000Z');
+    expect(r.to).toBe('2024-02-15T18:29:59.999Z');
   });
 
-  it('should default to this month for unknown presets', () => {
-    const result = resolveDateRange('unknown_preset');
-    const thisMonth = resolveDateRange('this_month');
-
-    expect(result.from).toBe(thisMonth.from);
-    expect(result.to).toBe(thisMonth.to);
+  it('custom range with instants is kept as given', () => {
+    const r = resolveDateRange('custom', '2024-01-15T00:00:00.000Z', '2024-02-15T10:00:00.000Z', TZ, IST_0030);
+    expect(r.from).toBe('2024-01-15T00:00:00.000Z');
+    expect(r.to).toBe('2024-02-15T10:00:00.000Z');
   });
 
-  it('should return ISO 8601 strings', () => {
-    const result = resolveDateRange('today');
-    // ISO string ends with Z or has timezone offset
-    expect(result.from).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-    expect(result.to).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  it('throws for custom range without dates', () => {
+    expect(() => resolveDateRange('custom')).toThrow('Custom date range requires customFrom and customTo');
+    expect(() => resolveDateRange('custom', '2024-01-15')).toThrow('Custom date range requires customFrom and customTo');
+  });
+
+  it('defaults to this month for unknown presets', () => {
+    const a = resolveDateRange('unknown_preset', undefined, undefined, TZ, IST_0030);
+    const b = resolveDateRange('this_month', undefined, undefined, TZ, IST_0030);
+    expect(a).toEqual(b);
+  });
+
+  it('defaults to the Asia/Kolkata zone when none is given', () => {
+    const r = resolveDateRange('today', undefined, undefined, undefined, IST_0030);
+    expect(r.fromDate).toBe('2026-10-07');
+  });
+
+  it('works for a zone behind UTC', () => {
+    // 2026-10-07T03:00Z = 6 Oct 23:00 in New York (EDT, UTC-4)
+    const r = resolveDateRange('today', undefined, undefined, 'America/New_York', new Date('2026-10-07T03:00:00Z'));
+    expect(r.fromDate).toBe('2026-10-06');
+    expect(r.from).toBe('2026-10-06T04:00:00.000Z');
+  });
+
+  it('returns ISO 8601 strings', () => {
+    const r = resolveDateRange('today', undefined, undefined, TZ, IST_0030);
+    expect(r.from).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(r.to).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 });

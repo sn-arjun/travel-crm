@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "pass",
+    "durationMs": 19174,
+    "tail": "tsc: 2 errors - 0 in app src (must be 0), 2 in tests/e2e/other (baseline 37)"
+  },
+  "unit": {
+    "status": "pass",
+    "durationMs": 19810,
+    "tail": "vitest: 1158 passed / 0 failed tests; 0 failing files (baseline 3)\nBaseline files now passing (ratchet candidates):\n  + src/lib/api/auth.test.ts\n  + src/lib/api/client.test.ts\n  + src/lib/api/users.test.ts"
+  },
+  "lint": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "build": {
+    "status": "pass",
+    "durationMs": 63273,
+    "tail": "├ ○ /rate-cards/new\n├ ○ /reports\n├ ○ /reports/customer\n├ ○ /reports/financial\n├ ○ /reports/fleet\n├ ○ /reports/leads\n├ ○ /reports/marketing\n├ ○ /reports/pipeline\n├ ○ /reports/revenue\n├ ○ /reports/sales\n├ ○ /reports/supplier\n├ ○ /reports/team\n├ ○ /reports/visa\n├ ○ /reset-password\n├ ○ /settings\n├ ○ /settings/activity-log\n├ ○ /settings/ai\n├ ○ /settings/ai-usage\n├ ○ /settings/announcements\n├ ○ /settings/assignment-rules\n├ ○ /settings/chatbot\n├ ○ /settings/company\n├ ○ /settings/custom-fields\n├ ○ /settings/email-signature\n├ ○ /settings/export\n├ ○ /settings/followup-sequences\n├ ○ /settings/import\n├ ○ /settings/integrations\n├ ○ /settings/invoice-defaults\n├ ○ /settings/itinerary-defaults\n├ ○ /settings/login-history\n├ ○ /settings/notifications\n├ ○ /settings/numbering\n├ ○ /settings/phone-numbers\n├ ○ /settings/profile\n├ ○ /settings/routing-rules\n├ ○ /settings/sessions\n├ ○ /settings/team\n├ ○ /settings/voip\n├ ○ /setup-account\n├ ○ /super-admin\n├ ○ /super-admin/audit\n├ ○ /super-admin/billing\n├ ○ /super-admin/config\n├ ○ /super-admin/plans\n├ ○ /super-admin/system\n├ ○ /super-admin/tenants\n├ ƒ /super-admin/tenants/[id]\n├ ○ /super-admin/users\n├ ○ /suppliers\n├ ƒ /suppliers/[id]\n├ ƒ /suppliers/[id]/edit\n├ ○ /suppliers/compare\n├ ○ /suppliers/new\n├ ○ /tasks\n├ ƒ /tasks/[id]\n├ ○ /travellers\n├ ƒ /travellers/[id]\n├ ƒ /travellers/[id]/edit\n├ ○ /travellers/new\n├ ○ /visa\n├ ƒ /visa/[id]\n├ ƒ /visa/[id]/edit\n├ ○ /visa/dashboard\n├ ○ /visa/new\n├ ○ /vouchers\n├ ƒ /vouchers/[id]\n├ ƒ /vouchers/[id]/edit\n└ ○ /vouchers/new\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n\n--- stack restart (up --no-build) exit 0 ---\n[fix-stack slot 0] starting API on :8787\n[fix-stack slot 0] starting web on :3100\n[fix-stack slot 0] up - API pid 23148, web pid 30116\nE2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "pass",
+    "durationMs": 17288,
+    "tail": "playwright: 3 passed, 0 failed, 0 flaky, 0 skipped; 0 failure(s) tolerated\n\nRunning 3 tests using 1 worker\n\n[1/3] [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin\n[2/3] [chromium] › e2e\\token-refresh.spec.ts:46:7 › Token refresh - single flight › an expired access token is refreshed exactly once and the session survives a reload\n[3/3] [chromium] › e2e\\token-refresh.spec.ts:68:7 › Token refresh - single flight › two windows loading in parallel with an expired token share one refresh and neither is logged out\n  3 passed (15.8s)"
+  },
+  "layoutProbe": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  }
+}

@@ -28,12 +28,32 @@ output "kv_report_cache_id" {
   value       = cloudflare_workers_kv_namespace.report_cache.id
 }
 
-output "pages_crm_url" {
-  description = "CRM Web App Pages URL"
-  value       = cloudflare_pages_project.crm_web.subdomain
+output "pages_landing_url" {
+  description = "Landing page Pages URL"
+  value       = cloudflare_pages_project.landing.subdomain
 }
 
-output "pages_admin_url" {
-  description = "Super Admin Pages URL"
-  value       = cloudflare_pages_project.admin.subdomain
+output "api_hostname" {
+  description = "API custom domain"
+  value       = cloudflare_workers_domain.api.hostname
+}
+
+output "admin_hostname" {
+  description = "Super admin custom domain"
+  value       = cloudflare_workers_domain.admin.hostname
+}
+
+output "r2_backups_bucket" {
+  description = "R2 bucket for tenant backups"
+  value       = cloudflare_r2_bucket.backups.name
+}
+
+output "r2_desktop_updates_bucket" {
+  description = "R2 bucket for the desktop update feed"
+  value       = cloudflare_r2_bucket.desktop_updates.name
+}
+
+output "app_hostname" {
+  description = "Agency web app custom domain"
+  value       = cloudflare_workers_domain.app.hostname
 }

@@ -1,0 +1,136 @@
+{
+  "id": "R138",
+  "tier": 4,
+  "step": 2,
+  "title": "No rupee or India defaults for a non-India agency: template quotes, leads, itineraries, credit notes, PDFs, imports, AI paths and dates (B1-B4, B7 and the sweep), with a guard test",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Every amount, currency, date format and time zone an agency sees follows its own settings. A euro, pound or dirham agency never gets INR, en-IN or Asia/Kolkata from a default, and a test stops new literals coming back.",
+  "why": "Found while mapping a euro agency onto the product (TOUR-OPERATOR-DESIGN.md section 15): a template quote is always INR (itinerary-templates.ts:270), web-form and assistant leads are INR (domain/leads.ts:84, routes/leads.ts:42), POST /itineraries defaults to INR (itineraries.ts:74, 309), the AI itinerary page says 'Budget (INR)', credit notes default to INR (credit-notes.ts:130, 427), and a sweep found 20 more literals.",
+  "featuresToWorks": ["platform.agency-locale", "finance.currency"],
+  "featureKeys": [],
+  "dependsOn": ["R136"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R139"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/itinerary-templates.ts",
+      "backend/src/services/domain/leads.ts",
+      "backend/src/routes/leads.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/routes/credit-notes.ts",
+      "backend/src/routes/ai-assistant.ts",
+      "backend/src/routes/ai-extractions.ts",
+      "backend/src/services/ai-extraction.ts",
+      "backend/src/routes/fleet.ts",
+      "backend/src/routes/vouchers.ts",
+      "backend/src/routes/payment-webhooks.ts",
+      "backend/src/routes/planner.ts",
+      "backend/src/routes/rate-cards.ts",
+      "backend/src/validators/rate-card.ts",
+      "backend/src/validators/fleet.ts",
+      "backend/src/routes/suppliers.ts",
+      "backend/src/routes/settings.ts",
+      "backend/src/services/imports/import-validator.ts",
+      "backend/src/services/imports/row-inserter.ts",
+      "backend/src/services/imports/template-generator.ts",
+      "backend/src/services/trip-invoice-generator.ts",
+      "backend/src/services/automation/custom-rules.ts",
+      "desktop/src/app/(app)/ai/itinerary/page.tsx",
+      "desktop/src/app/(app)/settings/billing/page.tsx",
+      "desktop/src/messages/en/ai.json",
+      "desktop/src/messages/nl/ai.json"
+    ],
+    "create": [
+      "backend/test/no-india-defaults.test.ts",
+      "backend/test/fixtures/india-literals-allowlist.json"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/automation/message-analysis.ts",
+      "desktop/src/app/(app)/settings/invoice-defaults/**",
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "backend/src/index.ts",
+      "backend/src/services/voip/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "desktop/e2e/showcase/**",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R138-B1", "what": "itinerary-templates.ts:270 create-from: currency = template data currency, else loadLocaleContext(db).currency." },
+    { "id": "R138-B2", "what": "domain/leads.ts:84 and routes/leads.ts:42/127: no 'INR' default; absent currency = the agency currency (read once per request). Keep the zod field optional." },
+    { "id": "R138-B3", "what": "itineraries.ts:74 and 309: agency currency when absent; the PDF (lines ~985-1035) prints money with formatMoney(amount, currency, agency locale) instead of 'INR 123.00'." },
+    { "id": "R138-B4", "what": "ai/itinerary/page.tsx: label t('ai.itinerary.budgetIn', { currency }) with the agency currency from the locale context; the request sends budgetCurrency; ai-assistant.ts:416 and 576 default to the agency currency." },
+    { "id": "R138-B7", "what": "credit-notes.ts:130 and 427: the credit note takes its source invoice's currency, else the agency currency." },
+    {
+      "id": "R138-sweep",
+      "what": "The rest of the sweep (design section 15)",
+      "steps": [
+        "ai-extractions.ts:309, 379: currency from the agency, tax regime from the agency settings (tax_system), not 'gst'.",
+        "ai-extraction.ts:75, 146: the prompt example and the default currency are the agency's (pass it in).",
+        "fleet.ts:1258-1259 and vouchers.ts:638-640: dates with the agency locale (loadLocaleContext) instead of 'en-IN'; fleet.ts:2200 agency currency.",
+        "payment-webhooks.ts:114: invoice currency, else agency currency.",
+        "planner.ts:144: event timezone = body.timezone, else the tenant zone (getTenantTimeZone), never Asia/Kolkata.",
+        "rate-cards.ts:29, 204, validators/rate-card.ts:11, validators/fleet.ts:95, suppliers.ts:275: no INR default; the handler fills the agency currency.",
+        "settings.ts:337 itinerary defaults defaultCurrency = agency currency; invoice-defaults GET fallbacks (default_tax_type gst, default_tax_rate 18, tax_system gst) follow the agency country with the same rule the R201 tax engine uses (IN gst 18; a country with DEFAULT_VAT_RATES vat at that rate; otherwise none and no rate).",
+        "imports: import-validator.ts:57, row-inserter.ts:169/183 default to the agency currency (passed into the import job); template-generator.ts:46 example and allowed values use the agency currency first.",
+        "trip-invoice-generator.ts:181: the trip's or the agency currency.",
+        "custom-rules.ts:368: number formatting with the agency locale.",
+        "desktop settings/billing/page.tsx:192: the fallback is the plan price's currency, else the agency currency."
+      ]
+    },
+    {
+      "id": "R138-guard",
+      "what": "Guard test",
+      "steps": [
+        "backend/test/no-india-defaults.test.ts reads every file under backend/src (via import.meta.glob ?raw) and fails on the literals 'INR', \"INR\", 'en-IN' and 'Asia/Kolkata' outside the allow-list in backend/test/fixtures/india-literals-allowlist.json (file + reason: utils/money.ts and utils/tz.ts fallbacks, the GST branch of tax-calculator.ts, razorpay/billing India market code, provisioning for an Indian agency, generated files).",
+        "Behaviour tests for a GBP agency and a EUR agency: template quote, web-form lead, assistant lead, POST /itineraries without currency, credit note from a EUR invoice, itinerary PDF text shows the euro amount in the agency format, a planner event without timezone takes the tenant zone."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/no-india-defaults.test.ts (guard + behaviour for EUR and GBP agencies; an INR agency still gets INR everywhere).",
+    "desktop vitest: the AI itinerary label shows the agency currency (component test with a EUR locale context).",
+    "e2e: itinerary-templates.spec.ts and itineraries.spec.ts on a EUR agency in multi mode show euro amounts (add assertions; do not change the existing INR assertions for the default agency)."
+  ],
+  "acceptance": [
+    "A EUR agency creating a quote from a template, a lead from the website form or the assistant, an itinerary from the AI page and a credit note sees euros everywhere.",
+    "The guard test fails if someone adds 'INR' to a route default."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/itinerary-templates.spec.ts e2e/itineraries.spec.ts e2e/leads.spec.ts e2e/credit-debit-notes.spec.ts e2e/locale.spec.ts e2e/import-export.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/itinerary-templates.spec.ts", "e2e/itineraries.spec.ts", "e2e/leads.spec.ts", "e2e/credit-debit-notes.spec.ts", "e2e/locale.spec.ts", "e2e/import-export.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Money and dates only through the tenant locale helpers (backend utils/money.ts, utils/tz.ts; desktop lib/format.ts, lib/dates.ts).",
+    "New desktop strings through t() with en and nl keys in desktop/src/messages/<lang>/ai.json only (this batch's namespace).",
+    "Backend: no migration in this batch; do not touch tenant-schema.ts (R139 runs in parallel and owns it).",
+    "Never weaken, skip or delete an existing test; an existing assertion that encoded the INR default for a non-INR agency is a bug fix, say so in the report."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 15, prospects are NOT to be read or named, desktop/audit/fix/FIX-PLAN.md sections 3-4.",
+    "B5 (message reader) and B6 (bank details) are R140; do not touch message-analysis.ts or the invoice-defaults page here.",
+    "Bulk seeding in tests or e2e triggers automation recipes; pause automations for that tenant first (PUT /api/v1/automations/pause), then restore."
+  ],
+  "goLiveVerify": []
+}

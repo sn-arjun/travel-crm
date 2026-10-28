@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { aiApi } from './ai';
+import { aiApi, AI_GENERATION_TIMEOUT_MS, AiUnavailableError, isAiUnavailableError } from './ai';
 
 describe('aiApi', () => {
   beforeEach(() => {
@@ -83,19 +83,23 @@ describe('aiApi', () => {
   describe('generateItinerary', () => {
     it('should call POST /ai/generate-itinerary', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { title: 'Bali 5D', items: [] } });
-      await aiApi.generateItinerary({ destination: 'Bali', duration: 5 });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { destination: 'Bali', duration: 5 });
+      await aiApi.generateItinerary({ prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 }, { timeout: AI_GENERATION_TIMEOUT_MS });
     });
 
     it('should pass budget and preferences', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.generateItinerary({ destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
+      await aiApi.generateItinerary({ prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] }, { timeout: AI_GENERATION_TIMEOUT_MS });
+    });
+
+    it('gives generation a timeout above the 30 s client default, so a slow plan is not aborted', () => {
+      expect(AI_GENERATION_TIMEOUT_MS).toBeGreaterThan(60_000);
     });
 
     it('should return generated itinerary', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { title: 'Trip', items: [{ day: 1, title: 'Arrival' }] } });
-      const result = await aiApi.generateItinerary({ destination: 'Tokyo', duration: 3 });
+      const result = await aiApi.generateItinerary({ prompt: 'Short city break', destination: 'Tokyo', duration: 3 });
       expect(result.data.items).toHaveLength(1);
     });
   });
@@ -104,20 +108,21 @@ describe('aiApi', () => {
   describe('composeMessage', () => {
     it('should call POST /ai/compose-message', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { body: 'Hello!' } });
-      await aiApi.composeMessage({ context: 'Follow up on booking inquiry' });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Follow up on booking inquiry' });
+      await aiApi.composeMessage({ channel: 'whatsapp', purpose: 'Follow up on booking inquiry' });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'whatsapp', purpose: 'Follow up on booking inquiry' });
     });
 
     it('should pass tone and language', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.composeMessage({ context: 'Thank customer', tone: 'professional', language: 'en' });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Thank customer', tone: 'professional', language: 'en' });
+      await aiApi.composeMessage({ channel: 'email', purpose: 'Thank customer', tone: 'professional', language: 'en' });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'email', purpose: 'Thank customer', tone: 'professional', language: 'en' });
     });
 
-    it('should pass maxLength', async () => {
+    it('should pass structured context', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.composeMessage({ context: 'Brief reply', maxLength: 100 });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Brief reply', maxLength: 100 });
+      const context = { customerName: 'Asha Rao', destination: 'Goa', leadStatus: 'quoted' };
+      await aiApi.composeMessage({ channel: 'sms', purpose: 'Brief reply', context });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'sms', purpose: 'Brief reply', context });
     });
   });
 
@@ -190,7 +195,7 @@ describe('aiApi', () => {
       it('should return score data', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { score: 92, factors: [{ name: 'budget', weight: 0.3, contribution: 28 }] } });
         const result = await aiApi.intelligence.getLeadScore('l1');
-        expect(result.data.score).toBe(92);
+        expect(result.data?.score).toBe(92);
       });
     });
 
@@ -234,15 +239,15 @@ describe('aiApi', () => {
   describe('bi', () => {
     describe('getBriefing', () => {
       it('should call GET /ai/bi/briefings', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { summary: 'Good day' } });
+        vi.mocked(client.get).mockResolvedValue({ data: [] });
         await aiApi.bi.getBriefing();
-        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: undefined });
+        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { limit: 1 } });
       });
 
       it('should pass params', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: {} });
+        vi.mocked(client.get).mockResolvedValue({ data: [] });
         await aiApi.bi.getBriefing({ type: 'daily', dateRange: 'today' });
-        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { type: 'daily', dateRange: 'today' } });
+        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { type: 'daily', dateRange: 'today', limit: 1 } });
       });
     });
 
@@ -322,6 +327,66 @@ describe('aiApi', () => {
         await aiApi.bi.getRevenuePulse();
         expect(client.get).toHaveBeenCalledWith('/ai/bi/revenue-pulse');
       });
+    });
+  });
+  // ─── AI unavailable (503 AI_UNAVAILABLE) ────────────────────────
+  describe('AI unavailable handling', () => {
+    const unavailable = { status: 503, code: 'AI_UNAVAILABLE', message: 'AI is not configured for this workspace yet.' };
+
+    it('maps a 503 AI_UNAVAILABLE on a POST to AiUnavailableError', async () => {
+      vi.mocked(client.post).mockRejectedValue(unavailable);
+      const err = await aiApi.extractLead({ text: 'hello' }).catch((e) => e);
+      expect(isAiUnavailableError(err)).toBe(true);
+      expect((err as AiUnavailableError).reason).toBe('not_configured');
+    });
+
+    it('maps a 503 AI_UNAVAILABLE on a GET (BI) to AiUnavailableError', async () => {
+      vi.mocked(client.get).mockRejectedValue(unavailable);
+      await expect(aiApi.bi.getCashFlowForecast()).rejects.toBeInstanceOf(AiUnavailableError);
+    });
+
+    it('maps NL search and briefing generation too', async () => {
+      vi.mocked(client.post).mockRejectedValue(unavailable);
+      await expect(aiApi.intelligence.nlQuery({ query: 'how many leads' })).rejects.toBeInstanceOf(AiUnavailableError);
+      await expect(aiApi.bi.generateBriefing({ type: 'daily' })).rejects.toBeInstanceOf(AiUnavailableError);
+    });
+
+    it('leaves other errors untouched', async () => {
+      const boom = { status: 500, code: 'INTERNAL', message: 'Internal server error' };
+      vi.mocked(client.post).mockRejectedValue(boom);
+      await expect(aiApi.intelligence.nlQuery({ query: 'how many leads' })).rejects.toBe(boom);
+      const other503 = { status: 503, message: 'Service busy' };
+      vi.mocked(client.get).mockRejectedValue(other503);
+      await expect(aiApi.bi.getCashFlowForecast()).rejects.toBe(other503);
+    });
+
+    it('still detects the legacy 200 stub payload', async () => {
+      vi.mocked(client.post).mockResolvedValue({
+        data: { contentId: 'c1', extracted: { note: 'Cloudflare AI not available in this environment. Configure Workers AI binding.' } },
+      });
+      const err = await aiApi.extractLead({ text: 'hello' }).catch((e) => e);
+      expect(isAiUnavailableError(err)).toBe(true);
+    });
+
+    it('keeps the real SQL rows when the backend flags aiUnavailable (team performance)', async () => {
+      vi.mocked(client.get).mockResolvedValue({
+        data: {
+          rankings: null,
+          insights: null,
+          aiUnavailable: true,
+          rawData: [{ id: 'u1', name: 'Asha', total_leads: 10, won_leads: 4, revenue: 400000, avg_deal_size: 100000 }],
+        },
+      });
+      const res = await aiApi.bi.getTeamPerformance({ period: 'month' });
+      expect(res.data).toEqual([
+        { userId: 'u1', userName: 'Asha', dealsClosedCount: 4, revenue: 400000, conversionRate: 40, avgDealValue: 100000 },
+      ]);
+    });
+
+    it('exposes status and code so generic hooks keep the error', () => {
+      const e = new AiUnavailableError('not_configured');
+      expect(e.status).toBe(503);
+      expect(e.code).toBe('AI_UNAVAILABLE');
     });
   });
 });

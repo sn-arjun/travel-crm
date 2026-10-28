@@ -1,0 +1,118 @@
+{
+  "id": "R109",
+  "tier": 1,
+  "title": "One plan catalogue in the master database: yearly agency prices, included users, extra-user price, AI credits, communication caps, add-ons, trial expiry",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Define plans and add-ons once, as data the owner can change from the super admin console, and enforce users, AI credits, communication caps and trial expiry everywhere from that one place.",
+  "why": "Plans are defined six different ways (backend/src/middleware/feature-gate.ts PLAN_DEFAULTS with trial/starter/basic/pro/enterprise; routes/admin.ts PLAN_CATALOG with INR yearly prices and 5/15/100 users; services/ai-pricing.ts allowances; super-admin/src/lib/constants.ts free/starter/pro/enterprise monthly; super-admin tenants/[id]/plan/route.ts seat numbers; landing per-user USD). Seats are never checked on invite (routes/users.ts), trial_ends_at is never read, and trial includes voip_calling. Owner decision 2026-10-14: a flat price per agency per year with included users and a monthly AI credit allowance, plus paid add-ons (extra users, AI credit packs), and SMS/WhatsApp/OTP/calls included with a monthly cap per plan; communication top-ups priced at provider cost + 20%, with cost and margin stored as configuration.",
+  "featuresToWorks": [
+    "team.seat-limit",
+    "sa.plan-change",
+    "landing.pricing",
+    "assistant.usage-credits"
+  ],
+  "dependsOn": [
+    "R101",
+    "R105"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R107"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/middleware/feature-gate.ts",
+      "backend/src/routes/admin.ts",
+      "backend/src/services/ai-pricing.ts",
+      "backend/src/services/ai-credits.ts",
+      "backend/src/routes/users.ts",
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/public.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/cron/dispatch.ts",
+      "backend/src/utils/tenant-summary.ts",
+      "backend/scripts/seed-local.mjs"
+    ],
+    "create": [
+      "backend/drizzle/master/0015_plan_catalogue.sql",
+      "backend/src/services/plans/catalogue.ts",
+      "backend/src/services/plans/pricing.ts",
+      "backend/test/plan-catalogue.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/index.ts",
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/routes/webhooks.ts",
+      "backend/src/routes/chatbot.ts",
+      "super-admin/**",
+      "landing/**",
+      "desktop/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master 0015 creates the catalogue exactly as READINESS-PLAN 4.2 (TEXT dates, REAL money, INTEGER booleans, UUIDv7 literal ids in the seed): plans; plan_prices (plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from); plan_features; plan_allowances (plan_key, allowance_key, monthly_amount) for ai_credits, sms, whatsapp, otp, call_minutes, email; comm_unit_costs (channel sms|whatsapp|otp|call_minute|phone_number, market, provider, unit_cost REAL, currency, margin_pct REAL DEFAULT 20, effective_from, is_active); addon_products (key, kind extra_user|ai_credit_pack|comm_pack, channel NULL|sms|whatsapp|otp|call_minute, units INTEGER, fixed_price REAL NULL, currency, market, is_active); tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key NULL for recurring (extra users) or the month for packs, source super_admin_grant|purchase, granted_by, reference, created_at).",
+    "Seed (all values are drafts for the owner, marked in a comment row `catalogue_notes`): IN market INR yearly 12000/18000/24000 with included_users 5/15/100 (decided prices) and extra_user_yearly_price 2400/1800/1200 (draft); plan_allowances from READINESS-PLAN 4.2 draft table (AI credits 1000/15000/25000, trial 2000; communication caps there); comm_unit_costs IN from COST-MODEL list prices (SMS Twilio 8.06, WhatsApp Twilio fee + Meta utility 0.595, OTP Twilio Verify 12.90, call_minute and phone_number rows left inactive until the G1 addendum), margin_pct 20; addon_products: ai_credit_pack_5000 fixed_price 250 INR (COST-MODEL 6.4 draft), comm packs sms_100, whatsapp_1000, otp_100 with fixed_price NULL (price computed). Remove voip_calling from trial features (ADR fraud rule). Data fix: plan starter -> basic, free -> trial.",
+    "services/plans/catalogue.ts: getCatalogue(env) (KV `plans:v<version>`, 300 s; every admin write bumps the version), getPlanFeatures, getAllowance(env, tenantId, key, periodKey) = plan monthly_amount + units from tenant_addons for that period (comm and AI packs) ; seatLimit(env, tenantId) = included_users + extra_user add-on quantity; getActivePrice(env, plan, market).",
+    "services/plans/pricing.ts: commPackPrice(env, channel, market, units) = ceil_to_minor_unit(units * unit_cost * (1 + margin_pct/100)) from the active comm_unit_costs row; addonPrice(product) = fixed_price ?? commPackPrice(...); extraUserPrice(plan, market). Used by the public plans endpoint, super admin and billing (R205/R206), never hardcoded.",
+    "feature-gate.ts and getTenantFeatures read plan_features (tenant_feature_flags overrides unchanged); ai-pricing.ts/ai-credits.ts monthly allowance from getAllowance(ai_credits). Delete PLAN_DEFAULTS/PLAN_AI_CREDITS constants once tests are updated.",
+    "routes/users.ts invite and reactivate: active users plus pending invites count against seatLimit; at the limit return 402 { code: 'SEAT_LIMIT', limit, used, options: ['upgrade', 'extra_users'] }.",
+    "Trial expiry in the daily job set (cron/dispatch.ts from R105): trial past trial_ends_at -> expired (KV entry deleted); login 402 TRIAL_EXPIRED.",
+    "routes/admin.ts (super admin, audited, bumps the catalogue version): GET /admin/catalogue; PUT /admin/catalogue/plans/:key (name, features), PUT /admin/catalogue/prices/:id, PUT /admin/catalogue/allowances/:plan, PUT /admin/catalogue/unit-costs/:id (cost and margin), PUT /admin/catalogue/addons/:key; POST /admin/tenants/:id/addons { productKey, quantity, note } (grant: extra users, AI credit pack, comm pack) writes tenant_addons with source super_admin_grant. (R111 builds the rest of the admin API; these endpoints live here because they belong to the catalogue.)",
+    "routes/public.ts: GET /api/v1/public/plans?market=IN returns active plans with yearly price, included users, extra-user price, features, AI credits and communication caps, and add-on prices (computed), cached 5 minutes, 60 per minute per IP.",
+    "utils/tenant-summary.ts: login summary includes plan key/name, seat limit and used seats.",
+    "backend/scripts/seed-local.mjs: give the demo tenant enough users and allowances for the e2e suite (grant extra users and comm packs through tenant_addons rows) so existing specs are not blocked by caps."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0015_plan_catalogue.sql"
+  ],
+  "tests": [
+    "backend/test/plan-catalogue.test.ts: features come from plan_features (toggle via the admin PUT, cache invalidated); trial has no voip_calling; basic with 5 active users -> invite 402 SEAT_LIMIT, after a super admin grant of 1 extra user the invite works; AI allowance = plan + granted pack for the current month only; commPackPrice(sms, IN, 100) = 100 * 8.06 * 1.2 = 967.20 and changes when unit_cost or margin_pct changes, with no code change; trial expiry flow; GET /public/plans returns computed add-on prices; starter/free tenants migrated."
+  ],
+  "acceptance": [
+    "`grep -rn \"starter\\|PLAN_CATALOG\\|PLAN_DEFAULTS\" backend/src` finds nothing outside migrations and comments.",
+    "Every price shown or charged is derived from catalogue rows (tests change rows, not code).",
+    "Seat limit, extra users and trial expiry enforced (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/settings-team.spec.ts e2e/ai-settings.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/settings-team.spec.ts",
+      "e2e/ai-settings.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Owner confirms the draft numbers: included users, extra-user prices, AI credits, communication caps, pack sizes, unit costs for the chosen providers, international prices (Q2, Q3)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "New ids use generateId() (UUIDv7) from backend/src/utils/uuid.ts. D1 conventions: TEXT ISO dates, REAL money, TEXT JSON, INTEGER booleans.",
+    "Round computed prices up to the currency minor unit (paise/cents) and store none of them; compute on read.",
+    "Do not touch super-admin or landing here: R112 adds the catalogue editor and top-up grants to the console; R116 renders the pricing from /public/plans."
+  ]
+}

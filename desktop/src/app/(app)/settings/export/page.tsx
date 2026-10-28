@@ -1,12 +1,13 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Loader2,
   Download,
-  FileSpreadsheet,
   Users,
   Target,
   Database,
@@ -33,27 +34,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import { Tag } from '@/components/ui/tag';
 import { Switch } from '@/components/ui/switch';
+import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { exportsApi, type ExportJob } from '@/lib/api/exports';
 import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
+import { unwrapEntity } from '@/lib/api/envelope';
+import type { LucideIcon } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { toLocalDateString } from '@/lib/dates';
+import { PageContainer } from '@/components/layout/page-container';
 
-const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
-  pending: { label: 'Pending', icon: Clock, className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
-  processing: { label: 'Processing', icon: Loader2, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  completed: { label: 'Completed', icon: CheckCircle2, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  failed: { label: 'Failed', icon: XCircle, className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+const statusConfig: Record<string, { label: string; icon: LucideIcon; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
+  pending: { label: 'Pending', icon: Clock, tone: 'neutral' },
+  processing: { label: 'Processing', icon: Loader2, tone: 'info' },
+  completed: { label: 'Completed', icon: CheckCircle2, tone: 'success' },
+  failed: { label: 'Failed', icon: XCircle, tone: 'danger' },
 };
 
 function formatDate(iso?: string) {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { return formatLocaleDateTime(iso); } catch { return iso; }
 }
 
-export default function ExportSettingsPage() {
+function ExportSettingsPageContent() {
   const router = useRouter();
   const [contactsFormat, setContactsFormat] = React.useState<'csv' | 'xlsx'>('csv');
   const [leadsFormat, setLeadsFormat] = React.useState<'csv' | 'xlsx'>('csv');
@@ -71,43 +77,18 @@ export default function ExportSettingsPage() {
     includeDocuments: false,
     includeMessages: false,
   });
-  // Load existing export jobs on mount via API
-  const [extraJobs, setExtraJobs] = React.useState<ExportJob[]>([]);
+  // Export jobs are tracked client-side for this session — there is no list
+  // endpoint, only GET /exports/jobs/:id for a known job.
+  const [jobs, setJobs] = React.useState<ExportJob[]>([]);
 
-  // Auto-poll active processing jobs
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const { data: jobsResponse, loading: loadingJobs, refetch: refetchJobs } = useApiQuery(
-    () => exportsApi.getJobStatus('list') as any,
-    [],
-  );
-
-  // Combine API jobs with any newly created ones
-  const allJobs: ExportJob[] = React.useMemo(() => {
-    const apiJobs: ExportJob[] = [];
-    if (jobsResponse) {
-      const d = (jobsResponse as any)?.data;
-      const arr = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
-      apiJobs.push(...arr);
-    }
-    // Merge: extraJobs take precedence for matching IDs
-    const merged = [...extraJobs];
-    apiJobs.forEach(j => {
-      if (!merged.find(m => m.id === j.id)) merged.push(j);
-    });
-    return merged.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
-  }, [jobsResponse, extraJobs]);
-
-  const hasProcessing = allJobs.some(j => j.status === 'processing');
+  const hasProcessing = jobs.some(j => j.status === 'processing');
 
   // Real-time export updates via WebSocket
-  useRealtimeEvent(['export:completed', 'export:failed', 'export:progress'], (data) => {
+  useRealtimeEvent(['export:completed', 'export:failed', 'export:progress'], (payload: unknown) => {
+    const data = payload as Partial<ExportJob> & { jobId?: string };
     if (data?.jobId) {
-      setExtraJobs(prev => prev.map(j => j.id === data.jobId ? { ...j, ...data, status: data.status } : j));
-      // Also refetch full job list to get file URLs
-      if (data.status === 'completed' || data.status === 'failed') {
-        refetchJobs();
-      }
+      setJobs(prev => prev.map(j => (j.id === data.jobId ? { ...j, ...data, status: data.status ?? j.status } : j)));
     }
   });
 
@@ -119,17 +100,17 @@ export default function ExportSettingsPage() {
       return;
     }
     pollRef.current = setInterval(async () => {
-      const processingJobs = allJobs.filter(j => j.status === 'processing');
+      const processingJobs = jobs.filter(j => j.status === 'processing');
       for (const job of processingJobs) {
         try {
-          const res = await exportsApi.getJobStatus(job.id) as any;
-          const updated = res?.data ?? res;
-          setExtraJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
+          const res = await exportsApi.getJobStatus(job.id);
+          const updated = unwrapEntity<ExportJob>(res);
+          setJobs(prev => prev.map(j => (j.id === updated.id ? { ...j, ...updated } : j)));
         } catch { /* ignore */ }
       }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [wsConnected, hasProcessing, allJobs]);
+  }, [wsConnected, hasProcessing, jobs]);
 
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
@@ -143,7 +124,7 @@ export default function ExportSettingsPage() {
   }
 
   function datedFilename(type: string, format: string) {
-    const d = new Date().toISOString().slice(0, 10);
+    const d = toLocalDateString(new Date());
     return `${type}_export_${d}.${format}`;
   }
 
@@ -176,11 +157,11 @@ export default function ExportSettingsPage() {
   const handleExportFull = async () => {
     setExportingFull(true);
     try {
-      const result = await exportsApi.full(fullOptions as any) as any;
-      const job = result?.data ?? result;
+      const result = await exportsApi.full(fullOptions);
+      const job = unwrapEntity<ExportJob | undefined>(result);
       if (job?.id) {
-        setExtraJobs(prev => [job, ...prev.filter(j => j.id !== job.id)]);
-        toast.success('Full export started. Check the jobs table below when it\'s ready to download.');
+        setJobs(prev => [job, ...prev.filter(j => j.id !== job.id)]);
+        toast.success("Full export started. Check the jobs table below when it's ready to download.");
       } else {
         toast.success('Full export initiated');
       }
@@ -203,45 +184,41 @@ export default function ExportSettingsPage() {
 
   const handleRefreshJob = async (jobId: string) => {
     try {
-      const result = await exportsApi.getJobStatus(jobId) as any;
-      const job = result?.data ?? result;
-      setExtraJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...job } : j));
-      // Also add to extraJobs if not there
-      if (!extraJobs.find(j => j.id === jobId) && job) {
-        setExtraJobs(prev => [job, ...prev]);
-      }
+      const result = await exportsApi.getJobStatus(jobId);
+      const job = unwrapEntity<ExportJob>(result);
+      setJobs(prev => prev.map(j => (j.id === jobId ? { ...j, ...job } : j)));
     } catch {
       toast.error('Failed to check status');
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Data Export</h1>
-          <p className="text-muted-foreground mt-1">Export your CRM data in various formats</p>
-        </div>
-      </div>
+    <div className="space-y-ds-6">
+      <PageHeader
+        title="Data export"
+        description="Export your CRM data in various formats"
+        back={
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+            <ArrowLeft className="size-5" />
+          </Button>
+        }
+      />
 
       {/* Quick Exports */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2">
         {/* Contacts Export */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-ds-2">
+              <Users className="size-5" />
               Export Contacts
             </CardTitle>
             <CardDescription>Download all contacts as a spreadsheet</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
+          <CardContent className="space-y-ds-4">
+            <div className="space-y-ds-2">
               <Label>Format</Label>
-              <Select value={contactsFormat} onValueChange={(v) => setContactsFormat(v as any)}>
+              <Select value={contactsFormat} onValueChange={(v) => setContactsFormat(v as 'csv' | 'xlsx')}>
                 <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV</SelectItem>
@@ -249,8 +226,8 @@ export default function ExportSettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleExportContacts} disabled={exportingContacts} className="w-full gap-2">
-              {exportingContacts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <Button onClick={handleExportContacts} disabled={exportingContacts} className="w-full gap-ds-2">
+              {exportingContacts ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
               Export Contacts
             </Button>
           </CardContent>
@@ -259,16 +236,16 @@ export default function ExportSettingsPage() {
         {/* Leads Export */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-ds-2">
+              <Target className="size-5" />
               Export Leads
             </CardTitle>
             <CardDescription>Download all leads as a spreadsheet</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
+          <CardContent className="space-y-ds-4">
+            <div className="space-y-ds-2">
               <Label>Format</Label>
-              <Select value={leadsFormat} onValueChange={(v) => setLeadsFormat(v as any)}>
+              <Select value={leadsFormat} onValueChange={(v) => setLeadsFormat(v as 'csv' | 'xlsx')}>
                 <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="csv">CSV</SelectItem>
@@ -276,8 +253,8 @@ export default function ExportSettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleExportLeads} disabled={exportingLeads} className="w-full gap-2">
-              {exportingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <Button onClick={handleExportLeads} disabled={exportingLeads} className="w-full gap-ds-2">
+              {exportingLeads ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
               Export Leads
             </Button>
           </CardContent>
@@ -287,14 +264,14 @@ export default function ExportSettingsPage() {
       {/* Full Export */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-ds-2">
+            <Database className="size-5" />
             Full Data Export (GDPR)
           </CardTitle>
           <CardDescription>Export all your CRM data as a comprehensive ZIP package</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <CardContent className="space-y-ds-4">
+          <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-3">
             {[
               { key: 'includeContacts', label: 'Contacts' },
               { key: 'includeLeads', label: 'Leads' },
@@ -306,17 +283,17 @@ export default function ExportSettingsPage() {
               { key: 'includeDocuments', label: 'Documents' },
               { key: 'includeMessages', label: 'Messages' },
             ].map(opt => (
-              <div key={opt.key} className="flex items-center gap-3">
+              <div key={opt.key} className="flex items-center gap-ds-3">
                 <Switch
-                  checked={(fullOptions as any)[opt.key]}
+                  checked={(fullOptions as Record<string, boolean>)[opt.key]}
                   onCheckedChange={v => setFullOptions(p => ({ ...p, [opt.key]: v }))}
                 />
                 <Label>{opt.label}</Label>
               </div>
             ))}
           </div>
-          <Button onClick={handleExportFull} disabled={exportingFull} className="gap-2">
-            {exportingFull ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <Button onClick={handleExportFull} disabled={exportingFull} className="gap-ds-2">
+            {exportingFull ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             Start Full Export
           </Button>
         </CardContent>
@@ -328,20 +305,22 @@ export default function ExportSettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Export Jobs</CardTitle>
-              <CardDescription>Track and download your export jobs</CardDescription>
+              <CardDescription>Track and download the full-data export jobs you've started this session</CardDescription>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => refetchJobs()}>
-              <RefreshCw className="h-4 w-4 mr-1.5" />Refresh
-            </Button>
+            {jobs.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => jobs.forEach(j => handleRefreshJob(j.id))} className="gap-ds-2">
+                <RefreshCw aria-hidden="true" />Refresh
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
-          {loadingJobs ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : allJobs.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">No export jobs yet</div>
+          {jobs.length === 0 ? (
+            <EmptyState
+              icon={<Database className="size-8" />}
+              title="No export jobs yet"
+              description="Start a full data export above to see its progress here."
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -354,30 +333,30 @@ export default function ExportSettingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allJobs.map(job => {
-                  const config = statusConfig[job.status] ?? statusConfig['pending']!;
+                {jobs.map(job => {
+                  const config = statusConfig[job.status] ?? statusConfig.pending!;
                   const StatusIcon = config.icon;
                   return (
                     <TableRow key={job.id}>
                       <TableCell className="text-sm capitalize">{(job.type ?? 'full').replace('_', ' ')}</TableCell>
                       <TableCell>
-                        <Badge className={cn('gap-1', config.className)}>
-                          <StatusIcon className={cn('h-3 w-3', job.status === 'processing' && 'animate-spin')} />
+                        <Tag tone={config.tone} size="sm" className="gap-1">
+                          <StatusIcon className={cn('size-3', job.status === 'processing' && 'animate-spin')} />
                           {config.label}
-                        </Badge>
+                        </Tag>
                       </TableCell>
                       <TableCell className="text-sm">{formatDate(job.createdAt)}</TableCell>
                       <TableCell className="text-sm">{formatDate(job.completedAt)}</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-ds-2">
                           {job.status === 'processing' && (
-                            <Button variant="ghost" size="sm" onClick={() => handleRefreshJob(job.id)}>
-                              <RefreshCw className="h-3 w-3 mr-1" />Refresh
+                            <Button variant="ghost" size="sm" onClick={() => handleRefreshJob(job.id)} className="gap-1">
+                              <RefreshCw className="size-3" />Refresh
                             </Button>
                           )}
                           {job.status === 'completed' && (
                             <Button variant="outline" size="sm" className="gap-1" onClick={() => handleDownloadJob(job.id)}>
-                              <Download className="h-3 w-3" />Download
+                              <Download className="size-3" />Download
                             </Button>
                           )}
                         </div>
@@ -391,5 +370,13 @@ export default function ExportSettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ExportSettingsPage() {
+  return (
+    <PageContainer>
+      <ExportSettingsPageContent />
+    </PageContainer>
   );
 }

@@ -21,15 +21,14 @@ export function CountdownBadge({ expiryDate, label, showIcon = true, size = 'sm'
   const isOverdue = days < 0;
   const isUrgent = days >= 0 && days < 7;
   const isWarning = days >= 7 && days < 30;
-  const isSafe = days >= 30;
 
   const colorClass = isOverdue
-    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 animate-pulse'
+    ? 'bg-ds-danger-subtle text-ds-danger-on-subtle animate-pulse'
     : isUrgent
-    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    ? 'bg-ds-danger-subtle text-ds-danger-on-subtle'
     : isWarning
-    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    ? 'bg-ds-warning-subtle text-ds-warning-on-subtle'
+    : 'bg-ds-success-subtle text-ds-success-on-subtle';
 
   const Icon = isOverdue || isUrgent ? AlertTriangle : isWarning ? Clock : Shield;
 
@@ -42,7 +41,7 @@ export function CountdownBadge({ expiryDate, label, showIcon = true, size = 'sm'
       variant="outline"
       className={cn(
         'border-transparent font-medium gap-1',
-        size === 'sm' ? 'text-[10px] px-1.5 py-0' : 'text-xs px-2 py-0.5',
+        size === 'sm' ? 'text-[0.625rem] px-1.5 py-0' : 'text-xs px-2 py-0.5',
         colorClass,
         className
       )}

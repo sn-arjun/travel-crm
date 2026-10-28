@@ -1,0 +1,133 @@
+{
+  "id": "R140",
+  "tier": 4,
+  "step": 3,
+  "title": "Bank details shaped by country (IBAN/BIC, sort code, routing, BSB; IFSC/UPI only in India), payment methods by country, and a message reader that understands euro, pound, dollar and dirham amounts and children's ages (B5, B6)",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An EU, UK, US, Australian or Gulf agency enters and prints its own kind of bank details, records payments with methods that exist in its country, and the message reader reads 'budget EUR 1,800', 'paid €400', '£250 deposit' and 'kids aged 8 and 5' correctly.",
+  "why": "B5 and B6 in TOUR-OPERATOR-DESIGN.md section 15: the Bank Details card is India-shaped (IFSC, UPI, no IBAN or BIC) and the rule reader only knows rupees, lakh and crore; '€400' is not read as money. Child ages are needed by age-band quotes (R149).",
+  "featuresToWorks": ["invoices.bank-details", "automation.payments.from_message", "inbox.message-reading"],
+  "featureKeys": [],
+  "dependsOn": ["R138"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R141"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/settings.ts",
+      "backend/src/routes/invoices.ts (PDF bank block only)",
+      "backend/src/services/automation/message-analysis.ts",
+      "backend/src/services/automation/recipes.ts (payments.from_message currency check only)",
+      "backend/src/routes/payments.ts (method validation only)",
+      "desktop/src/app/(app)/settings/invoice-defaults/page.tsx",
+      "desktop/src/lib/api/settings.ts",
+      "desktop/src/app/(app)/payments/_methods.ts",
+      "desktop/src/app/(app)/payments/new/page.tsx",
+      "desktop/src/app/(app)/payments/page.tsx",
+      "desktop/src/app/(app)/invoices/[id]/page.tsx (method labels only)",
+      "desktop/src/components/domain/payment-receipt.tsx",
+      "desktop/src/app/(app)/suppliers/[id]/page.tsx (method select only)",
+      "desktop/src/app/(app)/fleet/drivers/[id]/edit/page.tsx (bank fields only)",
+      "desktop/src/lib/api/fleet.ts (driver bank fields only)",
+      "desktop/src/messages/en/banks.json",
+      "desktop/src/messages/nl/banks.json",
+      "desktop/src/messages/en/payments.json",
+      "desktop/src/messages/nl/payments.json"
+    ],
+    "create": [
+      "backend/src/utils/bank-details.ts",
+      "backend/test/bank-details.test.ts",
+      "backend/test/message-analysis-currency.test.ts",
+      "desktop/src/lib/bank-details.ts",
+      "desktop/src/lib/bank-details.test.ts",
+      "desktop/src/lib/payment-methods.ts",
+      "desktop/src/lib/payment-methods.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "backend/src/routes/voip*.ts",
+      "desktop/src/app/(app)/settings/voip/**",
+      "desktop/src/app/(app)/settings/phone-numbers/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R140-B6",
+      "what": "Bank details by country",
+      "steps": [
+        "backend utils/bank-details.ts and desktop lib/bank-details.ts (same rules, same tests): bankFieldsFor(country) returns the field set of design section 4.4; validators: IBAN mod-97 with spaces allowed, BIC/SWIFT 8 or 11 characters, UK sort code and AU BSB 6 digits, US routing 9 digits with the ABA checksum.",
+        "settings.ts invoice-defaults: bank_details accepts the new fields (accountName, bankName, iban, bic, sortCode, accountNumber, routingNumber, bsb, swift, ifsc, upiId, branch); validates the fields of the agency's country; old ifsc and upi_id keys keep working (read both, write the new shape; upi_id kept for India).",
+        "Invoice defaults page: the Bank Details card shows the agency country's fields only, with labels through t('banks.*'); IFSC and UPI appear only for India.",
+        "Invoice PDF (invoices.ts PDF section) prints only the filled fields of the agency's country set, IBAN grouped in fours."
+      ]
+    },
+    {
+      "id": "R140-methods",
+      "what": "Payment methods by country",
+      "steps": [
+        "desktop lib/payment-methods.ts paymentMethodsFor(country): cash, bank_transfer, card, cheque, online everywhere; upi only for IN; ideal and sepa_transfer for EU/EEA countries; used by payments/new, the payments filter, the invoice page labels, payment-receipt and the supplier payment select (labels through t('payments.method.*')). Existing stored values (upi on old rows) still display.",
+        "backend routes/payments.ts accepts the union of methods.",
+        "Driver form: the IFSC field shows only for India; other countries get IBAN or account number."
+      ]
+    },
+    {
+      "id": "R140-B5",
+      "what": "Message reader understands other currencies and children's ages",
+      "steps": [
+        "message-analysis.ts rule reader: amounts with €, EUR, euro(s), £, GBP, pound(s), $, USD, dollar(s), AED, dirham(s), ₹, Rs, INR, before or after the number, with thousands separators of both styles ('1.800' and '1,800' and '1 800' when unambiguous) and k; lakh and crore only when the currency is INR or no currency is written and the agency currency is INR.",
+        "entities.currency is set when a currency is written; when it differs from the agency's, the amount is kept with its currency and the suggestion says so ('Customer mentions GBP 250; agency currency EUR'); nothing is converted silently.",
+        "entities.childAges: number[] from 'kids aged 8 and 5', 'children 8, 5', '2 kids (8 and 5)', 'my son is 8 and daughter 5'; children count stays consistent with it.",
+        "The AI prompt (line ~329) states the agency currency and the agency's date order from its locale instead of 'India' and 'INR'.",
+        "recipes.ts payments.from_message: a payment in another currency than the invoice's is suggested with a warning, never auto-applied."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/bank-details.test.ts: field sets per country; IBAN valid and invalid (NL, DE, GB), BIC, sort code, routing checksum; invoice-defaults PUT rejects an invalid IBAN for an NL agency and accepts IFSC for an IN agency; old upi_id still read.",
+    "backend/test/message-analysis-currency.test.ts: table of messages -> {budget, paymentAmount, currency, childAges} for EUR, GBP, USD, AED, INR agencies, including '€400', 'EUR 1,800', '1.800 euro', '£250', 'AED 3,000', '2 lakh' (INR agency only), 'kids aged 8 and 5'.",
+    "desktop vitest: bank-details and payment-methods helpers.",
+    "e2e: settings-company or invoices spec gains a check that an NL agency's Invoice defaults shows IBAN and BIC and no IFSC (multi mode agency)."
+  ],
+  "acceptance": [
+    "A Dutch agency enters IBAN and BIC and its invoices print them; no IFSC or UPI is shown to it.",
+    "'I have transferred €400' and 'paid EUR 400' produce a 400 payment suggestion in a euro agency."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/invoices.spec.ts e2e/payments.spec.ts e2e/settings-company.spec.ts e2e/assistant-rules.spec.ts e2e/communication-inbox.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/invoices.spec.ts", "e2e/payments.spec.ts", "e2e/settings-company.spec.ts", "e2e/assistant-rules.spec.ts", "e2e/communication-inbox.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Desktop: CONTRACT.md; t() with en and nl keys only in messages/<lang>/banks.json and payments.json; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts.",
+    "Backend: no migration; bank details stay in the existing settings key.",
+    "Env-dependent behaviour degrades gracefully (no AI configured: the rule reader alone).",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.4 and 15, desktop/audit/remake/CONTRACT.md.",
+    "The message reader runs on every inbound message: keep it pure and fast; no AI calls in tests.",
+    "Bulk seeding in e2e triggers automation recipes; pause automations for that tenant first."
+  ],
+  "goLiveVerify": []
+}

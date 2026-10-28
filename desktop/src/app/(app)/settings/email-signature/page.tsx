@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { PageHeader } from '@/components/ui/page-header';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { PageContainer } from '@/components/layout/page-container';
+import { color } from '@/design-system/tokens';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-
-const STORAGE_KEY = 'travelcrm_email_signature';
+import { usersApi } from '@/lib/api/users';
 
 interface SignatureData {
   name: string;
@@ -33,14 +36,38 @@ const defaultSignature: SignatureData = {
   customHtml: '',
 };
 
-function loadSignature(): SignatureData {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...defaultSignature, ...JSON.parse(stored) };
-  } catch {
-    // ignore
+const DATA_COMMENT_RE = /^<!--travelcrm-signature-data:([\s\S]*?)-->/;
+
+function parseStoredSignature(stored: string): SignatureData {
+  const match = stored.match(DATA_COMMENT_RE);
+  if (match?.[1]) {
+    try {
+      return { ...defaultSignature, ...JSON.parse(match[1]) };
+    } catch {
+      // fall through to default
+    }
   }
   return { ...defaultSignature };
+}
+
+function serializeSignature(data: SignatureData): string {
+  return `<!--travelcrm-signature-data:${JSON.stringify(data)}-->${generatePreviewHtml(data)}`;
+}
+
+// Email clients cannot read CSS variables, so the stored signature carries inline
+// styles resolved from the design-system tokens (light theme: mail canvases are light).
+const SIG_INK = color('foreground', 'light');
+const SIG_MUTED = color('foreground-muted', 'light');
+const SIG_SUBTLE = color('foreground-subtle', 'light');
+const SIG_ACCENT = color('primary', 'light');
+const SIG_RULE = color('border', 'light');
+
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function generatePreviewHtml(data: SignatureData): string {
@@ -55,41 +82,42 @@ function generatePreviewHtml(data: SignatureData): string {
   const lines: string[] = [];
 
   if (data.name) {
-    lines.push(`<strong style="font-size:14px;color:#1f2937;">${data.name}</strong>`);
+    lines.push(`<strong style="font-size:0.875rem;color:${SIG_INK};">${esc(data.name)}</strong>`);
   }
   if (data.title) {
-    lines.push(`<span style="font-size:12px;color:#6b7280;">${data.title}</span>`);
+    lines.push(`<span style="font-size:0.75rem;color:${SIG_MUTED};">${esc(data.title)}</span>`);
   }
   if (data.company) {
-    lines.push(`<span style="font-size:12px;color:#4f46e5;font-weight:600;">${data.company}</span>`);
+    lines.push(`<span style="font-size:0.75rem;color:${SIG_ACCENT};font-weight:600;">${esc(data.company)}</span>`);
   }
 
   if (lines.length > 0) {
-    parts.push(`<div style="margin-top:8px;">${lines.join('<br/>')}</div>`);
+    parts.push(`<div style="margin-top:0.5rem;">${lines.join('<br/>')}</div>`);
   }
 
   // Contact details
   const contactLines: string[] = [];
   if (data.phone) {
-    contactLines.push(`<span style="font-size:12px;color:#6b7280;">Phone: ${data.phone}</span>`);
+    contactLines.push(`<span style="font-size:0.75rem;color:${SIG_MUTED};">Phone: ${esc(data.phone)}</span>`);
   }
   if (data.website) {
-    contactLines.push(`<span style="font-size:12px;"><a href="${data.website.startsWith('http') ? data.website : `https://${data.website}`}" style="color:#4f46e5;text-decoration:none;">${data.website}</a></span>`);
+    const href = data.website.startsWith('http') ? data.website : `https://${data.website}`;
+    contactLines.push(`<span style="font-size:0.75rem;"><a href="${esc(href)}" style="color:${SIG_ACCENT};text-decoration:none;">${esc(data.website)}</a></span>`);
   }
   if (contactLines.length > 0) {
-    parts.push(`<div style="margin-top:4px;">${contactLines.join(' | ')}</div>`);
+    parts.push(`<div style="margin-top:0.25rem;">${contactLines.join(' | ')}</div>`);
   }
 
   // Logo
   if (data.logoUrl) {
-    parts.push(`<div style="margin-top:8px;"><img src="${data.logoUrl}" alt="Logo" style="max-height:40px;max-width:150px;" /></div>`);
+    parts.push(`<div style="margin-top:0.5rem;"><img src="${esc(data.logoUrl)}" alt="Logo" style="max-height:2.5rem;max-width:10rem;" /></div>`);
   }
 
   if (parts.length === 0) {
-    return '<p style="color:#9ca3af;font-style:italic;">No signature configured yet. Fill in the fields to preview.</p>';
+    return `<p style="color:${SIG_SUBTLE};font-style:italic;">No signature configured yet. Fill in the fields to preview.</p>`;
   }
 
-  return `<div style="font-family:'Segoe UI',Arial,sans-serif;border-top:2px solid #e5e7eb;padding-top:12px;margin-top:16px;">${parts.join('')}</div>`;
+  return `<div style="font-family:'Segoe UI',Arial,sans-serif;border-top:0.125rem solid ${SIG_RULE};padding-top:0.75rem;margin-top:1rem;">${parts.join('')}</div>`;
 }
 
 export default function EmailSignaturePage() {
@@ -98,11 +126,26 @@ export default function EmailSignaturePage() {
   const [showPreview, setShowPreview] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
-  // Load from localStorage on mount
   React.useEffect(() => {
-    setData(loadSignature());
-    setLoaded(true);
+    let cancelled = false;
+    usersApi
+      .getSignature()
+      .then((res) => {
+        if (cancelled) return;
+        const stored = (res as { data?: { signature?: string } })?.data?.signature;
+        if (stored) setData(parseStoredSignature(stored));
+      })
+      .catch(() => {
+        toast.error('Failed to load email signature');
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setField = (field: keyof SignatureData, value: string) => {
@@ -112,7 +155,7 @@ export default function EmailSignaturePage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      await usersApi.updateSignature(serializeSignature(data));
       toast.success('Email signature saved successfully');
     } catch {
       toast.error('Failed to save email signature');
@@ -121,52 +164,66 @@ export default function EmailSignaturePage() {
     }
   };
 
-  const handleReset = () => {
-    if (!confirm('Are you sure you want to reset the email signature?')) return;
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: 'Reset email signature?',
+      description: 'This clears your saved signature. Outgoing emails will no longer include it.',
+      confirmLabel: 'Reset',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     setData({ ...defaultSignature });
-    localStorage.removeItem(STORAGE_KEY);
-    toast.success('Email signature reset');
+    try {
+      await usersApi.updateSignature('');
+      toast.success('Email signature reset');
+    } catch {
+      toast.error('Failed to reset email signature');
+    }
   };
 
-  if (!loaded) return null;
+  const actions = (
+    <>
+      <Button variant="outline" size="sm" onClick={handleReset} disabled={!loaded}>
+        Reset
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)}>
+        {showPreview ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
+        {showPreview ? 'Hide Preview' : 'Show Preview'}
+      </Button>
+      <Button onClick={handleSave} disabled={isSaving || !loaded}>
+        {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+        Save Signature
+      </Button>
+    </>
+  );
+
+  const header = (
+    <PageHeader
+      title="Email signature"
+      description="Configure your email signature for outbound communications"
+      back={
+        <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Back">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+      }
+      actions={actions}
+    />
+  );
+
+  if (!loaded) {
+    return (
+      <PageContainer>
+        {header}
+        <Skeleton className="h-96 w-full" />
+      </PageContainer>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Email Signature
-            </h1>
-            <p className="text-sm text-muted-foreground">Configure your email signature for outbound communications</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            Reset
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPreview(!showPreview)}
-          >
-            {showPreview ? <EyeOff className="h-4 w-4 mr-1.5" /> : <Eye className="h-4 w-4 mr-1.5" />}
-            {showPreview ? 'Hide Preview' : 'Show Preview'}
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Signature
-          </Button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <PageContainer>
+      {header}
+      {confirmDialog}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-6">
           {/* Left: Form */}
           <div className="space-y-6">
             <Card>
@@ -266,7 +323,7 @@ export default function EmailSignaturePage() {
                   value={data.customHtml}
                   onChange={(html) => setField('customHtml', html)}
                   placeholder="Add custom content... e.g., a tagline or promotional message"
-                  minHeight="100px"
+                  minHeight="6rem"
                 />
               </CardContent>
             </Card>
@@ -275,7 +332,7 @@ export default function EmailSignaturePage() {
           {/* Right: Preview */}
           {showPreview && (
             <div className="space-y-4">
-              <Card className="sticky top-0">
+              <Card className="lg:sticky lg:top-ds-4">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
                     <Eye className="h-4 w-4" />
@@ -284,7 +341,11 @@ export default function EmailSignaturePage() {
                   <CardDescription>This is how your signature will appear in emails</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg border p-6">
+                  <div
+                    data-testid="signature-preview"
+                    className="rounded-lg border border-ds-border p-ds-5"
+                    style={{ backgroundColor: color('surface', 'light'), color: SIG_MUTED }}
+                  >
                     {/* Simulated email body */}
                     <div className="space-y-3 text-sm">
                       <p className="text-muted-foreground">Dear Client,</p>
@@ -313,8 +374,7 @@ export default function EmailSignaturePage() {
               </Card>
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -3,110 +3,124 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, Send, Users, Mail, MessageSquare, Phone, Loader2,
-  ChevronRight, AlertCircle, CheckCircle2,
+  Send, Users, Mail, MessageSquare, Phone, Loader2, CheckCircle2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { toast } from 'sonner';
+import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { communicationsApi, type BulkSendRequest } from '@/lib/api/communications';
-// Note: BulkSendRequest now uses contact_ids[] and channel from backend schema
+import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
+import { contactsApi } from '@/lib/api/contacts';
+import type { Contact } from '@travelcrm/shared';
 
 type Channel = 'email' | 'sms' | 'whatsapp';
-type RecipientMode = 'segment' | 'tag' | 'manual';
-
-const availableSegments = [
-  { id: 'all-contacts', name: 'All Contacts', count: 2450 },
-  { id: 'active-leads', name: 'Active Leads', count: 340 },
-  { id: 'vip-customers', name: 'VIP Customers', count: 128 },
-  { id: 'past-travelers', name: 'Past Travelers', count: 890 },
-  { id: 'cold-leads', name: 'Cold Leads (90+ days)', count: 456 },
-  { id: 'honeymoon', name: 'Honeymoon Inquiries', count: 75 },
-];
-
-const availableTags = [
-  'VIP', 'Frequent', 'Honeymoon', 'Family', 'Adventure', 'Budget', 'Luxury',
-  'Corporate', 'Group', 'Solo',
-];
-
-const messageTemplates: Record<Channel, Array<{ id: string; name: string; body: string }>> = {
-  email: [
-    { id: 'promo-email', name: 'Promotional Offer', body: 'Dear {{name}},\n\nWe have an exciting offer for you! Get up to 30% off on select destinations.\n\nBook now and save big!\n\nBest regards,\nTravelCRM Team' },
-    { id: 'newsletter-email', name: 'Monthly Newsletter', body: 'Dear {{name}},\n\nHere is your monthly travel newsletter with the best deals and destinations.\n\nHappy travels!' },
-  ],
-  sms: [
-    { id: 'promo-sms', name: 'Promo SMS', body: 'Hi {{name}}! Special offer: 30% off select trips. Book now! Reply STOP to opt out.' },
-    { id: 'reminder-sms', name: 'Reminder SMS', body: 'Hi {{name}}, just a reminder about your upcoming trip. Contact us for any questions.' },
-  ],
-  whatsapp: [
-    { id: 'promo-wa', name: 'WhatsApp Promo', body: 'Hi {{name}}! We have an exclusive travel deal just for you. Check it out!' },
-    { id: 'followup-wa', name: 'WhatsApp Follow-up', body: 'Hi {{name}}, following up on your recent inquiry. Would you like to proceed?' },
-  ],
-};
+type RecipientMode = 'tag' | 'manual';
 
 export default function BulkSendPage() {
   const router = useRouter();
   const [channel, setChannel] = React.useState<Channel>('email');
-  const [recipientMode, setRecipientMode] = React.useState<RecipientMode>('segment');
-  const [selectedSegment, setSelectedSegment] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<string[]>([]);
-  const [manualRecipients, setManualRecipients] = React.useState('');
-  const [contentSource, setContentSource] = React.useState<'template' | 'custom'>('template');
+  const [recipientMode, setRecipientMode] = React.useState<RecipientMode>('tag');
+  const [selectedTag, setSelectedTag] = React.useState('');
+  const [manualSearch, setManualSearch] = React.useState('');
+  const [selectedContactIds, setSelectedContactIds] = React.useState<Set<string>>(new Set());
   const [selectedTemplate, setSelectedTemplate] = React.useState('');
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
-  const [scheduleType, setScheduleType] = React.useState<'now' | 'later'>('now');
-  const [scheduleDate, setScheduleDate] = React.useState('');
-  const [scheduleTime, setScheduleTime] = React.useState('');
+
+  const { data: tagsResponse, loading: loadingTags } = useApiQuery(
+    () => contactsApi.getTags(),
+    [],
+  );
+  const tags: string[] = tagsResponse?.data ?? [];
+
+  const { data: tagContactsResponse, loading: loadingTagContacts } = useApiQuery(
+    () => (selectedTag ? contactsApi.list({ tag: selectedTag, limit: 100 }) : Promise.resolve(null)),
+    [selectedTag],
+  );
+  const tagContacts: Contact[] = (tagContactsResponse?.data?.data
+    ?? (Array.isArray(tagContactsResponse?.data) ? tagContactsResponse.data : [])) as Contact[];
+
+  const { data: manualContactsResponse, loading: loadingManualContacts } = useApiQuery(
+    () => contactsApi.list({ search: manualSearch || undefined, limit: 30 }),
+    [manualSearch],
+  );
+  const manualContacts: Contact[] = (manualContactsResponse?.data?.data
+    ?? (Array.isArray(manualContactsResponse?.data) ? manualContactsResponse.data : [])) as Contact[];
+
+  const { data: templatesResponse } = useApiQuery(
+    () => templatesApi.list({ channel, limit: 50 }),
+    [channel],
+  );
+  const templates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
 
   const { mutate: bulkSend, loading: isSending } = useApiMutation(
-    (data: BulkSendRequest) => communicationsApi.bulkSend(data as BulkSendRequest),
+    (data: BulkSendRequest) => communicationsApi.bulkSend(data),
   );
 
-  // Estimate recipient count
-  const estimatedCount = React.useMemo(() => {
-    if (recipientMode === 'segment') {
-      const seg = availableSegments.find((s) => s.id === selectedSegment);
-      return seg?.count ?? 0;
-    }
-    if (recipientMode === 'tag') {
-      return selectedTags.length * 50; // rough estimate
-    }
-    if (recipientMode === 'manual') {
-      return manualRecipients.split('\n').filter((l) => l.trim()).length;
-    }
-    return 0;
-  }, [recipientMode, selectedSegment, selectedTags, manualRecipients]);
+  const [batchId, setBatchId] = React.useState<string | null>(null);
+  const [batchStatus, setBatchStatus] = React.useState<{ status: string; total: number; sent: number; failed: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!batchId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await communicationsApi.bulkSendStatus(batchId);
+        if (cancelled) return;
+        setBatchStatus(res.data);
+        if (res.data.status !== 'completed' && res.data.status !== 'failed') {
+          setTimeout(poll, 2000);
+        }
+      } catch {
+        // Stop polling silently on failure; the summary card just stops updating.
+      }
+    };
+    void poll();
+    return () => { cancelled = true; };
+  }, [batchId]);
+
+  const recipientIds = React.useMemo(() => {
+    if (recipientMode === 'tag') return tagContacts.map((c) => c.id);
+    return [...selectedContactIds];
+  }, [recipientMode, tagContacts, selectedContactIds]);
 
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplate(templateId);
-    const templates = messageTemplates[channel] || [];
+    if (templateId === 'none') return;
     const tpl = templates.find((t) => t.id === templateId);
     if (tpl) {
-      setBody(tpl.body);
+      if (tpl.subject) setSubject(tpl.subject);
+      setBody(tpl.content);
     }
   };
 
-  const handleTagToggle = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
+  const toggleManualContact = (id: string) => {
+    setSelectedContactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleSend = async () => {
-    if (estimatedCount === 0) {
-      toast.error('Please select recipients');
+    if (recipientIds.length === 0) {
+      toast.error('Please select at least one recipient');
       return;
     }
     if (!body.trim()) {
@@ -118,337 +132,246 @@ export default function BulkSendPage() {
       return;
     }
 
-    // Build contact_ids list from manual entry (segment/tag mode would need API lookup)
-    const contactIds: string[] = [];
-    if (recipientMode === 'manual') {
-      manualRecipients.split('\n').filter((l) => l.trim()).forEach((line) => {
-        const parts = line.split(',').map((p) => p.trim());
-        if (parts[0]) contactIds.push(parts[0]!);
-      });
-    } else if (recipientMode === 'segment' && selectedSegment) {
-      // For segment mode, pass segment ID as a single contact_id placeholder
-      // Backend should resolve segment to contact IDs
-      contactIds.push(selectedSegment);
-    } else if (recipientMode === 'tag' && selectedTags.length > 0) {
-      // For tag mode, pass tags — backend resolves
-      contactIds.push(...selectedTags);
-    }
-
     const result = await bulkSend({
       channel,
-      contact_ids: contactIds,
+      contact_ids: recipientIds,
       message: channel === 'email' && subject ? `[Subject: ${subject}]\n${body}` : body,
-      template_id: selectedTemplate || undefined,
+      template_id: selectedTemplate && selectedTemplate !== 'none' ? selectedTemplate : undefined,
     });
 
     if (result) {
-      toast.success(`Bulk send initiated! Sending to ~${estimatedCount} recipients.`);
-      router.push('/communication');
+      toast.success(`Bulk send initiated! Sending to ${recipientIds.length} recipients.`);
+      setBatchId(result.data.batch_id);
     } else {
       toast.error('Failed to initiate bulk send');
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+    <PageContainer width="narrow">
+      <PageHeader
+        title="Bulk send"
+        description="Send a message to multiple contacts through the Communication Hub."
+        back={
+          <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
+            ←
           </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Bulk Send
-            </h1>
-            <p className="text-sm text-muted-foreground">Send messages to multiple recipients</p>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto space-y-6">
-
-          {/* Step 1: Channel */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">1. Select Channel</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-3">
-                {([
-                  { value: 'email' as Channel, label: 'Email', icon: Mail, color: 'text-blue-500' },
-                  { value: 'sms' as Channel, label: 'SMS', icon: Phone, color: 'text-green-500' },
-                  { value: 'whatsapp' as Channel, label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
-                ]).map((ch) => (
-                  <button
-                    key={ch.value}
-                    onClick={() => {
-                      setChannel(ch.value);
-                      setSelectedTemplate('');
-                      setBody('');
-                    }}
-                    className={cn(
-                      'flex items-center gap-3 p-4 rounded-lg border-2 transition-colors',
-                      channel === ch.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-muted-foreground/30',
-                    )}
-                  >
-                    <ch.icon className={cn('h-5 w-5', ch.color)} />
-                    <span className="text-sm font-medium">{ch.label}</span>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Step 2: Recipients */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">2. Select Recipients</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Tabs value={recipientMode} onValueChange={(v) => setRecipientMode(v as RecipientMode)}>
-                <TabsList>
-                  <TabsTrigger value="segment">By Segment</TabsTrigger>
-                  <TabsTrigger value="tag">By Tag</TabsTrigger>
-                  <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="segment" className="mt-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    {availableSegments.map((seg) => (
-                      <button
-                        key={seg.id}
-                        onClick={() => setSelectedSegment(seg.id)}
-                        className={cn(
-                          'flex items-center justify-between p-3 rounded-lg border transition-colors text-left',
-                          selectedSegment === seg.id
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-muted-foreground/30',
-                        )}
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{seg.name}</p>
-                          <p className="text-xs text-muted-foreground">{seg.count.toLocaleString('en-IN')} contacts</p>
-                        </div>
-                        {selectedSegment === seg.id && (
-                          <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="tag" className="mt-4">
-                  <p className="text-sm text-muted-foreground mb-3">Select one or more tags to target</p>
-                  <div className="flex flex-wrap gap-2">
-                    {availableTags.map((tag) => (
-                      <Badge
-                        key={tag}
-                        variant={selectedTags.includes(tag) ? 'default' : 'outline'}
-                        className="cursor-pointer px-3 py-1.5"
-                        onClick={() => handleTagToggle(tag)}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="manual" className="mt-4">
-                  <div>
-                    <Label className="text-sm mb-2 block">
-                      Enter recipients (one per line, {channel === 'email' ? 'email' : 'phone number'})
-                    </Label>
-                    <textarea
-                      value={manualRecipients}
-                      onChange={(e) => setManualRecipients(e.target.value)}
-                      placeholder={channel === 'email'
-                        ? 'john@example.com, John Doe\njane@example.com, Jane Smith'
-                        : '+919876543210, John Doe\n+919876543211, Jane Smith'}
-                      className="w-full h-32 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              {estimatedCount > 0 && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                  <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm text-blue-700 dark:text-blue-300">
-                    Estimated recipients: <strong>{estimatedCount.toLocaleString('en-IN')}</strong>
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Step 3: Message */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">3. Compose Message</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Template or Custom toggle */}
-              <div className="flex items-center gap-3">
-                <Button
-                  variant={contentSource === 'template' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setContentSource('template')}
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-ds-6">
+        {/* Step 1: Channel */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">1. Select channel</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-ds-3">
+              {([
+                { value: 'email' as Channel, label: 'Email', icon: Mail },
+                { value: 'sms' as Channel, label: 'SMS', icon: Phone },
+                { value: 'whatsapp' as Channel, label: 'WhatsApp', icon: MessageSquare },
+              ]).map((ch) => (
+                <button
+                  key={ch.value}
+                  type="button"
+                  onClick={() => {
+                    setChannel(ch.value);
+                    setSelectedTemplate('');
+                    setBody('');
+                    setSubject('');
+                  }}
+                  className={cn(
+                    'flex items-center gap-ds-3 rounded-ds-lg border-2 p-ds-4 transition-colors',
+                    channel === ch.value ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border hover:border-ds-border-strong',
+                  )}
                 >
-                  Use Template
-                </Button>
-                <Button
-                  variant={contentSource === 'custom' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setContentSource('custom')}
-                >
-                  Write Custom
-                </Button>
-              </div>
+                  <ch.icon className="size-5" aria-hidden="true" />
+                  <span className="text-sm font-medium">{ch.label}</span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-              {contentSource === 'template' && (
-                <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Choose a template..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(messageTemplates[channel] || []).map((t) => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+        {/* Step 2: Recipients */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">2. Select recipients</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-ds-4">
+            <Tabs value={recipientMode} onValueChange={(v) => setRecipientMode(v as RecipientMode)}>
+              <TabsList>
+                <TabsTrigger value="tag">By tag</TabsTrigger>
+                <TabsTrigger value="manual">Choose contacts</TabsTrigger>
+              </TabsList>
 
-              {channel === 'email' && (
-                <div>
-                  <Label className="text-sm mb-1.5 block">Subject *</Label>
-                  <Input
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Email subject line"
-                    className="h-9"
-                  />
+              <TabsContent value="tag" className="mt-ds-4">
+                {loadingTags ? (
+                  <Skeleton className="h-9 w-64" />
+                ) : tags.length === 0 ? (
+                  <p className="text-sm text-ds-foreground-muted">No contact tags found yet.</p>
+                ) : (
+                  <Select value={selectedTag} onValueChange={setSelectedTag}>
+                    <SelectTrigger className="h-9 w-64">
+                      <SelectValue placeholder="Choose a tag…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tags.map((tag) => (
+                        <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {selectedTag && (
+                  <p className="mt-ds-2 text-xs text-ds-foreground-muted">
+                    {loadingTagContacts ? 'Counting…' : `${tagContacts.length} contact${tagContacts.length === 1 ? '' : 's'} tagged “${selectedTag}”`}
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="manual" className="mt-ds-4">
+                <Input
+                  value={manualSearch}
+                  onChange={(e) => setManualSearch(e.target.value)}
+                  placeholder="Search contacts…"
+                  className="h-9"
+                />
+                <div className="mt-ds-3 max-h-64 space-y-ds-1 overflow-y-auto">
+                  {loadingManualContacts ? (
+                    Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)
+                  ) : manualContacts.length === 0 ? (
+                    <p className="py-ds-4 text-center text-sm text-ds-foreground-muted">No contacts found.</p>
+                  ) : (
+                    manualContacts.map((c) => (
+                      <label
+                        key={c.id}
+                        className="flex cursor-pointer items-center gap-ds-3 rounded-ds-md px-ds-2 py-ds-2 hover:bg-ds-surface-sunken"
+                      >
+                        <Checkbox
+                          checked={selectedContactIds.has(c.id)}
+                          onCheckedChange={() => toggleManualContact(c.id)}
+                        />
+                        <span className="text-sm">{c.name}</span>
+                        {c.email && <span className="text-xs text-ds-foreground-muted">{c.email}</span>}
+                      </label>
+                    ))
+                  )}
                 </div>
-              )}
+              </TabsContent>
+            </Tabs>
 
+            {recipientIds.length > 0 && (
+              <div className="flex items-center gap-ds-2 rounded-ds-lg border border-ds-info bg-ds-info-subtle p-ds-3">
+                <Users className="size-4 text-ds-info-on-subtle" aria-hidden="true" />
+                <span className="text-sm text-ds-info-on-subtle">
+                  Recipients: <strong>{recipientIds.length}</strong>
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Step 3: Message */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">3. Compose message</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-ds-4">
+            <div>
+              <Label className="mb-ds-1 block text-sm">Template</Label>
+              <Select value={selectedTemplate || 'none'} onValueChange={handleTemplateChange}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Choose a template (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No template</SelectItem>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {channel === 'email' && (
               <div>
-                <Label className="text-sm mb-1.5 block">Message *</Label>
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="Write your message here... Use {{name}}, {{email}}, {{phone}} for personalization."
-                  className="w-full h-40 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                <Label className="mb-ds-1 block text-sm">Subject *</Label>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Email subject line"
+                  className="h-9"
                 />
               </div>
+            )}
 
-              {/* Variable hints */}
-              <div className="flex flex-wrap gap-1.5">
-                <span className="text-xs text-muted-foreground">Available variables:</span>
-                {['{{name}}', '{{email}}', '{{phone}}', '{{company}}'].map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setBody((prev) => prev + ' ' + v)}
-                    className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-muted/80 font-mono"
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+            <div>
+              <Label className="mb-ds-1 block text-sm">Message *</Label>
+              <Textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Write your message here... Use {{name}}, {{email}}, {{phone}} for personalization."
+                rows={6}
+              />
+            </div>
 
-          {/* Step 4: Schedule */}
+            <div className="flex flex-wrap gap-ds-2">
+              <span className="text-xs text-ds-foreground-muted">Variables:</span>
+              {['{{name}}', '{{email}}', '{{phone}}', '{{company}}'].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setBody((prev) => `${prev} ${v}`)}
+                  className="rounded-ds-sm bg-ds-surface-sunken px-ds-2 py-ds-1 font-mono text-xs hover:bg-ds-border"
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Summary & Send */}
+        <Card className="border-ds-primary bg-ds-primary-subtle">
+          <CardContent className="flex items-center justify-between p-ds-4">
+            <div className="space-y-ds-1">
+              <p className="text-sm font-medium">Ready to send</p>
+              <p className="text-xs text-ds-foreground-muted">
+                {channel.toUpperCase()} to {recipientIds.length} recipient{recipientIds.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <Button onClick={handleSend} disabled={isSending || recipientIds.length === 0} className="gap-ds-2">
+              {isSending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Send className="size-4" aria-hidden="true" />}
+              Send now
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Batch status */}
+        {batchId && batchStatus && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">4. Send or Schedule</CardTitle>
+              <CardTitle className="text-base">Batch status</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setScheduleType('now')}
-                  className={cn(
-                    'flex items-center gap-3 p-4 rounded-lg border-2 transition-colors',
-                    scheduleType === 'now'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-muted-foreground/30',
-                  )}
-                >
-                  <Send className="h-5 w-5 text-primary" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Send Now</p>
-                    <p className="text-xs text-muted-foreground">Send immediately</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setScheduleType('later')}
-                  className={cn(
-                    'flex items-center gap-3 p-4 rounded-lg border-2 transition-colors',
-                    scheduleType === 'later'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-muted-foreground/30',
-                  )}
-                >
-                  <AlertCircle className="h-5 w-5 text-amber-500" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium">Schedule</p>
-                    <p className="text-xs text-muted-foreground">Send later</p>
-                  </div>
-                </button>
+            <CardContent className="space-y-ds-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="capitalize">{batchStatus.status}</span>
+                <span className="text-ds-foreground-muted">{batchStatus.sent + batchStatus.failed} / {batchStatus.total}</span>
               </div>
-
-              {scheduleType === 'later' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm mb-1.5 block">Date</Label>
-                    <Input
-                      type="date"
-                      value={scheduleDate}
-                      onChange={(e) => setScheduleDate(e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm mb-1.5 block">Time</Label>
-                    <Input
-                      type="time"
-                      value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
-                </div>
+              <Progress value={batchStatus.total ? ((batchStatus.sent + batchStatus.failed) / batchStatus.total) * 100 : 0} />
+              <div className="flex items-center gap-ds-4 text-xs text-ds-foreground-muted">
+                <span className="flex items-center gap-ds-1"><CheckCircle2 className="size-3.5 text-ds-success" aria-hidden="true" /> {batchStatus.sent} sent</span>
+                {batchStatus.failed > 0 && <span className="text-ds-danger">{batchStatus.failed} failed</span>}
+              </div>
+              {(batchStatus.status === 'completed' || batchStatus.status === 'failed') && (
+                <Button size="sm" variant="outline" onClick={() => router.push('/communication')}>
+                  Back to inbox
+                </Button>
               )}
             </CardContent>
           </Card>
-
-          {/* Summary & Send */}
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Ready to send</p>
-                  <p className="text-xs text-muted-foreground">
-                    {channel.toUpperCase()} to ~{estimatedCount.toLocaleString('en-IN')} recipients
-                    {scheduleType === 'later' && scheduleDate ? ` on ${scheduleDate} at ${scheduleTime}` : ' immediately'}
-                  </p>
-                </div>
-                <Button onClick={handleSend} disabled={isSending || estimatedCount === 0}>
-                  {isSending ? (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-1.5" />
-                  )}
-                  {scheduleType === 'now' ? 'Send Now' : 'Schedule'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "pass",
+    "durationMs": 36969,
+    "tail": "tsc: 0 errors - 0 in app src (must be 0), 0 in tests/e2e/other (baseline 0)"
+  },
+  "unit": {
+    "status": "pass",
+    "durationMs": 43060,
+    "tail": "vitest: 1232 passed / 0 failed tests; 0 failing files (baseline 0)"
+  },
+  "lint": {
+    "status": "pass",
+    "durationMs": 139467,
+    "tail": "lint-gate: 1257 errors in 159 files (baseline 1494), 5361 warnings, 68.0s\nImproved (9):\n  + src/app/(app)/calendar/page.tsx: 79 -> 0\n  + src/app/(app)/dashboard/page.tsx: 84 -> 0\n  + src/components/domain/ai-daily-briefing.tsx: 15 -> 0\n  + src/components/domain/ai-health-score.tsx: 19 -> 0\n  + src/components/domain/ai-recommendations.tsx: 9 -> 0\n  + src/components/domain/dashboard/sticky-notes-widget.tsx: 8 -> 0\n  + src/components/domain/stat-card.tsx: 11 -> 0\n  + src/components/domain/sticky-notes-widget.tsx: 11 -> 0\n  + src/lib/api/events.ts: 1 -> 0\nlint-gate: PASS\n\n--- --zero src/app/(app)/dashboard/** src/app/(app)/calendar/** src/components/domain/{ai-daily-briefing,ai-health-score,ai-recommendations,stat-card}.tsx src/components/domain/dashboard/** src/lib/api/{events,sticky-notes}.ts ---\nlint-gate: 1257 errors in 159 files (baseline 1494), 5362 warnings, 70.4s\nImproved (9):\n  + src/app/(app)/calendar/page.tsx: 79 -> 0\n  + src/app/(app)/dashboard/page.tsx: 84 -> 0\n  + src/components/domain/ai-daily-briefing.tsx: 15 -> 0\n  + src/components/domain/ai-health-score.tsx: 19 -> 0\n  + src/components/domain/ai-recommendations.tsx: 9 -> 0\n  + src/components/domain/dashboard/sticky-notes-widget.tsx: 8 -> 0\n  + src/components/domain/stat-card.tsx: 11 -> 0\n  + src/components/domain/sticky-notes-widget.tsx: 11 -> 0\n  + src/lib/api/events.ts: 1 -> 0\nlint-gate: PASS"
+  },
+  "build": {
+    "status": "pass",
+    "durationMs": 77889,
+    "tail": "├ ○ /rate-cards/new\n├ ○ /reports\n├ ○ /reports/customer\n├ ○ /reports/financial\n├ ○ /reports/fleet\n├ ○ /reports/leads\n├ ○ /reports/marketing\n├ ○ /reports/pipeline\n├ ○ /reports/revenue\n├ ○ /reports/sales\n├ ○ /reports/supplier\n├ ○ /reports/team\n├ ○ /reports/visa\n├ ○ /reset-password\n├ ○ /settings\n├ ○ /settings/activity-log\n├ ○ /settings/ai\n├ ○ /settings/ai-usage\n├ ○ /settings/announcements\n├ ○ /settings/assignment-rules\n├ ○ /settings/chatbot\n├ ○ /settings/company\n├ ○ /settings/custom-fields\n├ ○ /settings/email-signature\n├ ○ /settings/export\n├ ○ /settings/followup-sequences\n├ ○ /settings/import\n├ ○ /settings/integrations\n├ ○ /settings/invoice-defaults\n├ ○ /settings/itinerary-defaults\n├ ○ /settings/login-history\n├ ○ /settings/notifications\n├ ○ /settings/numbering\n├ ○ /settings/phone-numbers\n├ ○ /settings/profile\n├ ○ /settings/routing-rules\n├ ○ /settings/sessions\n├ ○ /settings/team\n├ ○ /settings/voip\n├ ○ /setup-account\n├ ○ /super-admin\n├ ○ /super-admin/audit\n├ ○ /super-admin/billing\n├ ○ /super-admin/config\n├ ○ /super-admin/plans\n├ ○ /super-admin/system\n├ ○ /super-admin/tenants\n├ ƒ /super-admin/tenants/[id]\n├ ○ /super-admin/users\n├ ○ /suppliers\n├ ƒ /suppliers/[id]\n├ ƒ /suppliers/[id]/edit\n├ ○ /suppliers/compare\n├ ○ /suppliers/new\n├ ○ /tasks\n├ ƒ /tasks/[id]\n├ ○ /travellers\n├ ƒ /travellers/[id]\n├ ƒ /travellers/[id]/edit\n├ ○ /travellers/new\n├ ○ /visa\n├ ƒ /visa/[id]\n├ ƒ /visa/[id]/edit\n├ ○ /visa/dashboard\n├ ○ /visa/new\n├ ○ /vouchers\n├ ƒ /vouchers/[id]\n├ ƒ /vouchers/[id]/edit\n└ ○ /vouchers/new\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n\n--- stack restart (up --no-build) exit 0 ---\n[fix-stack slot 0] starting API on :8787\n[fix-stack slot 0] starting web on :3100\n[fix-stack slot 0] up - API pid 9972, web pid 17048\nE2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "pass",
+    "durationMs": 51473,
+    "tail": "playwright: 25 passed, 0 failed, 0 flaky, 0 skipped; 0 failure(s) tolerated\n\nRunning 25 tests using 1 worker\n\n[1/25] [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin\n[2/25] [chromium] › e2e\\calendar.spec.ts:10:7 › Calendar & Events › loads the calendar page in month view with legend and controls\n[3/25] [chromium] › e2e\\calendar.spec.ts:23:7 › Calendar & Events › full create -> list -> detail -> edit -> update -> delete round trip via form UI\n[4/25] [chromium] › e2e\\calendar.spec.ts:109:7 › Calendar & Events › search and type filter narrow results, and empty state renders on no match\n[5/25] [chromium] › e2e\\calendar.spec.ts:141:7 › Calendar & Events › drag-and-drop reschedules an event to a new date\n[6/25] [chromium] › e2e\\calendar.spec.ts:194:7 › Calendar & Events › week view reflects an event created in month view\n[7/25] [chromium] › e2e\\calendar.spec.ts:220:7 › Calendar & Events › export downloads a non-empty CSV of visible events\n[8/25] [chromium] › e2e\\calendar.spec.ts:248:7 › Calendar & Events › has no mailto/wa.me/tel anchors on the calendar page\n[9/25] [chromium] › e2e\\calendar.spec.ts:255:7 › Calendar & Events › empty state renders with add-event action when no events exist in range\n[10/25] [chromium] › e2e\\dashboard.spec.ts:6:7 › Dashboard › root path redirects to /dashboard\n[11/25] [chromium] › e2e\\dashboard.spec.ts:13:7 › Dashboard › renders KPI tiles with live data and links to their source pages\n[12/25] [chromium] › e2e\\dashboard.spec.ts:33:7 › Dashboard › Quick Add menu offers every creation form and navigates\n[13/25] [chromium] › e2e\\dashboard.spec.ts:46:7 › Dashboard › date range changes the KPI figures and shows no placeholder numbers\n[14/25] [chromium] › e2e\\dashboard.spec.ts:57:7 › Dashboard › sidebar navigation links resolve to real routes (no dead links like /planner)\n[15/25] [chromium] › e2e\\dashboard.spec.ts:80:7 › Dashboard › sticky notes widget: create, edit, change color, and delete a note (full round trip)\n[16/25] [chromium] › e2e\\dashboard.spec.ts:119:7 › Dashboard › sticky notes widget shows pre-seeded notes\n[17/25] [chromium] › e2e\\dashboard.spec.ts:146:7 › Bookmarks › lists bookmarked entities with type badges and bookmarked date\n[18/25] [chromium] › e2e\\dashboard.spec.ts:162:7 › Bookmarks › search narrows the bookmark list\n[19/25] [chromium] › e2e\\dashboard.spec.ts:181:7 › Bookmarks › empty state renders when a search matches nothing\n[20/25] [chromium] › e2e\\dashboard.spec.ts:193:7 › Bookmarks › opening a bookmark row navigates to the source entity\n[21/25] [chromium] › e2e\\dashboard.spec.ts:204:7 › Bookmarks › removing a bookmark deletes it and removes it from the list\n[22/25] [chromium] › e2e\\dashboard.spec.ts:223:7 › Bookmarks › export downloads a non-empty CSV file\n[23/25] [chromium] › e2e\\dashboard.spec.ts:246:7 › Bookmarks › infinite scroll loads more bookmarks beyond the first page\n[24/25] [chromium] › e2e\\dashboard.spec.ts:269:7 › Bookmarks › no raw mailto/wa.me/tel outbound links exist on dashboard or bookmarks pages\n[25/25] [chromium] › e2e\\dashboard.spec.ts:278:7 › Bookmarks › no raw entity ID inputs are present on the bookmarks page\n  25 passed (49.3s)"
+  },
+  "layoutProbe": {
+    "status": "pass",
+    "durationMs": 15226,
+    "tail": "ok                           light 1366x768   /dashboard\nok                           light 1366x768   /calendar\nok                           light 1920x1080  /dashboard\nok                           light 1920x1080  /calendar\nok                           dark  1366x768   /dashboard\nok                           dark  1366x768   /calendar\nok                           dark  1920x1080  /dashboard\nok                           dark  1920x1080  /calendar\nlayout-probe: 8 runs, 0 failing -> audit\\fix\\probe\\B18\\probe.json"
+  }
+}

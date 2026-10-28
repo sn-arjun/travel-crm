@@ -6,11 +6,12 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { rbac } from '../middleware/rbac';
+import { marketingConsentSql } from '../services/privacy/consent';
 
 const whatsappCampaignRoutes = new Hono<AppContext>();
 
@@ -218,7 +219,8 @@ whatsappCampaignRoutes.post('/:id/send', rbac(['admin', 'sales_manager']), async
   // Build recipient list from audience filter
   const audienceFilter = campaign.audience_filter ? JSON.parse(campaign.audience_filter) : {};
 
-  const conditions: string[] = ['c.phone IS NOT NULL', "c.phone != ''", 'c.is_deleted = 0'];
+  // R208: opted-out contacts and contacts whose latest WhatsApp marketing consent is a withdrawal never enter the audience
+  const conditions: string[] = ['c.phone IS NOT NULL', "c.phone != ''", 'c.is_deleted = 0', 'COALESCE(c.opted_out, 0) = 0', marketingConsentSql('whatsapp', 'c')];
   const vals: (string | number)[] = [];
 
   if (audienceFilter.source) { conditions.push('c.source = ?'); vals.push(audienceFilter.source); }

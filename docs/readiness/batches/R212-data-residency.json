@@ -1,0 +1,89 @@
+{
+  "id": "R212",
+  "tier": 2,
+  "title": "Data residency: choose the agency's data region at creation",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Let the platform place an agency's database and files in a chosen region, such as the EU.",
+  "why": "R2 is pinned to APAC and D1 has no location hint (terraform/modules/cloudflare/workers.tf); EU buyers ask where data lives.",
+  "featuresToWorks": [
+    "platform.compliance"
+  ],
+  "dependsOn": [
+    "R104",
+    "R103"
+  ],
+  "blockedOnOwner": "owner decision Q7 (which regions at launch)",
+  "parallelSafeWith": [
+    "R213"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/services/tenancy/cloudflare-provisioner.ts",
+      "backend/src/services/tenancy/local-provisioner.ts",
+      "backend/src/routes/admin-tenants.ts",
+      "backend/src/routes/files.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/scripts/gen-wrangler.mjs",
+      "backend/wrangler.base.toml",
+      "terraform/modules/cloudflare/workers.tf"
+    ],
+    "create": [
+      "backend/src/services/tenancy/regions.ts",
+      "backend/drizzle/master/0022_tenant_region.sql",
+      "backend/test/data-residency.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/messaging/**",
+      "desktop/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "regions.ts: Region = in|eu|uk|us|au|gulf -> { d1: { locationHint?, jurisdiction? }, r2Binding } per READINESS-PLAN 4.12 (eu/uk -> jurisdiction eu, FILE_STORAGE_EU; others -> FILE_STORAGE with hint).",
+    "Master 0022: tenants.region already added in R104 (0012); this migration adds region-related columns only if needed (e.g. files_bucket) or is a no-op comment file; skip creating it if nothing is needed and say so.",
+    "Provisioners pass the D1 options; files routes and every R2 access pick the binding via getFileStorage(env, tenant) (grep FILE_STORAGE in backend/src); gen-wrangler and base config declare FILE_STORAGE_EU; terraform creates travelcrm-files-eu with jurisdiction eu.",
+    "Super admin wizard region select is in R112's wizard (backend accepts region already); if the console lacks the field, add it as a follow-up request."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0022_tenant_region.sql (only if columns are needed)"
+  ],
+  "tests": [
+    "backend/test/data-residency.test.ts: an eu tenant's uploads go to FILE_STORAGE_EU (local binding) and an in tenant's to FILE_STORAGE; the Cloudflare provisioner sends jurisdiction eu for eu and a location hint for us (mocked fetch)."
+  ],
+  "acceptance": [
+    "Region respected for DB creation and every file read/write (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "D1 jurisdiction support in the REST create call; EU R2 bucket; privacy policy states that master data (agency names, user emails, usage) is global."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Add FILE_STORAGE_EU to the vitest wrangler config through wrangler.base.toml/wrangler.toml so tests get a local bucket."
+  ]
+}

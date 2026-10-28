@@ -1,0 +1,62 @@
+{
+  "slice": "marketing-segments",
+  "title": "Marketing Segments",
+  "status": "existing",
+  "showcaseOrder": 32,
+  "endpoints": [
+    "DELETE /api/v1/marketing/segments/:id",
+    "GET /api/v1/marketing/segments",
+    "GET /api/v1/marketing/segments/:id",
+    "GET /api/v1/marketing/segments/:id/contacts",
+    "POST /api/v1/marketing/segments",
+    "POST /api/v1/marketing/segments/:id/refresh-count",
+    "PUT /api/v1/marketing/segments/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/segments/page.tsx",
+    "desktop/src/app/(app)/marketing/segments/new/page.tsx",
+    "desktop/src/app/(app)/marketing/segments/[id]/edit/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/17-m17-marketing-campaigns.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/marketing-segments.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/segments/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-segments.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "No relation fields, phone/address/currency inputs, or messaging in this slice — segments have no such fields, so those contract items are N/A rather than unmet. GET /segments/:id/contacts now powers a matching-contacts preview in the detail drawer; POST /segments/:id/refresh-count now powers a Refresh count row action and drawer button. Edit form now loads via GET /segments/:id and saves via PUT /segments/:id (previously used list+create as a broken upsert). Count preview on create/edit uses create+refresh-count+delete as a dry run since no dedicated preview endpoint exists — acceptable but has a brief side-effect window.",
+  "showcaseScript": [
+    "Open Marketing → Segments",
+    "Build a segment with rules on destination and spend",
+    "Refresh the count and preview matching contacts",
+    "Launch a campaign to that segment"
+  ]
+}

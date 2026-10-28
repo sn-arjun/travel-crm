@@ -1,0 +1,24 @@
+# Agency web app, built with OpenNext for Cloudflare Workers (`npm -w travelcrm-desktop run deploy:web`).
+# It is the same Next.js app as the Electron desktop app, built as a website for app.<domain>: browser access
+# plus every page the emails link to (/reset-password, /setup-account, /q/<token>, /download, /quick-start).
+# It has no database or storage bindings: all data comes from the API Worker.
+# No secrets live here or are needed.
+name = "travelcrm-app"
+main = ".open-next/worker.js"
+compatibility_date = "2026-02-20"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[vars]
+ENVIRONMENT = "production"
+# PLACEHOLDER DOMAIN: the owner has not chosen a domain yet (docs/GO-LIVE.md phase 0). This is the ONE place the
+# web app names it. The API address (https://api.<domain>/api/v1) and the update feed folder
+# (https://downloads.<domain>/win/) are derived from it at request time (src/lib/web-config.ts).
+PLATFORM_DOMAIN = "YOUR-DOMAIN.example"
+# Optional overrides, all read at request time (leave commented to use the derived values):
+# TRAVELCRM_API_URL = "https://api.example.com/api/v1"   # e.g. a staging workers.dev API
+# INSTALLER_URL = "https://downloads.<domain>/win/TravelCRM-Pro-Setup.exe"   # the /download page's Windows button
+# DRIVER_APP_URL = "https://play.google.com/store/apps/details?id=..."        # the /download page's driver app button

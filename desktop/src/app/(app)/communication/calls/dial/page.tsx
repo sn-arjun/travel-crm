@@ -1,36 +1,34 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import {
-  Phone, PhoneOff, Delete, Search, Clock,
-  ArrowLeft, User, Loader2,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Phone, PhoneOff, Delete, Clock, ArrowLeft, User, Loader2, Mic } from 'lucide-react';
+import { Button, Card, CardContent, CardHeader, CardTitle, PhoneInput, SectionCard, Skeleton } from '@/components/ui';
+import { RelationCombobox } from '@/components/domain';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 import { toast } from 'sonner';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type Call, type CreateOutboundCallRequest } from '@/lib/api/voip';
+import { defaultCountryCode } from '@/lib/phone';
+import { unwrapList } from '@/lib/api/envelope';
 import { contactsApi } from '@/lib/api/contacts';
+import { CallControlsPanel } from '@/components/domain/call-controls-panel';
+import { MicCheckDialog } from '@/components/domain/mic-check';
+import { leadsApi } from '@/lib/api/leads';
+import { useSoftphone } from '@/lib/softphone/use-softphone';
+import { useT } from '@/lib/i18n';
+import type { Contact } from '@travelcrm/shared';
 
 const dialPadKeys = [
-  { label: '1', sub: '' },
-  { label: '2', sub: 'ABC' },
-  { label: '3', sub: 'DEF' },
-  { label: '4', sub: 'GHI' },
-  { label: '5', sub: 'JKL' },
-  { label: '6', sub: 'MNO' },
-  { label: '7', sub: 'PQRS' },
-  { label: '8', sub: 'TUV' },
-  { label: '9', sub: 'WXYZ' },
-  { label: '*', sub: '' },
-  { label: '0', sub: '+' },
-  { label: '#', sub: '' },
+  { label: '1', sub: '' }, { label: '2', sub: 'ABC' }, { label: '3', sub: 'DEF' },
+  { label: '4', sub: 'GHI' }, { label: '5', sub: 'JKL' }, { label: '6', sub: 'MNO' },
+  { label: '7', sub: 'PQRS' }, { label: '8', sub: 'TUV' }, { label: '9', sub: 'WXYZ' },
+  { label: '*', sub: '' }, { label: '0', sub: '+' }, { label: '#', sub: '' },
 ];
 
 function formatDuration(seconds: number): string {
@@ -42,7 +40,7 @@ function formatDuration(seconds: number): string {
 
 export default function DialPadPageWrapper() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
       <DialPadPage />
     </Suspense>
   );
@@ -50,25 +48,31 @@ export default function DialPadPageWrapper() {
 
 function DialPadPage() {
   const router = useRouter();
+  const t = useT();
+  const softphone = useSoftphone();
+  const [micOpen, setMicOpen] = React.useState(false);
   const searchParams = useSearchParams();
+  const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [number, setNumber] = React.useState(searchParams.get('phone') || '');
-  const [contactSearch, setContactSearch] = React.useState('');
+  const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
+  // A call started from a lead or contact page arrives with their ids; they travel with the call so it
+  // stays linked to them.
+  const leadId = searchParams.get('leadId');
+  const [contactId, setContactId] = React.useState<string | null>(searchParams.get('contactId'));
   const [isCalling, setIsCalling] = React.useState(false);
+  // The call in progress: its panel follows the provider's state over the realtime room.
+  const [activeCall, setActiveCall] = React.useState<{ callId: string; name: string; number: string; viaSoftphone: boolean } | null>(null);
+  const [contactName, setContactName] = React.useState<string | null>(null);
+  // The lead the call is for (arrived from its page): the in-call panel shows and links it.
+  const [leadTitle, setLeadTitle] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    leadsApi.getById(leadId).then((r) => { if (!cancelled) setLeadTitle(r.data?.title ?? null); }).catch(() => { /* the panel still links the lead */ });
+    return () => { cancelled = true; };
+  }, [leadId]);
 
-  const { data: contactsResponse } = useApiQuery<any>(
-    () => contactSearch.length >= 2
-      ? contactsApi.list({ search: contactSearch, limit: 10 })
-      : Promise.resolve({ data: { data: [] } }),
-    [contactSearch],
-  );
-
-  const matchedContacts = React.useMemo(() => {
-    const data = contactsResponse?.data;
-    const list = Array.isArray(data) ? data : (data?.data ?? []);
-    return list.filter((c: any) => c.phone);
-  }, [contactsResponse]);
-
-  const { data: recentCallsResponse, loading: recentLoading } = useApiQuery<any>(
+  const { data: recentCallsResponse, loading: recentLoading } = useApiQuery(
     () => voipApi.calls.list({ limit: 10 }),
     [],
   );
@@ -77,10 +81,20 @@ function DialPadPage() {
     (data: CreateOutboundCallRequest) => voipApi.calls.createOutbound(data),
   );
 
-  const recentCalls: Call[] = React.useMemo(() => {
-    const data = recentCallsResponse?.data;
-    return Array.isArray(data) ? data : (data?.data ?? []);
-  }, [recentCallsResponse]);
+  const recentCalls: Call[] = recentCallsResponse?.data ?? [];
+
+  // Arrived with a contact but no number: fill in the contact's number
+  const initialContactId = React.useRef(searchParams.get('contactId'));
+  const hadPhoneParam = React.useRef(Boolean(searchParams.get('phone')));
+  React.useEffect(() => {
+    const id = initialContactId.current;
+    if (!id || hadPhoneParam.current) return;
+    let cancelled = false;
+    contactsApi.getById(id).then((r) => {
+      if (!cancelled && r.data?.phone) setNumber(r.data.phone);
+    }).catch(() => { /* the number can still be typed */ });
+    return () => { cancelled = true; };
+  }, []);
 
   function handleKeyPress(key: string) {
     setNumber((prev) => prev + key);
@@ -91,214 +105,226 @@ function DialPadPage() {
   }
 
   async function handleDial() {
-    if (!number.trim()) {
+    const digits = number.trim().replace(/[^0-9]/g, '');
+    if (!digits) {
       toast.error('Please enter a phone number');
       return;
     }
-
+    const toNumber = number.trim().startsWith('+') ? number.trim() : `${countryCode}${digits}`;
     setIsCalling(true);
-    const result = await makeCall({ to: number.trim() });
+    // With the in-app phone ready, the server rings it first and the app answers that leg itself.
+    const viaSoftphone = softphone.status === 'ready';
+    if (viaSoftphone) softphone.controller.expectOutboundCall({ to: toNumber });
+    const result = await makeCall({
+      toNumber,
+      contactId: contactId ?? undefined,
+      leadId: leadId ?? undefined,
+      ...(viaSoftphone ? { mode: 'softphone' as const } : {}),
+    });
     if (result) {
       toast.success(`Calling ${number}...`);
+      const callLogId = result.data?.callLogId;
+      if (callLogId) setActiveCall({ callId: callLogId, name: contactName ?? number, number, viaSoftphone });
     } else {
+      if (viaSoftphone) {
+        softphone.controller.cancelExpectedCall();
+        softphone.hangup();
+      }
       toast.error('Failed to initiate call');
     }
     setIsCalling(false);
   }
 
-  function handleRecentCallDial(phoneNumber: string) {
-    setNumber(phoneNumber);
+  if (gateLoading) return <Skeleton className="h-9 w-32" />;
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-9 text-center">
+        <PhoneOff className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
+        <p className="text-sm text-ds-foreground-muted">
+          {reason === 'country_unavailable'
+            ? 'Calling is not available for agencies in your country yet.'
+            : reason === 'cap_exceeded' ? 'Call limit reached for your plan.' : 'VoIP calling is not enabled on your plan.'}
+        </p>
+        {reason !== 'country_unavailable' && (
+          <Button asChild size="sm">
+            <a href={upgradeHref}>Upgrade to enable</a>
+          </Button>
+        )}
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Dial Pad
-            </h1>
-            <p className="text-sm text-muted-foreground">Make an outbound call</p>
-          </div>
+    <PageContainer>
+      <div className="flex items-center gap-ds-3">
+        <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
+          <ArrowLeft className="size-4" />
+        </Button>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Dial pad</h1>
+          <p className="text-sm text-ds-foreground-muted">Make an outbound call</p>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 gap-8">
-          {/* Left: Dial Pad */}
-          <div className="space-y-6">
-            {/* Contact Search */}
-            <Card>
-              <CardContent className="pt-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search contacts..."
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {matchedContacts.length > 0 && (
-                  <div className="mt-2 space-y-1 max-h-48 overflow-auto">
-                    {matchedContacts.map((contact: any) => (
-                      <div
-                        key={contact.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
-                        onClick={() => { setNumber(contact.phone); setContactSearch(''); }}
-                      >
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <User className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{contact.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{contact.phone}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Number Display */}
-            <Card>
-              <CardContent className="pt-6 pb-4">
-                <div className="text-center mb-6">
-                  <div className="flex items-center justify-center gap-2 min-h-[48px]">
-                    <p className="text-3xl font-bold font-mono tracking-wider">
-                      {number || <span className="text-muted-foreground">Enter number</span>}
-                    </p>
-                    {number && (
-                      <Button variant="ghost" size="icon-sm" onClick={handleBackspace}>
-                        <Delete className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Dial Pad Grid */}
-                <div className="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
-                  {dialPadKeys.map((key) => (
-                    <button
-                      key={key.label}
-                      onClick={() => handleKeyPress(key.label)}
-                      className={cn(
-                        'h-16 rounded-xl flex flex-col items-center justify-center',
-                        'bg-muted/50 hover:bg-muted active:bg-muted/80 transition-colors',
-                        'text-lg font-semibold',
-                      )}
-                    >
-                      <span>{key.label}</span>
-                      {key.sub && <span className="text-[10px] text-muted-foreground tracking-widest">{key.sub}</span>}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Call / End Buttons */}
-                <div className="flex justify-center gap-4 mt-6">
-                  <Button
-                    size="lg"
-                    className="rounded-full h-14 w-14 bg-green-600 hover:bg-green-700"
-                    onClick={handleDial}
-                    disabled={isCalling || callLoading || !number.trim()}
-                  >
-                    {isCalling || callLoading ? (
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    ) : (
-                      <Phone className="h-6 w-6" />
-                    )}
-                  </Button>
-                  {isCalling && (
-                    <Button
-                      size="lg"
-                      className="rounded-full h-14 w-14 bg-red-600 hover:bg-red-700"
-                      onClick={() => setIsCalling(false)}
-                    >
-                      <PhoneOff className="h-6 w-6" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+        {softphone.available && (
+          <div className="ml-auto flex items-center gap-ds-3">
+            <span className="text-xs text-ds-foreground-muted" data-testid="softphone-status" data-softphone-status={softphone.status}>
+              {softphone.status === 'error' ? t('softphone.dial.offline') : t('softphone.dial.ready')}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setMicOpen(true)} data-testid="softphone-mic-check">
+              <Mic className="size-4" aria-hidden="true" /> {t('softphone.dial.checkMic')}
+            </Button>
           </div>
+        )}
+      </div>
+      <MicCheckDialog open={micOpen} onOpenChange={setMicOpen} />
 
-          {/* Right: Recent Calls */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="h-4 w-4" /> Recent Calls
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : recentCalls.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No recent calls</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {recentCalls.map((call) => {
-                    const isInbound = call.direction === 'inbound';
-                    const displayNumber = isInbound ? call.from : call.to;
-                    return (
-                      <div
-                        key={call.id}
-                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer group"
-                        onClick={() => handleRecentCallDial(displayNumber)}
-                      >
-                        <div className={cn(
-                          'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
-                          call.status === 'no_answer'
-                            ? 'bg-red-100 dark:bg-red-900/30'
-                            : isInbound
-                            ? 'bg-blue-100 dark:bg-blue-900/30'
-                            : 'bg-green-100 dark:bg-green-900/30',
-                        )}>
-                          <Phone className={cn(
-                            'h-4 w-4',
-                            call.status === 'no_answer'
-                              ? 'text-red-600 dark:text-red-400'
-                              : isInbound
-                              ? 'text-blue-600 dark:text-blue-400'
-                              : 'text-green-600 dark:text-green-400',
-                          )} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium font-mono truncate">{displayNumber}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(call.startTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            {call.duration > 0 && ` - ${formatDuration(call.duration)}`}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/communication/calls/${call.id}`);
-                          }}
-                        >
-                          <User className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+      <div className="mx-auto grid w-full max-w-5xl gap-ds-8 sm:grid-cols-2">
+        <div className="flex flex-col gap-ds-6">
+          <SectionCard title="Contact">
+            <RelationCombobox<Contact>
+              value={contactId}
+              onChange={(id, item) => {
+                setContactId(id);
+                setContactName(item?.name ?? null);
+                if (item?.phone) setNumber(item.phone);
+              }}
+              fetcher={async (q, page) => {
+                const r = await contactsApi.list({ search: q, page, limit: 20 });
+                const list = unwrapList<Contact>(r);
+                const items = list.data;
+                return { items: items.filter((c) => c.phone), total: list.pagination.total };
+              }}
+              getOptionId={(c) => c.id}
+              getOptionLabel={(c) => c.name}
+              getOptionDescription={(c) => c.phone ?? undefined}
+              resolveSelected={async (id) => (await contactsApi.getById(id)).data}
+              placeholder="Search contacts…"
+              searchPlaceholder="Search by name or phone…"
+              emptyText="No contacts found"
+            />
+          </SectionCard>
+
+          <Card>
+            <CardContent className="pt-ds-6 pb-ds-4">
+              <div className="mb-ds-4">
+                <PhoneInput value={number} onChange={setNumber} countryCode={countryCode} onCountryCodeChange={setCountryCode} />
+              </div>
+
+              <div className="mx-auto grid max-w-72 grid-cols-3 gap-ds-3">
+                {dialPadKeys.map((key) => (
+                  <button
+                    key={key.label}
+                    onClick={() => handleKeyPress(key.label)}
+                    className={cn(
+                      'flex h-16 flex-col items-center justify-center rounded-ds-xl',
+                      'bg-ds-surface-sunken hover:bg-ds-surface-raised active:bg-ds-surface-raised transition-colors',
+                      'text-lg font-semibold',
+                    )}
+                  >
+                    <span>{key.label}</span>
+                    {key.sub && <span className="text-xs tracking-widest text-ds-foreground-muted">{key.sub}</span>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-ds-6 flex justify-center gap-ds-4">
+                {number && (
+                  <Button variant="ghost" size="icon" onClick={handleBackspace} aria-label="Backspace">
+                    <Delete className="size-5" />
+                  </Button>
+                )}
+                <Button
+                  size="lg"
+                  className="h-14 w-14 rounded-ds-full bg-ds-success hover:bg-ds-success-hover"
+                  onClick={handleDial}
+                  disabled={isCalling || callLoading || !number.trim()}
+                  aria-label="Call"
+                >
+                  {isCalling || callLoading ? <Loader2 className="size-6 animate-spin" /> : <Phone className="size-6" />}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-ds-2 text-base">
+              <Clock className="size-4" /> Recent calls
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentLoading ? (
+              <div className="flex flex-col gap-ds-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : recentCalls.length === 0 ? (
+              <div className="py-ds-8 text-center text-ds-foreground-muted">
+                <Phone className="mx-auto mb-ds-2 size-8 opacity-50" />
+                <p className="text-sm">No recent calls</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-ds-1">
+                {recentCalls.map((call) => {
+                  const isInbound = call.direction === 'inbound';
+                  const displayNumber = isInbound ? call.fromNumber : call.toNumber;
+                  return (
+                    <div
+                      key={call.id}
+                      className="group flex cursor-pointer items-center gap-ds-3 rounded-ds-lg p-ds-3 hover:bg-ds-surface-sunken"
+                      onClick={() => setNumber(displayNumber)}
+                    >
+                      <div className={cn(
+                        'flex size-9 shrink-0 items-center justify-center rounded-ds-full',
+                        call.status === 'no-answer' ? 'bg-ds-danger-subtle' : isInbound ? 'bg-ds-info-subtle' : 'bg-ds-success-subtle',
+                      )}>
+                        <Phone className={cn(
+                          'size-4',
+                          call.status === 'no-answer' ? 'text-ds-danger-on-subtle' : isInbound ? 'text-ds-info-on-subtle' : 'text-ds-success-on-subtle',
+                        )} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-sm font-medium">{displayNumber}</p>
+                        <p className="text-xs text-ds-foreground-muted">
+                          {formatLocaleDate(call.createdAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {call.durationSeconds > 0 && ` · ${formatDuration(call.durationSeconds)}`}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="opacity-0 transition-opacity group-hover:opacity-100"
+                        aria-label="View call"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/communication/calls/${call.id}`);
+                        }}
+                      >
+                        <User className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </div>
+      {activeCall && (
+        <CallControlsPanel
+          key={activeCall.callId}
+          callId={activeCall.callId}
+          callerName={activeCall.name}
+          phoneNumber={activeCall.number}
+          direction="outbound"
+          viaSoftphone={activeCall.viaSoftphone}
+          leadId={leadId}
+          leadTitle={leadTitle}
+          onEndCall={() => setActiveCall(null)}
+        />
+      )}
+    </PageContainer>
   );
 }

@@ -1,0 +1,75 @@
+{
+  "id": "B02",
+  "title": "Backend: repair the migration chain and restore the Flutter CRM API contract",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W1",
+  "dependsOn": [],
+  "parallelGroup": "W1",
+  "bugIds": [
+    "BUG-002",
+    "BUG-003",
+    "BUG-030",
+    "BUG-031",
+    "BUG-063",
+    "BUG-082"
+  ],
+  "fixReqs": [],
+  "estFiles": 14,
+  "goal": "A fresh tenant DB migrates 0000->0035 cleanly, `cd backend && npx vitest run` is back to 0 failed files and >= 901 passed, festival campaigns work with RBAC, and the verify-phase route changes no longer break packages/crm_app + packages/shared.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified facts: (1) backend/drizzle/tenant/0033_flyers_simplify.sql rebuilds flyer_templates with `INSERT ... SELECT ..., preview_url, ...` but flyer_templates (0010_marketing_tables.sql lines 5-23) never had preview_url -> \"no such column: preview_url\" on every fresh DB; vitest pool (vitest.config.ts merges drizzle/master + drizzle/tenant via readD1Migrations) dies in beforeAll: 16 of 30 files fail, 268 passed / 676 skipped (baseline 901 passed). No environment has ever applied 0033 successfully (fresh DBs fail at it; the local dev DB stopped at 0031 and was hand-patched), so editing 0033 in place is safe; dev machines reset their local D1 once. (2) 0030_contacts_opt_out_columns.sql (adds contacts.opted_out_at/opt_out_channel/opt_out_reason, declared in tenant-schema.ts:57-59 and used by routes/marketing/opt-out.ts) was moved to desktop/audit/remake/quarantine/ by the pipeline; the local dev DB records it as applied under that exact filename, so restore it with the SAME name. (3) festival-campaigns.ts (mounted in index.ts) queries festival_campaigns, declared in tenant-schema.ts:1366-1386 but never migrated -> 500; its routes lack requirePermission. (4) Flutter contract breaks from verify-phase commits: bookmarks (cdd7d35: POST body entity_type->entityType, GET /check -> POST /check, list camelCase + paginated) vs packages/crm_app/lib/features/bookmarks/data/bookmark_repository.dart:8-45 (sends snake body, GET /bookmarks/check?entity_type&entity_id, reads data['bookmarked'], data['bookmark_id'], list = data array); documents (b6b0c25: DTO drops fileUrl/file_url required by packages/shared/lib/models/document_model.dart); social-content (76ee8d2: generatedText renamed to content; packages/shared/lib/models/social_content_model.dart:14 reads generatedText); flyers (f5315fe: category enum changed destination/offer -> seasonal/promotional, createGeneratedFlyer now requires templateId+title while Flutter sends name; check packages/shared/lib/models/generated_flyer_model.dart + flyer_template_model.dart and the crm_app flyer repository). (5) BUG-082 schema drift: tenant-schema generatedFlyers.name notNull but 0033 made it nullable; sizePreset declared without a matching column on one table; flyer_shares migration columns are shared_by/shared_at while the schema maps createdBy/createdAt.",
+  "steps": [
+    "`git mv desktop/audit/remake/quarantine/0030_contacts_opt_out_columns.sql backend/drizzle/tenant/0030_contacts_opt_out_columns.sql` (same filename).",
+    "Edit 0033_flyers_simplify.sql in place: in the flyer_templates INSERT...SELECT replace the source column `preview_url` with `NULL`. Cross-check every other column in BOTH SELECT lists against 0010 (flyer_templates lines 5-23, generated_flyers ~150-170) and any later migration; replace any other non-existent source column the same way. Add a header comment explaining the fix.",
+    "Create backend/drizzle/tenant/0035_festival_campaigns.sql: `CREATE TABLE IF NOT EXISTS festival_campaigns (...)` matching tenant-schema.ts:1366-1386 exactly (names, types: TEXT ids/dates, INTEGER booleans, REAL money, defaults) + the three indexes.",
+    "festival-campaigns.ts: add requirePermission on every route using the same resource/action keys the other marketing routes use (inspect routes/marketing/*.ts and the rbac middleware); new rows use generateId() from utils/uuid (UUIDv7).",
+    "tenant-schema.ts flyer tables (~1130-1340): make generatedFlyers.name nullable; make sizePreset declarations match real columns; map flyer_shares properties to the real columns (shared_by/shared_at) without breaking callers (grep routes/marketing for usages); `npx tsc --noEmit` in backend stays clean.",
+    "bookmarks.ts: accept body keys entity_type/entity_id OR entityType/entityId; restore `GET /check?entity_type=&entity_id=` (and accept camel query keys) next to the new POST /check, both returning {bookmarked, bookmark_id, bookmarkId}; list items carry BOTH casings (entity_type+entityType, entity_id+entityId, created_at+createdAt, ...) and `data` stays an array (pagination additive). Read the Dart model JsonKeys to be exact.",
+    "documents.ts DTO: add fileUrl (and file_url if DocumentModel's JsonKey is snake) - satisfy every required field of DocumentModel.fromJson. social-content.ts: return both generatedText and content. Flyers (routes/marketing/flyers.ts + validators/marketing.ts): createGeneratedFlyer accepts legacy `name` as alias of title and makes templateId optional when the Flutter repo does not send it; category accepts legacy destination/offer in addition to the new values.",
+    "Tests: add backend/test/contract-flutter.test.ts covering bookmarks (snake body create, GET /check, list has both casings), documents list has fileUrl, social content has generatedText, flyer create with legacy name/category; festival campaigns CRUD + 403 for a role without marketing permission (see how other tests create a limited user); POST /contacts succeeds on the fresh test DB (opt-out columns exist).",
+    "Fresh-DB proof: `cd backend && npx wrangler d1 migrations apply travelcrm-master --local --persist-to <new temp dir>` applies every tenant migration through 0035 (paste the tail into your report). Then `npx vitest run` -> 0 failed files and >= 901 passed tests.",
+    "Do NOT reset the main checkout's local D1. In your report, state the reset command dev machines need once: `cd desktop && node scripts/fix-stack.mjs up --slot 0 --reset-db` (or manually delete backend/.wrangler/state/v3/d1, apply migrations, node scripts/seed-local.mjs)."
+  ],
+  "filesAllowlist": [
+    "backend/drizzle/tenant/0030_contacts_opt_out_columns.sql",
+    "backend/drizzle/tenant/0033_flyers_simplify.sql",
+    "backend/drizzle/tenant/0035_festival_campaigns.sql",
+    "desktop/audit/remake/quarantine/0030_contacts_opt_out_columns.sql (move out)",
+    "backend/src/db/tenant-schema.ts",
+    "backend/src/routes/festival-campaigns.ts",
+    "backend/src/routes/bookmarks.ts",
+    "backend/src/routes/documents.ts",
+    "backend/src/routes/social-content.ts",
+    "backend/src/routes/marketing/**",
+    "backend/src/validators/marketing.ts",
+    "backend/test/**"
+  ],
+  "mustNotTouch": [
+    "packages/** (read-only reference)",
+    "desktop/src/**",
+    "backend/drizzle/tenant/00{00..29,31,32,34}_*.sql",
+    "backend/src/index.ts",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Fresh persist dir: all tenant migrations through 0035 apply with no error.",
+    "backend `npx vitest run`: Test Files 0 failed; Tests passed >= 901.",
+    "GET /api/v1/marketing/festivals returns 200 with a paginated list; a salesperson-level role gets 403 on create.",
+    "contract-flutter.test.ts passes and covers bookmarks, documents, social content and flyers legacy payloads.",
+    "desktop/audit/remake/quarantine/ no longer contains 0030."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "notes": "Backend lane. Accept (do not revert) the other reviewed verify-phase backend changes listed as ACCEPT in BUGS.md \"Backend freeze review\". Also run `npm run typecheck` in backend."
+}

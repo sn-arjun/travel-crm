@@ -1,0 +1,60 @@
+{
+  "slice": "fleet-rate-cards",
+  "title": "Fleet — Vehicle Rate Cards",
+  "status": "existing",
+  "showcaseOrder": 19,
+  "endpoints": [
+    "DELETE /api/v1/fleet/vehicle-rate-cards/:id",
+    "GET /api/v1/fleet/vehicle-rate-cards",
+    "GET /api/v1/fleet/vehicle-rate-cards/:id",
+    "GET /api/v1/fleet/vehicle-rate-cards/lookup",
+    "POST /api/v1/fleet/vehicle-rate-cards",
+    "POST /api/v1/fleet/vehicle-rate-cards/estimate",
+    "PUT /api/v1/fleet/vehicle-rate-cards/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/rate-cards/page.tsx",
+    "desktop/src/app/(app)/fleet/rate-cards/new/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/fleet/rate-cards/[id]/edit/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/fleet-rate-cards.spec.ts",
+  "seedHelpers": [
+    "seedVehicle"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/rate-cards/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/e2e/fleet-rate-cards.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "No relation fields (vehicleType/tripType are enums via Select, not RelationCombobox) and no phone/address/messaging fields, so those contract items are N/A rather than defects. detailDrawer omitted: rows navigate to the edit page instead, since no read-only detail page is in scope. Added edit page (new). list()/create()/update() still hit /fleet/rate-cards per existing colocated tests in fleet.test.ts, even though backend/src/routes/fleet.ts mounts the real handlers at /fleet/vehicle-rate-cards (P1 #75 area) -- left unchanged since config.ts and the base CRUD shape are out of this slice's fileAllowlist. Wired the two orphaned endpoints (lookup, estimate) as new fleetApi.rateCards.lookup/estimate functions for future use; no page in this slice calls them yet.",
+  "showcaseScript": [
+    "Open Fleet → Rate Cards",
+    "Create a per-km rate card for a vehicle type",
+    "Estimate the cost of a 300 km trip from the rate card"
+  ]
+}

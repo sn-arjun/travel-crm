@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useT } from '@/lib/i18n';
 
 /**
  * Section-to-"new" page mapping for Ctrl+N navigation.
@@ -33,9 +34,13 @@ const NEW_PAGE_MAP: Record<string, string> = {
  * Shortcuts:
  * - Ctrl/Cmd+K: Already handled by CommandPalette (focus search / open palette)
  * - Ctrl/Cmd+N: Navigate to "new" page for the current section
- * - Escape: Close any open dialog/sheet (by dispatching Escape key to the document)
+ *
+ * Escape is deliberately not handled here: Radix dialogs, sheets and popovers
+ * close themselves, and re-dispatching the key from a document listener
+ * re-enters this same listener forever.
  */
 export function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -43,7 +48,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
     {
       key: 'n',
       ctrl: true,
-      description: 'Create new item for current section',
+      description: t('shell.shortcuts.createNew'),
       action: () => {
         // Find the best matching "new" route for the current pathname.
         // Try longest prefix first for specificity (e.g., /fleet/vehicles before /fleet).
@@ -59,24 +64,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
         }
       },
     },
-    {
-      key: 'Escape',
-      description: 'Close open dialog or sheet',
-      action: () => {
-        // Dispatch an Escape keydown event so Radix UI dialogs/sheets respond.
-        // We only do this if no input/textarea is focused (to avoid interfering with form editing).
-        const active = document.activeElement;
-        const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
-        if (!isInput) {
-          document.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            bubbles: true,
-          }));
-        }
-      },
-    },
-  ], [pathname, router]);
+  ], [pathname, router, t]);
 
   useKeyboardShortcuts(shortcuts);
 

@@ -1,0 +1,16 @@
+---
+import Base from '../layouts/Base.astro';
+import HomeBody from '../components/HomeBody.astro';
+import { SOFTWARE_LD, FAQ_LD, MARKET_ALTERNATES } from '../data/seo';
+const site = Astro.site!;
+---
+<Base
+  title="TravelCRM Pro · CRM for travel agencies and tour operators"
+  description="One inbox for WhatsApp, email and calls, quotes from your own rate cards, tax invoices, vouchers, group departures and a driver app. One price per agency per year, in your currency."
+  alternates={MARKET_ALTERNATES}
+  jsonLd={[SOFTWARE_LD(site), FAQ_LD()]}
+  market="IN"
+  detect
+>
+  <HomeBody market="IN" />
+</Base>

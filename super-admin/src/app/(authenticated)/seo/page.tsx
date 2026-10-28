@@ -1,5 +1,7 @@
+// HIDDEN (R112, owner question Q8): this page has no backend API behind it. It is not in the sidebar and next.config.ts redirects its route to /dashboard. Kept for the day the backend gets the feature.
 "use client";
 
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 import { useState } from "react";
 import {
   Search,
@@ -92,7 +94,7 @@ const mockAuditResults: AuditResult[] = [
       { name: "Open Graph Description", status: "pass", detail: "Set correctly" },
       { name: "Open Graph Image", status: "warn", detail: "og-image.png not yet uploaded", fix: "Create and upload 1200x630 branded OG image" },
       { name: "Twitter Card", status: "pass", detail: "summary_large_image configured" },
-      { name: "Canonical URL", status: "pass", detail: "https://travelcrm.pro (correct)" },
+      { name: "Canonical URL", status: "pass", detail: `https://${PLATFORM_DOMAIN} (correct)` },
     ],
   },
 ];

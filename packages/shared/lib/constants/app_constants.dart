@@ -32,6 +32,5 @@ class AppConstants {
     'INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR', 'THB', 'SGD', 'MYR', 'AUD',
   ];
 
-  /// Default currency
-  static const String defaultCurrency = 'INR';
+  // There is no default currency: every agency's currency comes from the server (the agency lookup and settings).
 }

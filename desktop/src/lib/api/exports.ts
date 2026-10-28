@@ -44,7 +44,7 @@ export const exportsApi = {
     client.get<Blob>(API_ENDPOINTS.exports.leads, { params: data as unknown as Record<string, string | number | boolean | undefined>, responseType: 'blob' }),
 
   invoicesBulkPdf: (data: ExportInvoicesPdfRequest) =>
-    client.post<Blob>(API_ENDPOINTS.exports.invoicesBulkPdf, data, { responseType: 'blob' }),
+    client.post<ApiResponse<ExportJob>>(API_ENDPOINTS.exports.invoicesBulkPdf, data),
 
   full: (data?: ExportFullRequest) =>
     client.post<ApiResponse<ExportJob>>(API_ENDPOINTS.exports.full, data),

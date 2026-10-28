@@ -85,3 +85,39 @@ resource "cloudflare_queue" "campaign_dlq" {
   account_id = var.cloudflare_account_id
   name       = "${var.project_name}-campaign-dlq"
 }
+
+# Queues added by later batches (wrangler.base.toml producers/consumers)
+resource "cloudflare_queue" "ai_extraction" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-ai-extraction-queue"
+}
+
+resource "cloudflare_queue" "ai_extraction_dlq" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-ai-extraction-dlq"
+}
+
+# Per-agency job fan-out. Note: no "-queue" suffix, exactly as in wrangler.base.toml.
+resource "cloudflare_queue" "tenant_jobs" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-tenant-jobs"
+}
+
+resource "cloudflare_queue" "tenant_jobs_dlq" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-tenant-jobs-dlq"
+}
+
+# ─── R2: backups and desktop update feed ────────────────────
+
+resource "cloudflare_r2_bucket" "backups" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-backups"
+  location   = "APAC"
+}
+
+resource "cloudflare_r2_bucket" "desktop_updates" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-desktop-updates"
+  location   = "APAC"
+}

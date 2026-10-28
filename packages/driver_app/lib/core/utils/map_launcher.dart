@@ -27,6 +27,20 @@ class MapLauncher {
     }
   }
 
+  /// Opens directions to a free-text [address] (used when the trip has no
+  /// coordinates). Returns false when nothing could handle the link.
+  static Future<bool> openAddress(String address) async {
+    if (address.trim().isEmpty) return false;
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(address)}',
+    );
+    try {
+      return await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> _launchGoogleMaps(
       double lat, double lng, String? address) async {
     final url = Uri.parse(

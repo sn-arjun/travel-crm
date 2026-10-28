@@ -1,10 +1,21 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import type { Context } from 'hono';
+import { emitEvent } from '../services/automation/events';
+import { zValidator } from '../utils/validator';
 import { SignJWT, jwtVerify } from 'jose';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
+import { isTestMode as isTestModeEnv } from '../utils/test-mode';
 import { driverAuth } from '../middleware/driver-auth';
+import { AllowanceExhausted, assertAllowance, meterUsage, refundUsage } from '../services/metering/meter';
+import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '../services/metering/otp-limits';
+import { resolveTenantDb } from '../services/tenant-db';
+import { rateLimit } from '../middleware/rate-limiter';
+import { limitMultiplier } from '../middleware/rate-limit';
+import { phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
+import { loadLocaleContext } from '../utils/money';
+import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
 import {
   loginSchema,
   verifyOtpSchema,
@@ -16,6 +27,14 @@ import {
   updateProfileSchema,
   registerPushTokenSchema,
 } from '../validators/driver';
+import { stopWhereSchema, tickPassengerSchema } from '../validators/fleet';
+import { requireFeatures } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
+import { DepartureError, departureErrorResponse } from '../services/departures/common';
+import { getGroupToursSettings } from '../services/departures/settings';
+import {
+  headcountOf, listPassengersFlat, listStops, setStopStatus, tickPassenger, type CoachCtx, type TripPassenger,
+} from '../services/fleet/coach-trips';
 
 const driver = new Hono<AppContext>();
 
@@ -53,158 +72,213 @@ async function hashToken(token: string): Promise<string> {
 }
 
 // ============================================================================
-// HELPER: Tenant DB resolution for public endpoints (login, verify, refresh)
-// ============================================================================
-
-async function resolveTenantDb(c: any, tenantId: string): Promise<D1Database | null> {
-  const cacheKey = `tenant:${tenantId}`;
-  const cached = await c.env.CACHE.get(cacheKey, 'json') as { d1DatabaseId: string | null; status: string } | null;
-
-  let tenantInfo: { d1DatabaseId: string | null; status: string };
-
-  if (cached) {
-    tenantInfo = cached;
-  } else {
-    // Inline master DB lookup (can't use drizzle here without importing schema)
-    const tenant = await c.env.MASTER_DB.prepare(
-      'SELECT d1_database_id, status FROM tenants WHERE id = ? LIMIT 1'
-    ).bind(tenantId).first() as { d1_database_id: string | null; status: string } | null;
-
-    if (!tenant) return null;
-
-    tenantInfo = { d1DatabaseId: tenant.d1_database_id, status: tenant.status };
-    await c.env.CACHE.put(cacheKey, JSON.stringify(tenantInfo), { expirationTtl: 300 });
-  }
-
-  if (tenantInfo.status === 'suspended' || tenantInfo.status === 'expired') return null;
-
-  if (tenantInfo.d1DatabaseId) {
-    const bindingKey = `TENANT_DB_${tenantInfo.d1DatabaseId}` as `TENANT_DB_${string}`;
-    const binding = c.env[bindingKey];
-    return binding ? binding : c.env.MASTER_DB;
-  }
-  return c.env.MASTER_DB;
-}
-
-// ============================================================================
 // AUTH: OTP LOGIN (PUBLIC — no driverAuth middleware)
 // ============================================================================
 
+// Fixed OTP accepted ONLY when env TEST_MODE === 'true' (local / demo / e2e). Never echoed in responses.
+const TEST_OTP = '123456';
+
+function isTestMode(c: any): boolean {
+  return isTestModeEnv(c.env);
+}
+
+function twilioConfigured(c: any): boolean {
+  return Boolean(c.env.TWILIO_ACCOUNT_SID && c.env.TWILIO_AUTH_TOKEN && c.env.TWILIO_VERIFY_SERVICE_SID);
+}
+
 // Send OTP
 driver.post('/login', zValidator('json', loginSchema), async (c) => {
-  const { phone, tenantId } = c.req.valid('json');
+  const body = c.req.valid('json');
+  const phone = body.phone;
+  const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
+  if (!tenantId) return error(c, 'tenantId is required', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
+
+  // Phones are stored as E.164 (from the app / fleet routes) or digits-only (older rows)
+  const phoneCountry = await tenantPhoneCountry(db);
+  const variants = phoneLookupVariants(phone, phoneCountry);
+  if (variants.length === 0) return error(c, 'Phone number is required', 400);
+  const e164 = variants[0];
+  const inList = inPlaceholders(variants);
 
   // Find driver by phone
   const driverRecord = await db.prepare(
-    'SELECT id, name, phone, status FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(phone).first() as { id: string; name: string; phone: string; status: string } | null;
+    `SELECT id, name, phone, status FROM drivers WHERE phone IN (${inList}) AND is_deleted = 0`
+  ).bind(...variants).first() as { id: string; name: string; phone: string; status: string } | null;
 
-  if (!driverRecord) return notFound(c, 'Driver');
-  if (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip') {
-    return forbidden(c, 'Account is inactive. Contact your company.');
+  // R110: only mobile numbers, abuse limits per number and per IP, and the agency's monthly login-code allowance.
+  // All three come before the driver lookup and answer the same for known and unknown numbers.
+  const mobile = checkMobileNumber(phone, phoneCountry);
+  if (!mobile.ok) return error(c, mobile.message, 400);
+  const requestIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || null;
+  const abuse = await checkAndRecordOtpRequest(c.env, { tenantId, e164, ip: requestIp, purpose: 'driver_login' });
+  if (abuse) {
+    c.header('Retry-After', String(abuse.retryAfterSecs));
+    return error(c, abuse.message, 429);
+  }
+  const capRefusal = () =>
+    c.json(
+      {
+        success: false,
+        code: 'ALLOWANCE_EXHAUSTED',
+        message: OTP_CAP_MESSAGE,
+        channel: 'otp',
+        error: { code: 'ALLOWANCE_EXHAUSTED', message: OTP_CAP_MESSAGE },
+      },
+      402,
+    );
+  try {
+    await assertAllowance(c.env, tenantId, 'otp');
+  } catch (err) {
+    if (err instanceof AllowanceExhausted) return capRefusal();
+    throw err;
   }
 
-  // Rate limit: max 3 OTP requests per phone per 10 minutes
+  // Never reveal whether a phone belongs to a driver: unknown and inactive accounts get the normal answer, no code.
+  if (!driverRecord || (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip')) {
+    return success(c, { message: 'OTP sent', ...(isTestMode(c) ? { testMode: true } : {}) });
+  }
+
+  // Rate limit: max 3 OTP requests per phone per 10 minutes (20 under TEST_MODE).
+  // created_at is stored as an ISO string, so compare against an ISO cutoff.
+  const testMode = isTestMode(c);
+  const cutoff = new Date(Date.now() - 10 * 60_000).toISOString();
   const recentOtps = await db.prepare(
     `SELECT COUNT(*) as cnt FROM driver_otp_log
-     WHERE phone = ? AND created_at > datetime('now', '-10 minutes')`
-  ).bind(phone).first() as { cnt: number } | null;
+     WHERE phone IN (${inList}) AND created_at > ?`
+  ).bind(...variants, cutoff).first() as { cnt: number } | null;
 
-  if (recentOtps && recentOtps.cnt >= 3) {
+  if (recentOtps && recentOtps.cnt >= (testMode ? 20 : 3)) {
     return error(c, 'Too many OTP requests. Please wait 10 minutes.', 429);
   }
 
-  // Send OTP via Twilio Verify
-  try {
-    const resp = await fetch(
-      `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/Verifications`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: phone, Channel: 'sms' }),
-      }
-    );
+  if (!testMode && !twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
 
-    if (!resp.ok) {
-      const err = await resp.text();
-      console.error('Twilio Verify error:', err);
-      return error(c, 'Failed to send OTP', 500);
-    }
-  } catch (e) {
-    console.error('Twilio Verify error:', e);
-    return error(c, 'Failed to send OTP', 500);
+  // The code takes one unit of the agency's login-code allowance before the provider is called.
+  try {
+    await meterUsage(c.env, tenantId, 'otp');
+  } catch (err) {
+    if (err instanceof AllowanceExhausted) return capRefusal();
+    throw err;
   }
 
-  // Log OTP request
+  if (!testMode) {
+    // Send OTP via Twilio Verify
+    try {
+      const resp = await fetch(
+        `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/Verifications`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: e164, Channel: 'sms' }),
+        }
+      );
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        console.error('Twilio Verify error:', err);
+        await refundUsage(c.env, tenantId, 'otp');
+        return error(c, 'Failed to send OTP', 500);
+      }
+    } catch (e) {
+      console.error('Twilio Verify error:', e);
+      await refundUsage(c.env, tenantId, 'otp');
+      return error(c, 'Failed to send OTP', 500);
+    }
+  }
+
+  // Log OTP request (E.164)
   const clientIp = c.req.header('CF-Connecting-IP')
     || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
     || 'unknown';
 
   await db.prepare(
     'INSERT INTO driver_otp_log (id, phone, tenant_id, status, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(generateId(), phone, tenantId, 'sent', clientIp, new Date().toISOString()).run();
+  ).bind(generateId(), e164, tenantId, 'sent', clientIp, new Date().toISOString()).run();
 
-  return success(c, { message: 'OTP sent', driverId: driverRecord.id });
+  return success(c, {
+    message: 'OTP sent',
+    driverId: driverRecord.id,
+    ...(testMode ? { testMode: true } : {}),
+  });
 });
 
 // Verify OTP
 driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
-  const { phone, tenantId, otp } = c.req.valid('json');
+  const body = c.req.valid('json');
+  const { phone, otp } = body;
+  const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
+  if (!tenantId) return error(c, 'tenantId is required', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
-  // Verify OTP via Twilio
-  try {
-    const resp = await fetch(
-      `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/VerificationChecks`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: phone, Code: otp }),
-      }
-    );
+  const variants = phoneLookupVariants(phone, await tenantPhoneCountry(db));
+  if (variants.length === 0) return error(c, 'Phone number is required', 400);
+  const e164 = variants[0];
+  const inList = inPlaceholders(variants);
 
-    const result = await resp.json<{ status: string }>();
-    if (result.status !== 'approved') {
-      return error(c, 'Invalid or expired OTP', 401);
+  if (isTestMode(c)) {
+    // Local / demo: only the fixed test OTP is accepted; Twilio is never called.
+    if (otp !== TEST_OTP) return error(c, 'Invalid or expired OTP', 401);
+  } else {
+    if (!twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
+
+    // Verify OTP via Twilio
+    try {
+      const resp = await fetch(
+        `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/VerificationChecks`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: e164, Code: otp }),
+        }
+      );
+
+      const result = await resp.json<{ status: string }>();
+      if (result.status !== 'approved') {
+        return error(c, 'Invalid or expired OTP', 401);
+      }
+    } catch (e) {
+      console.error('Twilio Verify check error:', e);
+      return error(c, 'OTP verification failed', 500);
     }
-  } catch (e) {
-    console.error('Twilio Verify check error:', e);
-    return error(c, 'OTP verification failed', 500);
   }
 
   // Fetch driver
   const driverRecord = await db.prepare(
-    'SELECT id, name, phone, email, photo_url, rating, total_trips, status FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(phone).first();
+    `SELECT id, name, phone, email, photo_url, rating, total_trips, status FROM drivers WHERE phone IN (${inList}) AND is_deleted = 0`
+  ).bind(...variants).first();
 
   if (!driverRecord) return notFound(c, 'Driver');
   if (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip') {
     return forbidden(c, 'Account is inactive');
   }
 
-  // Update OTP log
+  // Update OTP log (UPDATE ... ORDER BY/LIMIT is unsupported in D1, so select the row id first)
   await db.prepare(
-    `UPDATE driver_otp_log SET status = 'verified' WHERE phone = ? AND status = 'sent'
-     ORDER BY created_at DESC LIMIT 1`
-  ).bind(phone).run();
+    `UPDATE driver_otp_log SET status = 'verified'
+     WHERE id = (SELECT id FROM driver_otp_log WHERE phone IN (${inList}) AND status = 'sent'
+                 ORDER BY created_at DESC LIMIT 1)`
+  ).bind(...variants).run();
 
-  // Generate tokens
+  // Generate tokens (token phone is the E.164 login phone)
+  const phoneForToken = e164;
   const accessToken = await signDriverAccessToken(
-    { driverId: driverRecord.id as string, tenantId, phone },
+    { driverId: driverRecord.id as string, tenantId, phone: phoneForToken },
     c.env.JWT_SECRET
   );
 
+  // Secret token, not a DB id: the crypto.randomUUID() half supplies unpredictable randomness
+  // (UUIDv7 is time-ordered), so it is intentionally kept.
   const refreshToken = generateId() + '-' + crypto.randomUUID();
   const refreshHash = await hashToken(refreshToken);
 
@@ -214,9 +288,12 @@ driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
      VALUES (?, ?, ?, datetime('now', '+30 days'), ?)`
   ).bind(generateId(), driverRecord.id, refreshHash, new Date().toISOString()).run();
 
+  // The agency's money and number conventions, so the app shows fares in the agency's currency (R204)
+  const loc = await loadLocaleContext(db);
   return success(c, {
     accessToken,
     refreshToken,
+    tenant: { currency: loc.currency, locale: loc.locale, country: loc.country, phoneDefaultCountry: loc.phoneDefaultCountry },
     driver: {
       id: driverRecord.id,
       name: driverRecord.name,
@@ -240,7 +317,7 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) return error(c, 'Tenant ID is required (X-Tenant-Id header)', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
   const tokenHash = await hashToken(refreshToken);
@@ -266,6 +343,7 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
     c.env.JWT_SECRET
   );
 
+  // Secret token, not a DB id: random half intentionally crypto.randomUUID() (see login).
   const newRefreshToken = generateId() + '-' + crypto.randomUUID();
   const newRefreshHash = await hashToken(newRefreshToken);
 
@@ -275,6 +353,67 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
   ).bind(generateId(), storedToken.did, newRefreshHash, new Date().toISOString()).run();
 
   return success(c, { accessToken: newAccessToken, refreshToken: newRefreshToken });
+});
+
+// ============================================================================
+// AGENCY CODE LOOKUP (PUBLIC) -- R115. The driver app asks for the agency code once, then sends the
+// resolved tenantId with every login call. The code is the agency's slug (tenants.subdomain).
+// Reveals only: a tenant id, the display name and an optional logo. Unknown, malformed, suspended,
+// expired and still-provisioning agencies all answer the same 404.
+// ============================================================================
+
+const AGENCY_CODE_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const AGENCY_NOT_FOUND = 'Agency code not recognised';
+
+driver.get('/agency/:code', async (c) => {
+  const ip = c.get('clientIp') || c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || 'unknown';
+  const rl = await rateLimit(c.env.CACHE, `rate:driver-agency:${ip}`, 10 * limitMultiplier(c.env), 60);
+  if (!rl.allowed) {
+    c.header('Retry-After', String(rl.retryAfterSecs ?? 60));
+    return error(c, 'Too many attempts. Try again in a minute.', 429);
+  }
+
+  let code = '';
+  try {
+    code = decodeURIComponent(c.req.param('code') ?? '').trim().toLowerCase();
+  } catch {
+    return error(c, AGENCY_NOT_FOUND, 404);
+  }
+  if (!AGENCY_CODE_PATTERN.test(code)) return error(c, AGENCY_NOT_FOUND, 404);
+
+  const tenant = await c.env.MASTER_DB.prepare(
+    `SELECT id, company_name, logo_url FROM tenants
+     WHERE subdomain = ? AND status IN ('active', 'trial') AND provisioning_status = 'active'`
+  ).bind(code).first() as { id: string; company_name: string; logo_url: string | null } | null;
+  if (!tenant) return error(c, AGENCY_NOT_FOUND, 404);
+
+  let logoUrl = tenant.logo_url;
+  if (!logoUrl) {
+    // The logo uploaded in Settings lives in the agency's own database. It is optional: any failure means no logo.
+    try {
+      const db = await resolveTenantDb(c.env, tenant.id);
+      const row = db ? await db.prepare(`SELECT value FROM settings WHERE key = 'company_logo'`).first() as { value: string } | null : null;
+      logoUrl = row?.value || null;
+    } catch {
+      logoUrl = null;
+    }
+  }
+
+  // Currency and country let the app default its country picker and show fares in the agency's currency (R204).
+  // Public like the name: a currency code and a country code reveal nothing sensitive.
+  let loc: Awaited<ReturnType<typeof loadLocaleContext>> | null = null;
+  try {
+    const db = await resolveTenantDb(c.env, tenant.id);
+    loc = db ? await loadLocaleContext(db) : null;
+  } catch {
+    loc = null;
+  }
+  return success(c, {
+    tenantId: tenant.id,
+    name: tenant.company_name,
+    logoUrl: logoUrl ?? null,
+    ...(loc ? { currency: loc.currency, locale: loc.locale, country: loc.country, phoneDefaultCountry: loc.phoneDefaultCountry } : {}),
+  });
 });
 
 // ============================================================================
@@ -309,42 +448,56 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
   const { tab, page, limit } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
+  // "Today" follows the tenant's calendar day (trips are stored as UTC ISO strings).
+  const timeZone = await getTenantTimeZone(db);
+  const { startIso, endIso } = localDayWindowUtc(timeZone);
+
   let dateFilter = '';
+  const dateParams: string[] = [];
   let orderBy = 'ta.pickup_datetime ASC';
 
   switch (tab) {
     case 'today':
-      dateFilter = `AND date(ta.pickup_datetime) = date('now')`;
+      dateFilter = `AND ta.pickup_datetime >= ? AND ta.pickup_datetime < ? AND ta.status NOT IN ('cancelled', 'rejected')`;
+      dateParams.push(startIso, endIso);
       break;
     case 'upcoming':
-      dateFilter = `AND date(ta.pickup_datetime) > date('now') AND ta.status IN ('assigned', 'accepted')`;
+      dateFilter = `AND ta.pickup_datetime >= ? AND ta.status IN ('assigned', 'accepted') AND ta.status NOT IN ('cancelled', 'rejected')`;
+      dateParams.push(endIso);
       break;
     case 'past':
-      dateFilter = `AND (ta.status IN ('completed', 'cancelled') OR date(ta.pickup_datetime) < date('now'))`;
+      dateFilter = `AND (ta.status IN ('completed', 'cancelled') OR ta.pickup_datetime < ?)`;
+      dateParams.push(startIso);
       orderBy = 'ta.pickup_datetime DESC';
       break;
   }
 
   const countResult = await db.prepare(`
     SELECT COUNT(*) as count FROM trip_assignments ta
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
-  `).bind(driverId).first() as { count: number } | null;
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0 ${dateFilter}
+  `).bind(driverId, driverId, ...dateParams).first() as { count: number } | null;
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
     SELECT ta.id, ta.pickup_location, ta.drop_location, ta.pickup_datetime, ta.drop_datetime,
            ta.status, ta.passenger_name, ta.passenger_phone, ta.special_instructions,
-           ta.accepted_at, ta.en_route_at, ta.started_at, ta.completed_at,
+           ta.pickup_lat, ta.pickup_lng, ta.drop_lat, ta.drop_lng,
+           ta.accepted_at, ta.en_route_at, ta.started_at, ta.completed_at, ta.created_at,
            v.registration_number as vehicle_registration, v.type as vehicle_type,
            v.make as vehicle_make, v.model as vehicle_model,
-           l.title as lead_title
+           l.title as lead_title,
+           ta.trip_kind, ta.departure_id, ta.tour_leader_id, ta.driver_id,
+           (SELECT COUNT(*) FROM trip_stops ts WHERE ts.trip_id = ta.id) as stop_count,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id) as passenger_count,
+           (SELECT ts.id || '|' || ts.name || '|' || COALESCE(ts.scheduled_at, '') FROM trip_stops ts
+             WHERE ts.trip_id = ta.id AND ts.status IN ('pending', 'arrived') ORDER BY ts.sort_order LIMIT 1) as next_stop
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN leads l ON l.id = ta.lead_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0 ${dateFilter}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `).bind(driverId, limit, offset).all();
+  `).bind(driverId, driverId, ...dateParams, limit, offset).all();
 
   const trips = (rows.results || []).map(formatTripForDriver);
   return paginated(c, trips, total, page, limit);
@@ -364,10 +517,11 @@ driver.get('/trips/:id', async (c) => {
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN leads l ON l.id = ta.lead_id
-    WHERE ta.id = ? AND ta.driver_id = ? AND ta.is_deleted = 0
-  `).bind(tripId, driverId).first();
+    WHERE ta.id = ? AND (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
+  `).bind(tripId, driverId, driverId).first();
 
   if (!trip) return notFound(c, 'Trip');
+  const coach = trip.trip_kind === 'coach' && (await resolveFeature(c.env, c.get('tenantId'), 'coach_trips')).enabled ? await coachDetail(c, trip, driverId) : null;
 
   // Get timeline
   const timeline = await db.prepare(
@@ -396,8 +550,106 @@ driver.get('/trips/:id', async (c) => {
       longitude: t.longitude,
       createdAt: t.created_at,
     })),
+    ...(coach ?? {}),
   });
 });
+
+// ============================================================================
+// COACH TRIPS (R145): stops, passenger check-in, head count for the crew of a coach trip
+// ============================================================================
+
+/** The trip when this crew member is its driver or its tour leader. */
+async function crewTrip(c: Context<AppContext>, tripId: string): Promise<Record<string, any> | null> {
+  const driverId = c.get('userId');
+  return c.get('tenantDb')
+    .prepare('SELECT * FROM trip_assignments WHERE id = ? AND is_deleted = 0 AND (driver_id = ? OR tour_leader_id = ?)')
+    .bind(tripId, driverId, driverId)
+    .first<Record<string, any>>();
+}
+
+/** Tour leaders (crew role tour_leader or both) see and tick passengers; a driver does when the agency setting says so. */
+async function seesPassengers(c: Context<AppContext>): Promise<boolean> {
+  const db = c.get('tenantDb');
+  const me = await db.prepare('SELECT crew_role FROM drivers WHERE id = ? AND is_deleted = 0').bind(c.get('userId')).first<{ crew_role: string | null }>();
+  if (me?.crew_role === 'tour_leader' || me?.crew_role === 'both') return true;
+  return (await getGroupToursSettings(db)).driverSeesPassengers === true;
+}
+
+/** What the app gets about a passenger: never document numbers, notes or contact links. */
+function passengerForCrew(p: TripPassenger) {
+  return {
+    id: p.id, tripStopId: p.tripStopId, name: p.name, seats: p.seats, phone: p.phone,
+    boarding: p.boarding, boardedAt: p.boardedAt, documentsChecked: p.documentsChecked, documentsCheckedAt: p.documentsCheckedAt,
+  };
+}
+
+function crewCtx(c: Context<AppContext>): CoachCtx {
+  let waiter: CoachCtx['waiter'];
+  try { waiter = c.executionCtx; } catch { waiter = undefined; }
+  return { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), driverId: c.get('userId'), waiter };
+}
+
+async function coachDetail(c: Context<AppContext>, trip: Record<string, any>, driverId: string) {
+  const db = c.get('tenantDb');
+  const canSee = await seesPassengers(c);
+  const [stops, headcount, passengers] = await Promise.all([
+    listStops(db, trip.id),
+    headcountOf(db, trip.id),
+    canSee ? listPassengersFlat(db, trip.id) : Promise.resolve(null),
+  ]);
+  return {
+    tripKind: 'coach',
+    departureId: trip.departure_id ?? null,
+    myRole: trip.tour_leader_id === driverId ? 'tour_leader' : 'driver',
+    canSeePassengers: canSee,
+    stops,
+    headcount,
+    ...(passengers && { passengers: passengers.map(passengerForCrew) }),
+  };
+}
+
+async function crewGuard(c: Context<AppContext>, body: (trip: Record<string, any>) => Promise<Response>, opts: { passengers?: boolean } = {}): Promise<Response> {
+  try {
+    const trip = await crewTrip(c, c.req.param('id') as string);
+    if (!trip) return notFound(c, 'Trip');
+    if (opts.passengers && !(await seesPassengers(c))) return forbidden(c, 'You cannot see the passengers of this trip');
+    return await body(trip);
+  } catch (e) {
+    if (e instanceof DepartureError) return departureErrorResponse(c, e);
+    throw e;
+  }
+}
+
+driver.use('/trips/:id/stops/*', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/passengers', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/passengers/*', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/headcount', requireFeatures('driver_app', 'coach_trips'));
+
+const optionalJson = async (c: Context<AppContext>): Promise<unknown> => {
+  try { return await c.req.json(); } catch { return {}; }
+};
+
+driver.post('/trips/:id/stops/:sid/:action{arrive|depart}', (c) =>
+  crewGuard(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    const action = c.req.param('action') as 'arrive' | 'depart';
+    return success(c, await setStopStatus(crewCtx(c), c.req.param('id') as string, c.req.param('sid') as string, action, where.data));
+  }),
+);
+
+driver.get('/trips/:id/passengers', (c) =>
+  crewGuard(c, async (trip) => success(c, (await listPassengersFlat(c.get('tenantDb'), trip.id)).map(passengerForCrew)), { passengers: true }),
+);
+
+driver.put('/trips/:id/passengers/:pid', zValidator('json', tickPassengerSchema), (c) =>
+  crewGuard(c, async () => {
+    const result = await tickPassenger(crewCtx(c), c.req.param('id') as string, c.req.param('pid') as string, c.req.valid('json'));
+    return success(c, { ...result, passenger: passengerForCrew(result.passenger) });
+  }, { passengers: true }),
+);
+
+driver.get('/trips/:id/headcount', (c) => crewGuard(c, async (trip) => success(c, await headcountOf(c.get('tenantDb'), trip.id))));
 
 // Accept trip
 driver.post('/trips/:id/accept', async (c) => {
@@ -527,11 +779,19 @@ driver.post('/trips/:id/status', zValidator('json', updateTripStatusSchema), asy
       const completedTrip = await db.prepare('SELECT * FROM trip_assignments WHERE id = ?').bind(tripId).first();
       if (completedTrip && !completedTrip.invoice_id && completedTrip.contact_id) {
         const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-        await generateTripInvoice(db, completedTrip, (completedTrip.assigned_by as string) ?? driverId);
+        await generateTripInvoice(db, completedTrip, (completedTrip.assigned_by as string) ?? driverId, { env: c.env, tenantId: c.get('tenantId') });
       }
     } catch {
       // Invoice generation failure should not block status update
     }
+
+    const driverRow = await db.prepare('SELECT name FROM drivers WHERE id = ?').bind(driverId).first<{ name: string }>();
+    await emitEvent(c.env, c.get('tenantId'), db, {
+      type: 'trip.completed',
+      entityType: 'trip',
+      entityId: tripId,
+      payload: { passengerName: trip.passenger_name ?? null, passengerPhone: trip.passenger_phone ?? null, driverName: driverRow?.name ?? null },
+    });
   }
 
   return success(c, { message: `Status updated to ${newStatus}`, status: newStatus });
@@ -656,11 +916,12 @@ driver.get('/profile', async (c) => {
   const driverRecord = await db.prepare(`
     SELECT id, name, phone, email, photo_url, license_number, license_expiry,
            address, emergency_contact_name, emergency_contact_phone,
-           status, rating, total_trips, date_of_joining, created_at
+           status, rating, total_trips, date_of_joining, created_at, crew_role
     FROM drivers WHERE id = ? AND is_deleted = 0
   `).bind(driverId).first();
 
   if (!driverRecord) return notFound(c, 'Driver');
+  const canSeePassengers = driverRecord.crew_role === 'tour_leader' || driverRecord.crew_role === 'both' || (await getGroupToursSettings(db)).driverSeesPassengers === true;
 
   // Get documents
   const docs = await db.prepare(
@@ -693,6 +954,10 @@ driver.get('/profile', async (c) => {
     totalTrips: driverRecord.total_trips,
     dateOfJoining: driverRecord.date_of_joining,
     createdAt: driverRecord.created_at,
+    // R145: new fields only, so an old app keeps working
+    crewRole: driverRecord.crew_role ?? 'driver',
+    crew_role: driverRecord.crew_role ?? 'driver',
+    canSeePassengers,
     documents: (docs.results || []).map(d => ({
       id: d.id,
       type: d.type,
@@ -872,6 +1137,10 @@ function formatTripForDriver(row: any) {
     passengerName: row.passenger_name,
     passengerPhone: row.passenger_phone,
     specialInstructions: row.special_instructions,
+    pickupLat: row.pickup_lat ?? null,
+    pickupLng: row.pickup_lng ?? null,
+    dropLat: row.drop_lat ?? null,
+    dropLng: row.drop_lng ?? null,
     acceptedAt: row.accepted_at,
     enRouteAt: row.en_route_at,
     startedAt: row.started_at,
@@ -886,7 +1155,24 @@ function formatTripForDriver(row: any) {
     } : null,
     leadTitle: row.lead_title,
     createdAt: row.created_at,
+    // R145: new fields only (a transfer looks the same as before)
+    ...(row.trip_kind === 'coach' && {
+      tripKind: 'coach',
+      departureId: row.departure_id ?? null,
+      coach: {
+        stopCount: row.stop_count ?? 0,
+        passengerCount: row.passenger_count ?? 0,
+        nextStop: row.next_stop ? nextStopOf(row.next_stop) : null,
+      },
+    }),
   };
+}
+
+/** "id|name|scheduledAt" from the list query. A name may hold a pipe, so only the first and last separators count. */
+function nextStopOf(packed: string) {
+  const first = packed.indexOf('|');
+  const last = packed.lastIndexOf('|');
+  return { id: packed.slice(0, first), name: packed.slice(first + 1, last), scheduledAt: packed.slice(last + 1) || null };
 }
 
 export default driver;

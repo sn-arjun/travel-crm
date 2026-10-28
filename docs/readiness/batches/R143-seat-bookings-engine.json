@@ -1,0 +1,137 @@
+{
+  "id": "R143",
+  "tier": 4,
+  "step": 4,
+  "title": "Group departures, part 2: seat holds, confirmation (manual, automatic or on deposit), waitlist and offers, hold expiry, passengers, lead link, events and recipes",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Seats are held, confirmed, waitlisted, offered, expired and cancelled per the state machine, never oversold, and each seat booking keeps its lead in step. Confirmation can be one click or automatic.",
+  "why": "Gap 1's core: seat confirmation is manual today ('within 24 hours', checked against a spreadsheet). Design: TOUR-OPERATOR-DESIGN.md sections 5.1, 9.1, 9.2.",
+  "featuresToWorks": ["departures.seats", "departures.waitlist", "automation.departures.confirm_seats"],
+  "featureKeys": ["group_departures"],
+  "dependsOn": ["R139"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R142"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/departures.ts",
+      "backend/src/index.ts (one routeMounts line and one requireFeature line)",
+      "backend/src/routes/leads.ts (GET /:id/seat-bookings and POST /:id/hold-seats only)",
+      "backend/src/services/automation/recipes.ts",
+      "backend/src/services/automation/actions.ts",
+      "backend/src/services/automation/events.ts (event type list only, if one exists)",
+      "backend/src/cron/dispatch.ts",
+      "packages/shared-ts/src/types/departures.ts",
+      "desktop/src/hooks/use-feature-gate.ts (GatedFeature gains the six keys of design 2.1; nothing else)",
+      "desktop/src/hooks/use-feature-gate.test.ts"
+    ],
+    "create": [
+      "backend/src/services/departures/seats.ts",
+      "backend/src/services/departures/passengers.ts",
+      "backend/src/services/departures/waitlist.ts",
+      "backend/src/routes/seat-bookings.ts",
+      "backend/test/seat-bookings.test.ts",
+      "backend/test/seat-bookings-concurrency.test.ts",
+      "backend/test/departure-recipes.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "backend/src/routes/invoices.ts",
+      "backend/src/services/domain/invoices.ts",
+      "backend/src/services/payments/**",
+      "backend/src/services/mail/**",
+      "backend/src/routes/payment-webhooks.ts",
+      "desktop/src/app/**",
+      "desktop/src/lib/**",
+      "desktop/src/messages/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**"
+    ]
+  },
+  "items": [
+    {
+      "id": "R143-1",
+      "what": "Seats service (services/departures/seats.ts)",
+      "steps": [
+        "requestSeats(db, {departureId, leadId|contact+lead input, seats, passengers?, source, actor}): checks the departure is open (staff may add to closed), creates the lead through services/domain/leads.ts createLead when only contact data is given (source, currency and travel_date per design 7), then holds with ONE conditional INSERT ... SELECT ... WHERE capacity - (SELECT COALESCE(SUM(seats),0) FROM seat_bookings WHERE departure_id = ? AND status IN ('held','confirmed')) >= ? ; zero rows inserted -> waitlist (position = max + 1) when the waitlist is on, else 409 SEATS_UNAVAILABLE {seatsLeft}.",
+        "hold_expires_at = now + effective holdExpiryHours; confirmMode auto_when_available confirms in the same request.",
+        "confirm(id, actor|'auto'|'deposit'|'quote_accept'), cancel(id, reason), changeSeats(id, n) (conditional UPDATE, same invariant), move(id, toDepartureId) atomically (db.batch: conditional insert on the target, cancel the source with reason 'moved').",
+        "Lead link: on request set leads.departure_id and travel_date (if empty); on confirm move the lead to won through the existing lead status function when markLeadWonOnConfirm and the lead is earlier in the pipeline (emits lead.status_changed as today); on cancelling the last active booking create a 'mark lost?' suggestion.",
+        "on_deposit: a payment.recorded event for the booking's invoice whose paid amount reaches the deposit confirms the booking (subscribe in the confirm recipe; invoice creation itself is R148)."
+      ]
+    },
+    {
+      "id": "R143-2",
+      "what": "Passengers (services/departures/passengers.ts)",
+      "steps": [
+        "PUT /seat-bookings/:id/passengers replaces the list: validates against the effective passengerFields (required fields for collectOn staff), band_key from DOB or age on the departure date (use a small local resolver now; R149 replaces it with the shared age-band module), pickup_stop_id must belong to the departure, room_type from roomTypes; seats follow the active passenger count with the capacity invariant (409 when it would exceed).",
+        "Link or create travellers: a passenger with traveller_id keeps it; 'create travellers' option creates travellers rows under the booking contact (names, DOB, gender, meal, document fields) and links them."
+      ]
+    },
+    {
+      "id": "R143-3",
+      "what": "Waitlist and expiry",
+      "steps": [
+        "waitlist.ts: after any seat release (cancel, expire, seats reduced, capacity raised) take the first waitlisted bookings that fit the free seats in position order; offerMode suggest -> one assistant suggestion per party ('Offer N seats to X'); auto_hold -> status held with offered_at and hold_expires_at = now + offerHoldHours, event waitlist.offered.",
+        "cron/dispatch.ts job 'departures.expire-holds' (period tick): held bookings past hold_expires_at -> expired, event seat_booking.expired, then the waitlist step; 'departures.lifecycle' (period local-day): open -> closed at booking_cutoff_date, -> departed on start_date, -> completed the day after end_date (events departure.status_changed)."
+      ]
+    },
+    {
+      "id": "R143-4",
+      "what": "Routes",
+      "steps": [
+        "departures.ts: GET/POST /departures/:id/bookings (list with passengers count, status filter, cursor), GET /departures/:id/headcount placeholder is NOT here (R145).",
+        "seat-bookings.ts mounted at /seat-bookings (feature group_departures): GET /:id, POST /:id/confirm, /cancel, /offer, /move, PUT /:id/passengers, POST /bulk-confirm {ids}.",
+        "leads.ts: GET /leads/:id/seat-bookings and POST /leads/:id/hold-seats {departureId, seats} (calls the service). Mount seat-bookings in index.ts with one routeMounts line and one requireFeature('group_departures') line, nothing else in index.ts (R142 in parallel does not edit index.ts)."
+      ]
+    },
+    {
+      "id": "R143-5",
+      "what": "Events and recipes",
+      "steps": [
+        "Emit departure.full and departure.seats_low (left <= seatsLeftThreshold) on the transition only; seat_booking.held/confirmed/waitlisted/cancelled/expired; waitlist.offered.",
+        "recipes.ts (featureKey group_departures): departures.confirm_seats, departures.waitlist_offer, departures.hold_expiring, departures.seats_low, departures.collect_details (the last one drafts a message with {{details_link}}; the link exists from R150, until then the recipe is listed but proposes nothing when no link can be built) per design 9.2. Actions: confirm_seat_booking (low risk, auto-eligible), offer_seats (medium).",
+        "travellers.collect_details and payments.balance_before_travel use the departure start date when the lead has an active seat booking."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/seat-bookings.test.ts: hold within capacity; full -> waitlisted with position; waitlist off -> 409 with seatsLeft; confirm manual and auto_when_available; cancel frees seats and auto_hold offers to the next fitting party; expiry by the cron function with a fixed clock; move between departures; passengers set seats and validate required fields, pickup stop of another departure 400; lead travel_date and won status follow; illegal transitions 409; salesperson may hold but not cancel others' if the matrix says so; feature off 403.",
+    "backend/test/seat-bookings-concurrency.test.ts: 20 parallel requests of 1 seat on a 10-seat departure -> exactly 10 held and 10 waitlisted, never 11 held.",
+    "backend/test/departure-recipes.test.ts: confirm_seats suggest vs auto; waitlist_offer; seats_low fires once; on_deposit confirmation from a payment.recorded event."
+  ],
+  "acceptance": [
+    "No path can hold or confirm more seats than capacity (concurrency test).",
+    "A confirmed booking marks its lead won (setting on) and a cancelled last booking suggests lost."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx vitest run src/hooks/use-feature-gate.test.ts",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/leads.spec.ts e2e/assistant-rules.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/leads.spec.ts", "e2e/assistant-rules.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: group_departures on every route; recipes carry featureKey group_departures.",
+    "Backend: no migration (tables from R139's 0057); UUIDv7 ids; permissions module 'departures'; automations through the engine (emitEvent, recipes, cron/dispatch.ts).",
+    "All outbound messages the recipes propose go through the Communication Hub (draft_reply action).",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 5.1, 5.2, 9, services/automation/types.ts and two existing recipes (payments.balance_before_travel, travellers.collect_details), cron/dispatch.ts.",
+    "R142 runs in parallel and owns invoices, payments and mail; do not edit them. Invoice creation for bookings is R148.",
+    "Bulk seeding in tests triggers recipes; pause automations for the test tenant where a test does not exercise them."
+  ],
+  "goLiveVerify": []
+}

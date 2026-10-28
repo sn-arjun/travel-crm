@@ -1,0 +1,59 @@
+{
+  "id": "R128",
+  "tier": 1,
+  "title": "Email delivery bugs found by the ADR-002 review",
+  "goal": "Every email the product says it sends is actually sent, delivery events reach the screens, bounces never destroy data, and replies reach the agency.",
+  "why": "docs/decisions/ADR-002-email.md (2026-10-21) found five bugs that exist with SendGrid today, independent of the provider decision.",
+  "dependsOn": [
+    "R102",
+    "R208"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R211"
+  ],
+  "size": "M",
+  "files": {
+    "edit": [
+      "backend/src/services/email.ts",
+      "backend/src/services/mail/**",
+      "backend/src/queues/**",
+      "backend/src/routes/webhooks.ts",
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/vouchers.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/routes/communications.ts",
+      "backend/src/routes/campaigns.ts"
+    ],
+    "create": [
+      "backend/test/email-delivery.test.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/messages/**"
+    ]
+  },
+  "steps": [
+    "Save the provider message id on every outbound email row (email log / campaign recipient / message) so the event webhook can find it; opens, clicks, bounces and spam reports then update the rows and the campaign screens.",
+    "\"Send itinerary by email\": the email queue must recognise and send the job it is given (today it drops it).",
+    "Invoice and voucher \"send\": actually send the email (with the PDF or link, through the Communication Hub path and templates), not only change the status.",
+    "A hard bounce must not erase the contact's email address: mark it undeliverable (flag + reason + date) and suppress further sends; show it on the contact.",
+    "Inbox / Communication Hub emails: set reply-to to the sending user or the agency's reply address so customer replies reach the agency.",
+    "Keep the provider behind the existing send function (no provider switch in this batch; ADR-002 is awaiting the owner)."
+  ],
+  "migrations": [],
+  "tests": [
+    "each of the five bugs has a failing-then-passing test"
+  ],
+  "acceptance": [
+    "all five behaviours proven by tests; existing campaign/unsubscribe tests unchanged"
+  ],
+  "gate": [
+    "backend tsc + vitest (>= current)",
+    "desktop tsc + vitest + lint-gate + i18n-check if desktop touched",
+    "e2e: invoices, vouchers, itineraries, campaigns, communication-inbox on a local stack"
+  ],
+  "goLiveVerify": [
+    "real SendGrid event webhook delivering to the API"
+  ],
+  "notes": []
+}

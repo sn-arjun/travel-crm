@@ -1,0 +1,66 @@
+{
+  "id": "R129",
+  "tier": 1,
+  "size": "M",
+  "title": "Load the approved pricing (step A) and the market split it needs",
+  "goal": "The catalogue holds the owner-approved prices, allowances, features, unit costs and packs from docs/PRICING.md, and every agency is priced in its own market and currency.",
+  "why": "Owner approved docs/PRICING.md on 2026-10-21 (\"prices looks good\").",
+  "dependsOn": [
+    "R109",
+    "R205",
+    "R206",
+    "R305",
+    "R127"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "files": {
+    "edit": [
+      "backend/src/services/plans/catalogue.ts",
+      "backend/src/services/metering/meter.ts",
+      "backend/src/services/billing/addons.ts",
+      "backend/src/services/features/registry.ts",
+      "landing/**",
+      "super-admin/src/lib/constants.ts"
+    ],
+    "create": [
+      "backend/drizzle/master/0026_pricing_2026_10.sql",
+      "backend/test/pricing-catalogue.test.ts"
+    ],
+    "mustNotTouch": []
+  },
+  "steps": [
+    "Master migration 0026 loads PRICING.md section 7 STEP A exactly: 7.1 plans, 7.2 plan_prices (list and founder prices with their dates), 7.3 plan_allowances, 7.4 plan_features, 7.5 comm_unit_costs, 7.6 addon_products (step-B rows inserted with is_active 0), 7.7 other settings. UUIDv7 ids, idempotent (INSERT OR REPLACE / UPDATE by natural key), LF.",
+    "Founder price: billing quotes use the founder price for agencies that sign up between its start and end dates and keep it for 24 months (lock date stored on the subscription); list price otherwise.",
+    "PRICING.md section 8 change 1: marketForCountry GB -> UK; EU/EEA + CH -> EU; AU, NZ -> ANZ; tests per market and currency.",
+    "Section 8 change 3: packOffers in the 402 body lists only packs of the agency's market.",
+    "Section 8 change 5: packs valid for the month of purchase and the next month.",
+    "Section 8 change 7: MIN_COMM_MARGIN_PCT 25; a test proves every active communication pack is >= cost x 1.218 after fees.",
+    "Feature keys in 7.4 must exist in the R127 feature registry (add any missing with names); the landing pricing section and super-admin constants show the new prices (no stale numbers anywhere: grep for the old 12000/18000/24000 drafts).",
+    "Do NOT move login codes off SMS (owner decision 2026-10-14 stands)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0026_pricing_2026_10.sql"
+  ],
+  "tests": [
+    "catalogue rows equal PRICING.md section 7 for every market",
+    "quote per market and currency incl. founder window and lock",
+    "packOffers filtered by market",
+    "margin floor",
+    "pack validity into the next month"
+  ],
+  "acceptance": [
+    "an agency in IN, UK, EU, ANZ, US and GULF gets its own currency and the approved price; the 402 body offers only its market packs"
+  ],
+  "gate": [
+    "backend tsc + vitest",
+    "super-admin tsc + lint + build",
+    "landing build + link check",
+    "desktop tsc + vitest + lint-gate + i18n-check if touched",
+    "e2e handoff.spec on a --multi stack (expected prices updated only from PRICING.md)"
+  ],
+  "goLiveVerify": [
+    "one test payment in GBP to confirm the Stripe fee assumption (PRICING.md 9.2)"
+  ],
+  "notes": []
+}

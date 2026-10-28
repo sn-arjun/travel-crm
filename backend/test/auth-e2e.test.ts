@@ -253,8 +253,9 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         phone: '+919876543210',
         tenantId: '00000000-0000-0000-0000-000000000000',
       });
-      // Should not return 401 — either 404 (no user) or 500 (Twilio not configured)
-      expect(res.status).not.toBe(401);
+      // Public endpoint: no 401. The phone is not registered for this tenant, but the answer is the same as for a
+      // registered number (R110: never reveal whether a phone exists), so it is a 200.
+      expect(res.status).toBe(200);
     });
   });
 
@@ -566,6 +567,7 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
 
   describe('TICKET-027: User CRUD', () => {
     let createdUserId = '';
+    let invitedEmail = '';
 
     it('should list users (admin)', async () => {
       const res = await authRequest('GET', '/users', adminToken);
@@ -577,21 +579,18 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
 
     it('should create/invite a new user', async () => {
       const res = await authRequest('POST', '/users', adminToken, {
-        email: `newuser${Date.now()}@e2e.test`,
+        email: (invitedEmail = `newuser${Date.now()}@e2e.test`),
         name: 'New User',
         role: 'salesperson',
         phone: '+919876543210',
         department: 'Sales',
       });
       // May fail in test env due to master DB constraints
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('inviteToken');
-        expect(body.data).toHaveProperty('inviteUrl');
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('inviteToken');
+      expect(body.data).toHaveProperty('inviteUrl');
     });
 
     it('should reject duplicate email', async () => {
@@ -600,8 +599,8 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         name: 'Duplicate User',
         role: 'salesperson',
       });
-      // Should be 409 (conflict) or 500 (DB constraint error in test env)
-      expect([409, 500]).toContain(res.status);
+      // Duplicate email within the tenant is a conflict
+      expect(res.status).toBe(409);
     });
 
     it('should reject user creation with invalid role', async () => {
@@ -634,8 +633,12 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
       // First get list to find a user ID
       const listRes = await authRequest('GET', '/users', adminToken);
       const listBody: any = await listRes.json();
-      if (listBody.data.length > 0) {
-        createdUserId = listBody.data[listBody.data.length - 1].id;
+      // Pick the invited user by email. The list is ordered by created_at (1s resolution), so "the last row"
+      // can be the admin itself, which made 'should deactivate user' fail with 400 (self-deactivation).
+      const invited = listBody.data.find((u: any) => u.email === invitedEmail);
+      expect(invited).toBeDefined();
+      if (invited) {
+        createdUserId = invited.id;
         const res = await authRequest('GET', `/users/${createdUserId}`, adminToken);
         expect(res.status).toBe(200);
         const body: any = await res.json();
@@ -663,8 +666,8 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
     it('should deactivate user', async () => {
       if (!createdUserId) return;
       const res = await authRequest('PUT', `/users/${createdUserId}/deactivate`, adminToken);
-      // May fail with 400 if trying to deactivate self, or 500 in test env
-      expect([200, 400, 500]).toContain(res.status);
+      // A different user than the caller, so deactivation succeeds
+      expect(res.status).toBe(200);
     });
 
     it('should prevent self-deactivation', async () => {

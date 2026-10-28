@@ -6,6 +6,9 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { expandRecurrence } from '../services/recurrence-engine';
+import { generateId } from '../utils/uuid';
+import { attachDepartureSummaries } from '../services/departures/calendar';
+import { tenantToday, localDateString, addDaysLocal, getTenantTimeZone, isValidTimeZone } from '../utils/tz';
 
 const plannerRoutes = new Hono<AppContext>();
 
@@ -67,6 +70,7 @@ plannerRoutes.get('/', async (c) => {
             }
         }
 
+        await attachDepartureSummaries(db, allEvents);
         return success(c, allEvents);
     } catch (e: any) {
         console.error('Events list error:', e);
@@ -91,7 +95,9 @@ plannerRoutes.get('/:id', async (c) => {
 
         if (!event) return error(c, 'Event not found', 404);
 
-        return success(c, { ...event, is_recurring: !!event.recurrence_rule });
+        const detail: any = { ...event, is_recurring: !!event.recurrence_rule };
+        await attachDepartureSummaries(db, [detail]);
+        return success(c, detail);
     } catch (e: any) {
         return error(c, e.message || 'Failed to fetch event', 500);
     }
@@ -118,7 +124,7 @@ plannerRoutes.post('/', async (c) => {
             return error(c, 'end_at must be after start_at', 400);
         }
 
-        const id = crypto.randomUUID();
+        const id = generateId();
         await db.prepare(`
       INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
         location, color, recurrence_rule, related_lead_id, related_task_id,
@@ -139,7 +145,7 @@ plannerRoutes.post('/', async (c) => {
             body.related_task_id || null,
             body.assigned_to || userId,
             userId,
-            body.timezone || 'Asia/Kolkata'
+            isValidTimeZone(body.timezone) ? body.timezone : await getTenantTimeZone(db)
         ).run();
 
         const created = await db.prepare('SELECT * FROM events WHERE id = ?').bind(id).first();
@@ -166,7 +172,7 @@ plannerRoutes.put('/:id', async (c) => {
 
         if (scope === 'this' && existing.recurrence_rule) {
             // Create exception event for this specific date
-            const exceptionId = crypto.randomUUID();
+            const exceptionId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
           location, color, recurrence_parent_id, assigned_to, created_by, timezone)
@@ -194,7 +200,8 @@ plannerRoutes.put('/:id', async (c) => {
         if (scope === 'this_and_future' && existing.recurrence_rule) {
             // Terminate the parent recurrence at the day before the target date
             const targetDate = body.start_at || existing.start_at;
-            const dayBefore = new Date(new Date(targetDate).getTime() - 86400000).toISOString().split('T')[0];
+            const { timeZone: plannerTz } = await tenantToday(c);
+            const dayBefore = addDaysLocal(localDateString(plannerTz, new Date(targetDate)), -1);
             const parentRule = typeof existing.recurrence_rule === 'string'
                 ? JSON.parse(existing.recurrence_rule)
                 : existing.recurrence_rule;
@@ -204,7 +211,7 @@ plannerRoutes.put('/:id', async (c) => {
             ).bind(JSON.stringify(updatedRule), existing.id).run();
 
             // Create new recurring event from target date onward with new settings
-            const newId = crypto.randomUUID();
+            const newId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
           location, color, recurrence_rule, assigned_to, created_by, timezone)

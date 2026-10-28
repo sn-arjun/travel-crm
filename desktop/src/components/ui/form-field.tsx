@@ -18,15 +18,15 @@ function FormField({ label, description, error, required, className, children, h
       {label && (
         <Label htmlFor={htmlFor}>
           {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
+          {required && <span className="text-ds-danger ms-0.5">*</span>}
         </Label>
       )}
       {description && (
-        <p className="text-xs text-[var(--color-text-muted)]">{description}</p>
+        <p className="text-xs text-ds-foreground-muted">{description}</p>
       )}
       {children}
       {error && (
-        <p className="text-xs text-error animate-slide-in-from-top" role="alert">
+        <p className="text-xs text-ds-danger animate-slide-in-from-top" role="alert">
           {error}
         </p>
       )}

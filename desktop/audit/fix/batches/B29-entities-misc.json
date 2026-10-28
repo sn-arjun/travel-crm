@@ -1,0 +1,111 @@
+{
+  "id": "B29",
+  "title": "Travellers, visa, suppliers, rate cards, documents, bookmarks, notifications, help, import, onboarding",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17",
+    "B08"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 28,
+  "goal": "The remaining entity and utility pages are functional and contract-clean; travellers keep email/phone end to end (verify:travellers green).",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: travellers lost email/phone in the backend (fixed in B08; desktop client normalised in B11) - make sure the traveller form has Email + PhoneInput fields, detail shows them and travellers.spec.ts passes (this is the gate that failed the remake job verify:travellers). suppliers/compare has raw date inputs (BUG-058 part). /help and /import have nested scroll areas (BUG-048 part). /onboarding and /help had blank top-bar titles (fixed by B07 map) - verify. notifications page rows should navigate using src/lib/notifications/route.ts (B07). 15 lint errors in travellers/[id]. W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Travellers: form fields email (Input type=email) + phone (PhoneInput); detail shows them; frequent flyer numbers round trip.",
+    "Visa, suppliers (+compare dates -> DatePicker), rate cards, documents, bookmarks pages swept.",
+    "Notifications list: row click uses routeForReference; mark read.",
+    "Help, import, onboarding: single scroller, PageContainer.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /travellers,/travellers/new,/travellers/<travellerId>,/visa,/visa/new,/suppliers,/suppliers/<supplierId>,/suppliers/compare,/rate-cards,/rate-cards/new,/documents,/bookmarks,/notifications,/help,/import,/onboarding --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests.",
+    "From B11 merge: travellers.spec.ts:537 (link/unlink a contact via the Link Contact dialog) fails after clicking 'Link Contact': the dialog is still open (the contact name is visible both in the dialog combobox and in the still-open suggestions listbox). Investigate travellers/[id] Link Contact dialog: on success it must close the listbox and the dialog, refresh the linked-contact card, and show a toast; on failure show the error. Then travellers.spec.ts:537 must pass.",
+    "From B16 merge: documents.spec.ts:27 (full round trip) now gets past the combobox steps but fails at line ~105 after the rename step - investigate the documents rename/prefill flow (page documents/page.tsx + detail) and fix the app or, if the spec is stale, the spec. documents.spec.ts must pass.",
+    "From the B17 full-suite triage (desktop/audit/fix/e2e-after-B17.md): (a) REAL BUG import-export.spec.ts:508 - Import history type filter does not re-fetch/filter: historyFetcher in src/app/(app)/settings/import/page.tsx reads filterType but the ListPage only refetches on filters/refreshKey changes (B14) - pass the filter through ListPage filters (or refreshKey). (b) documents.spec.ts:27 fails at :105 because after a rename the list search box still holds the OLD name so the renamed row is filtered out - decide the right UX: after a successful rename the list should keep showing the renamed row (e.g. clear or update the search / show the row regardless); fix the app if the row disappearing is the bug, otherwise update the spec to re-fill the search. Both specs must pass.",
+    "From B19 hand-off: the contacts import mapping (contacts/import and settings/import mapping fields) still offers First name / Last name although contacts have a single name field - align the mapping targets with the real contact fields (name, plus city/state/country, source values the API accepts)."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/{travellers,visa,suppliers,rate-cards,documents,bookmarks,notifications,help,import,onboarding}/**",
+    "desktop/src/components/domain/file-upload.tsx",
+    "desktop/src/lib/api/{suppliers,rate-cards,documents,bookmarks,imports}.ts",
+    "desktop/e2e/{travellers,visa,suppliers,rate-cards,documents,import-export}.spec.ts (behaviour changed here only)",
+    "desktop/audit/fix/requests/B29.md",
+    "desktop/e2e/documents.spec.ts",
+    "desktop/e2e/import-export.spec.ts"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "travellers.spec.ts passes (email/phone persisted and shown).",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/{travellers,visa,suppliers,rate-cards,documents,bookmarks,notifications,help,import,onboarding}/**",
+      "src/components/domain/file-upload.tsx",
+      "src/lib/api/{suppliers,rate-cards,documents,bookmarks,imports}.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/travellers.spec.ts",
+      "desktop/e2e/visa.spec.ts",
+      "desktop/e2e/suppliers.spec.ts",
+      "desktop/e2e/rate-cards.spec.ts",
+      "desktop/e2e/documents.spec.ts",
+      "desktop/e2e/import-export.spec.ts",
+      "desktop/e2e/test-harness.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/travellers",
+      "/travellers/new",
+      "/travellers/<travellerId>",
+      "/visa",
+      "/visa/new",
+      "/suppliers",
+      "/suppliers/<supplierId>",
+      "/suppliers/compare",
+      "/rate-cards",
+      "/rate-cards/new",
+      "/documents",
+      "/bookmarks",
+      "/notifications",
+      "/help",
+      "/import",
+      "/onboarding"
+    ]
+  },
+  "notes": "contacts/import is B19's; /import (global import page) is yours."
+}

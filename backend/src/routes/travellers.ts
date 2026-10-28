@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { authMiddleware } from '../middleware/auth';
 import type { AppContext } from '../types';
 import { createTravellerSchema, updateTravellerSchema } from '../validators/traveller';
+import { generateId } from '../utils/uuid';
+import { normalizePhone, tenantPhoneCountry } from '../utils/phone';
 
 const travellerRouter = new Hono<AppContext>();
 travellerRouter.use('*', authMiddleware);
@@ -34,9 +36,9 @@ travellerRouter.get('/', async (c) => {
         params.push(contactId);
     }
     if (search) {
-        query += ' AND (first_name LIKE ? OR last_name LIKE ? OR passport_number LIKE ?)';
+        query += ' AND (first_name LIKE ? OR last_name LIKE ? OR passport_number LIKE ? OR email LIKE ? OR phone LIKE ?)';
         const term = `%${search}%`;
-        params.push(term, term, term);
+        params.push(term, term, term, term, term);
     }
     if (nationality) {
         query += ' AND nationality = ?';
@@ -84,33 +86,44 @@ travellerRouter.get('/:id', async (c) => {
 travellerRouter.post('/', zValidator('json', createTravellerSchema), async (c) => {
     const db = c.get('tenantDb');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const now = new Date().toISOString();
 
     const tenantId = c.get('tenantId');
     const userId = c.get('userId');
 
+    const email = body.email || null;
+    const phone = body.phone ? (normalizePhone(body.phone, await tenantPhoneCountry(db)) || body.phone) : null;
+    const frequentFlyerNumbers = body.frequentFlyerNumbers ?? body.frequentFlyerNumber ?? null;
+
     await db.prepare(`
     INSERT INTO travellers (
       id, tenant_id, contact_id, first_name, last_name, full_name_passport,
+      email, phone,
       date_of_birth, gender, nationality, passport_number,
-      passport_expiry_date, passport_issuing_country, frequent_flyer_numbers,
-      meal_preference, seat_preference, medical_notes,
-      emergency_contact_name, emergency_contact_phone,
+      passport_issue_date, passport_expiry_date, passport_issuing_country, frequent_flyer_numbers,
+      meal_preference, seat_preference, room_preference, medical_notes,
+      emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+      profile_photo_url,
       created_by, is_deleted, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
   `).bind(
         id, tenantId, body.contactId || null, body.firstName, body.lastName,
         body.fullNamePassport || `${body.firstName} ${body.lastName}`,
+        email, phone,
         body.dateOfBirth || null, body.gender || null, body.nationality || null, body.passportNumber || null,
+        body.passportIssueDate || null,
         body.passportExpiryDate || body.passportExpiry || null, body.passportIssuingCountry || null,
-        body.frequentFlyerNumbers || null,
-        body.mealPreference || null, body.seatPreference || null, body.medicalNotes || null,
+        frequentFlyerNumbers || null,
+        body.mealPreference || null, body.seatPreference || null, body.roomPreference || null,
+        body.medicalNotes || null,
         body.emergencyContactName || null, body.emergencyContactPhone || null,
+        body.emergencyContactRelationship || null,
+        body.profilePhotoUrl || null,
         userId, now, now
     ).run();
 
-    return c.json({ data: { id, ...body } }, 201);
+    return c.json({ data: { id, ...body, email: email ?? undefined, phone: phone ?? undefined } }, 201);
 });
 
 travellerRouter.put('/:id', zValidator('json', updateTravellerSchema), async (c) => {
@@ -132,8 +145,10 @@ travellerRouter.put('/:id', zValidator('json', updateTravellerSchema), async (c)
         passportExpiry: 'passport_expiry_date',
         passportExpiryDate: 'passport_expiry_date',
         passportIssuingCountry: 'passport_issuing_country',
-        frequentFlyerNumber: 'frequent_flyer_number',
-        frequentFlyerNumbers: 'frequent_flyer_number',
+        frequentFlyerNumber: 'frequent_flyer_numbers',
+        frequentFlyerNumbers: 'frequent_flyer_numbers',
+        fullNamePassport: 'full_name_passport',
+        passportIssueDate: 'passport_issue_date',
         mealPreference: 'meal_preference',
         seatPreference: 'seat_preference',
         medicalNotes: 'medical_notes',
@@ -141,8 +156,17 @@ travellerRouter.put('/:id', zValidator('json', updateTravellerSchema), async (c)
         emergencyContactPhone: 'emergency_contact_phone',
     };
 
-    for (const [key, value] of Object.entries(body)) {
+    const seenCols = new Set<string>();
+    for (const [key, rawValue] of Object.entries(body)) {
+        if (rawValue === undefined) continue;
         const col = fieldMap[key] || key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        if (seenCols.has(col)) continue; // alias sent alongside its canonical key
+        seenCols.add(col);
+
+        let value: unknown = rawValue;
+        if (key === 'phone') value = rawValue ? (normalizePhone(rawValue as string, await tenantPhoneCountry(db)) || rawValue) : null;
+        else if (key === 'email') value = rawValue || null;
+
         updates.push(`${col} = ?`);
         params.push(value);
     }

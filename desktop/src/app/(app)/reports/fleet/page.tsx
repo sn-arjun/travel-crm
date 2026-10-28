@@ -1,690 +1,272 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import {
-  Download, Truck, Star, TrendingUp, AlertCircle, RefreshCw,
-} from 'lucide-react';
-import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer,
-} from 'recharts';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
-} from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { reportsApi } from '@/lib/api/reports';
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+import { BarChart, PieChart, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
+import { ReportPageTemplate } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  ReportPanel,
+  ReportPanelGrid,
+  ReportSection,
+  ReportTable,
+  formatCount,
+  formatDecimal,
+  formatReportCurrency,
+  formatReportMoney,
+  humanize,
+  sumBy,
+} from '@/components/domain/reports/shared';
 
-const fmt = (n: number) =>
-  n >= 10000000
-    ? `₹${(n / 10000000).toFixed(1)}Cr`
-    : n >= 100000
-      ? `₹${(n / 100000).toFixed(1)}L`
-      : `₹${n.toLocaleString('en-IN')}`;
+interface UtilizationRow {
+  vehicle_reg: string;
+  type: string | null;
+  trip_count: number;
+  estimated_revenue: number;
+}
 
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  thisMonth: 'this_month',
-  lastMonth: 'last_month',
-  thisQuarter: 'this_quarter',
-  thisYear: 'this_year',
-};
+interface DriverRow {
+  driver_name: string;
+  license_number: string | null;
+  trip_count: number;
+  avg_rating: number | null;
+}
 
-function ChartSkeleton() {
+interface AvailabilityRow {
+  type: string | null;
+  status: string;
+  vehicle_count: number;
+  available: number;
+  in_maintenance: number;
+  inactive: number;
+}
+
+interface TripCostRow {
+  trip_type: string | null;
+  trip_count: number;
+  avg_distance_km: number | null;
+  avg_trip_cost: number | null;
+  total_cost: number;
+}
+
+function UtilizationTab() {
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-16" />
-      </div>
-      <Skeleton className="h-[300px] w-full" />
-    </div>
+    <ReportSection<UtilizationRow>
+      reportId="fleet_utilization"
+      emptyMessage="No vehicle ran a trip in this period."
+      kpis={(rows) => [
+        { label: 'Vehicles Used', value: formatCount(rows.length) },
+        { label: 'Total Trips', value: formatCount(sumBy(rows, (r) => r.trip_count)) },
+        { label: 'Est. Revenue', value: formatReportCurrency(sumBy(rows, (r) => r.estimated_revenue)), hint: 'From trip rates' },
+      ]}
+    >
+      {(rows) => (
+        <>
+          <ReportPanel title="Trips per vehicle">
+            <BarChart
+              data={rows}
+              categoryKey="vehicle_reg"
+              series={[{ dataKey: 'trip_count', label: 'Trips' }]}
+              showLegend={false}
+            />
+          </ReportPanel>
+          <ReportPanel title="Fleet utilization details">
+            <ReportTable
+              caption="Fleet utilization"
+              rows={rows}
+              columns={[
+                { key: 'vehicle_reg', header: 'Vehicle' },
+                { key: 'type', header: 'Type', cell: (r) => humanize(r.type) },
+                { key: 'trip_count', header: 'Trips', align: 'right', cell: (r) => formatCount(r.trip_count) },
+                { key: 'estimated_revenue', header: 'Est. revenue', align: 'right', cell: (r) => formatReportMoney(r.estimated_revenue) },
+              ]}
+            />
+          </ReportPanel>
+        </>
+      )}
+    </ReportSection>
+  );
+}
+
+function DriverTab() {
+  return (
+    <ReportSection<DriverRow>
+      reportId="driver_performance"
+      emptyMessage="No driver completed a trip in this period."
+      kpis={(rows) => {
+        const rated = rows.filter((r) => r.avg_rating !== null);
+        return [
+          { label: 'Drivers', value: formatCount(rows.length) },
+          { label: 'Total Trips', value: formatCount(sumBy(rows, (r) => r.trip_count)) },
+          { label: 'Avg Rating', value: rated.length ? `${formatDecimal(sumBy(rated, (r) => r.avg_rating) / rated.length)} / 5` : '—' },
+        ];
+      }}
+    >
+      {(rows) => (
+        <>
+          <ReportPanel title="Trips per driver">
+            <BarChart
+              data={rows}
+              categoryKey="driver_name"
+              series={[{ dataKey: 'trip_count', label: 'Trips' }]}
+              showLegend={false}
+            />
+          </ReportPanel>
+          <ReportPanel title="Driver performance details">
+            <ReportTable
+              caption="Driver performance"
+              rows={rows}
+              columns={[
+                { key: 'driver_name', header: 'Driver' },
+                { key: 'license_number', header: 'Licence' },
+                { key: 'trip_count', header: 'Trips', align: 'right', cell: (r) => formatCount(r.trip_count) },
+                { key: 'avg_rating', header: 'Avg rating', align: 'right', cell: (r) => (r.avg_rating === null ? '—' : formatDecimal(r.avg_rating)) },
+              ]}
+            />
+          </ReportPanel>
+        </>
+      )}
+    </ReportSection>
+  );
+}
+
+function AvailabilityTab() {
+  return (
+    <ReportSection<AvailabilityRow>
+      reportId="fleet_availability"
+      ignoreRange
+      emptyMessage="No vehicles have been added yet."
+      kpis={(rows) => [
+        { label: 'Total Vehicles', value: formatCount(sumBy(rows, (r) => r.vehicle_count)) },
+        { label: 'Available', value: formatCount(sumBy(rows, (r) => r.available)) },
+        { label: 'In Maintenance', value: formatCount(sumBy(rows, (r) => r.in_maintenance)) },
+        { label: 'Inactive', value: formatCount(sumBy(rows, (r) => r.inactive)) },
+      ]}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.type) }));
+        const byType = new Map<string, { label: string; vehicle_count: number }>();
+        for (const r of data) {
+          const cur = byType.get(r.label) ?? { label: r.label, vehicle_count: 0 };
+          cur.vehicle_count += r.vehicle_count;
+          byType.set(r.label, cur);
+        }
+        return (
+          <>
+            <ReportPanelGrid>
+              <ReportPanel title="Fleet by vehicle type">
+                <PieChart data={[...byType.values()]} dataKey="vehicle_count" nameKey="label" donut />
+              </ReportPanel>
+              <ReportPanel title="Status by type">
+                <BarChart
+                  data={data}
+                  categoryKey="label"
+                  stacked
+                  series={[
+                    { dataKey: 'available', label: 'Available' },
+                    { dataKey: 'in_maintenance', label: 'In maintenance' },
+                    { dataKey: 'inactive', label: 'Inactive' },
+                  ]}
+                />
+              </ReportPanel>
+            </ReportPanelGrid>
+            <ReportPanel title="Availability details">
+              <ReportTable
+                caption="Fleet availability"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Vehicle type' },
+                  { key: 'vehicle_count', header: 'Vehicles', align: 'right', cell: (r) => formatCount(r.vehicle_count) },
+                  { key: 'available', header: 'Available', align: 'right', cell: (r) => formatCount(r.available) },
+                  { key: 'in_maintenance', header: 'In maintenance', align: 'right', cell: (r) => formatCount(r.in_maintenance) },
+                  { key: 'inactive', header: 'Inactive', align: 'right', cell: (r) => formatCount(r.inactive) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function TripCostTab() {
+  return (
+    <ReportSection<TripCostRow>
+      reportId="trip_cost_analysis"
+      emptyMessage="No trips with a recorded cost in this period."
+      kpis={(rows) => {
+        const trips = sumBy(rows, (r) => r.trip_count);
+        const cost = sumBy(rows, (r) => r.total_cost);
+        const distance = sumBy(rows, (r) => (r.avg_distance_km ?? 0) * r.trip_count);
+        return [
+          { label: 'Total Cost', value: formatReportCurrency(cost) },
+          { label: 'Avg Trip Cost', value: formatReportCurrency(trips > 0 ? cost / trips : 0) },
+          { label: 'Avg Distance', value: `${formatDecimal(trips > 0 ? distance / trips : 0, 0)} km` },
+        ];
+      }}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.trip_type) }));
+        return (
+          <>
+            <ReportPanel title="Trip cost by type">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[{ dataKey: 'total_cost', label: 'Total cost' }]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+                showLegend={false}
+              />
+            </ReportPanel>
+            <ReportPanel title="Trip cost analysis">
+              <ReportTable
+                caption="Trip cost analysis"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Trip type' },
+                  { key: 'trip_count', header: 'Trips', align: 'right', cell: (r) => formatCount(r.trip_count) },
+                  { key: 'avg_distance_km', header: 'Avg distance', align: 'right', cell: (r) => (r.avg_distance_km === null ? '—' : `${formatDecimal(r.avg_distance_km, 0)} km`) },
+                  { key: 'avg_trip_cost', header: 'Avg trip cost', align: 'right', cell: (r) => formatReportMoney(r.avg_trip_cost) },
+                  { key: 'total_cost', header: 'Total cost', align: 'right', cell: (r) => formatReportMoney(r.total_cost) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
   );
 }
 
 export default function FleetReportsPage() {
-  const [dateRange, setDateRange] = React.useState('30days');
-  const [showComparison, setShowComparison] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState('utilization');
-
-  const [utilizationData, setUtilizationData] = React.useState<any[]>([]);
-  const [driverData, setDriverData] = React.useState<any[]>([]);
-  const [availabilityData, setAvailabilityData] = React.useState<any[]>([]);
-  const [tripCostData, setTripCostData] = React.useState<any[]>([]);
-
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [retryKey, setRetryKey] = React.useState(0);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    const params = { date_preset: presetMap[dateRange] ?? 'this_month', compare: showComparison };
-
-    const reportId =
-      activeTab === 'utilization' ? 'fleet_utilization'
-        : activeTab === 'driver' ? 'driver_performance'
-          : activeTab === 'availability' ? 'fleet_availability'
-            : 'trip_cost_analysis';
-
-    reportsApi.execute(reportId, params)
-      .then((res: any) => {
-        if (cancelled) return;
-        const rows = (res?.data?.data ?? []) as any[];
-        if (activeTab === 'utilization') setUtilizationData(rows);
-        else if (activeTab === 'driver') setDriverData(rows);
-        else if (activeTab === 'availability') setAvailabilityData(rows);
-        else setTripCostData(rows);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setError('Failed to load report data');
-        setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('fleet_utilization', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
-
-  const renderError = () => (
-    <div className="flex flex-col items-center justify-center h-[300px] gap-3">
-      <AlertCircle className="h-8 w-8 text-destructive" />
-      <p className="text-sm text-muted-foreground">Failed to load report data</p>
-      <Button size="sm" variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
-        <RefreshCw className="h-4 w-4 mr-1.5" />
-        Retry
-      </Button>
-    </div>
-  );
-
-  const renderEmpty = () => (
-    <div className="flex items-center justify-center h-[300px]">
-      <p className="text-sm text-muted-foreground">No data for selected period</p>
-    </div>
-  );
-
-  const totalTrips = utilizationData.reduce((s, r) => s + (r.trip_count ?? 0), 0);
-  const totalRevenue = utilizationData.reduce((s, r) => s + (r.estimated_revenue ?? 0), 0);
-  const totalVehicles = availabilityData.reduce((s, r) => s + (r.vehicle_count ?? 0), 0);
-  const totalAvailable = availabilityData.reduce((s, r) => s + (r.available ?? 0), 0);
-  const maxDriverTrips = Math.max(...driverData.map((r) => r.trip_count ?? 0), 1);
-
-  const availabilityPieData = availabilityData.map((r) => ({
-    name: r.type ?? r.status ?? '—',
-    value: r.vehicle_count ?? 0,
-  }));
-
+  const [tab, setTab] = React.useState('utilization');
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* Breadcrumb + Controls */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <nav className="flex items-center gap-1 text-sm text-muted-foreground">
-          <Link href="/reports" className="hover:text-foreground transition-colors">Reports</Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">Fleet Reports</span>
-        </nav>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Switch id="compare" checked={showComparison} onCheckedChange={setShowComparison} />
-            <Label htmlFor="compare" className="text-sm cursor-pointer">Compare with previous period</Label>
-          </div>
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7days">Last 7 Days</SelectItem>
-              <SelectItem value="30days">Last 30 Days</SelectItem>
-              <SelectItem value="90days">Last 90 Days</SelectItem>
-              <SelectItem value="thisMonth">This Month</SelectItem>
-              <SelectItem value="lastMonth">Last Month</SelectItem>
-              <SelectItem value="thisQuarter">This Quarter</SelectItem>
-              <SelectItem value="thisYear">This Year</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
-        </div>
-      </div>
-
-      {/* Title */}
-      <div className="px-6 py-3 border-b">
-        <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-          Fleet Reports
-        </h1>
-        <p className="text-sm text-muted-foreground">Vehicle utilization, driver performance, and trip cost analysis</p>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 p-6 overflow-auto">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
-            <TabsTrigger value="utilization">Utilization</TabsTrigger>
-            <TabsTrigger value="driver">Driver Performance</TabsTrigger>
-            <TabsTrigger value="availability">Availability</TabsTrigger>
-            <TabsTrigger value="tripcost">Trip Cost Analysis</TabsTrigger>
-          </TabsList>
-
-          {/* Utilization Tab */}
-          <TabsContent value="utilization" className="space-y-6">
-            {loading ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[...Array(3)].map((_, i) => (
-                    <Card key={i}>
-                      <CardContent className="pt-4 space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-8 w-16" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                <ChartSkeleton />
-              </>
-            ) : error ? renderError() : utilizationData.length === 0 ? renderEmpty() : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                        <Truck className="h-4 w-4" />
-                        Total Vehicles
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{utilizationData.length}</div>
-                      <p className="text-xs text-muted-foreground mt-1">In fleet</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Trips</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-end gap-2">
-                        <div className="text-2xl font-bold">{totalTrips}</div>
-                        <TrendingUp className="h-4 w-4 text-green-500 mb-1" />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">This period</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Est. Revenue</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{fmt(totalRevenue)}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Fleet revenue</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Vehicle Utilization</CardTitle>
-                    <CardDescription>Trip count and estimated revenue per vehicle</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={[...utilizationData].sort((a, b) => (b.trip_count ?? 0) - (a.trip_count ?? 0)).slice(0, 15).map((r) => ({
-                          reg: r.vehicle_reg ?? '—',
-                          Trips: r.trip_count ?? 0,
-                          Revenue: r.estimated_revenue ?? 0,
-                        }))}
-                        margin={{ top: 5, right: 30, left: 0, bottom: 40 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="reg" angle={-45} textAnchor="end" height={80} />
-                        <YAxis yAxisId="left" />
-                        <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => fmt(v)} />
-                        <Tooltip formatter={(v, name) => name === 'Revenue' ? fmt(v as number) : v} />
-                        <Legend />
-                        <Bar yAxisId="left" dataKey="Trips" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Revenue" fill="#10b981" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader><CardTitle>Fleet Utilization Details</CardTitle></CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Vehicle Reg</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead className="text-right">Trip Count</TableHead>
-                          <TableHead className="text-right">Est. Revenue</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {[...utilizationData].sort((a, b) => (b.trip_count ?? 0) - (a.trip_count ?? 0)).map((row, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="font-medium font-mono">{row.vehicle_reg ?? '—'}</TableCell>
-                            <TableCell><Badge variant="outline" className="text-xs">{row.type ?? '—'}</Badge></TableCell>
-                            <TableCell className="text-right">{row.trip_count ?? 0}</TableCell>
-                            <TableCell className="text-right">{fmt(row.estimated_revenue ?? 0)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </TabsContent>
-
-          {/* Driver Performance Tab */}
-          <TabsContent value="driver" className="space-y-6">
-            {loading ? <ChartSkeleton /> : error ? renderError() : driverData.length === 0 ? renderEmpty() : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Drivers</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{driverData.length}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Active drivers</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Trips</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{driverData.reduce((s, r) => s + (r.trip_count ?? 0), 0)}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Across all drivers</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                        <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
-                        Avg Rating
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {driverData.length > 0
-                          ? (driverData.reduce((s, r) => s + (r.avg_rating ?? 0), 0) / driverData.length).toFixed(1)
-                          : '—'}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Fleet average</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Driver Trip Count &amp; Rating</CardTitle>
-                    <CardDescription>Trips completed and average rating per driver</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={[...driverData].sort((a, b) => (b.trip_count ?? 0) - (a.trip_count ?? 0)).map((r) => ({
-                          name: (r.driver_name ?? '').split(' ')[0],
-                          Trips: r.trip_count ?? 0,
-                          Rating: parseFloat((r.avg_rating ?? 0).toFixed(1)),
-                        }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis yAxisId="left" />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, 5]} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar yAxisId="left" dataKey="Trips" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Rating" fill="#f59e0b" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader><CardTitle>Driver Performance Details</CardTitle></CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Driver Name</TableHead>
-                          <TableHead>License Number</TableHead>
-                          <TableHead className="text-right">Trips</TableHead>
-                          <TableHead className="text-right">Avg Rating</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {[...driverData].sort((a, b) => (b.trip_count ?? 0) - (a.trip_count ?? 0)).map((row, idx) => {
-                          const pct = ((row.trip_count ?? 0) / maxDriverTrips) * 100;
-                          return (
-                            <TableRow key={idx}>
-                              <TableCell className="font-medium">{row.driver_name ?? '—'}</TableCell>
-                              <TableCell className="font-mono text-xs text-muted-foreground">{row.license_number ?? '—'}</TableCell>
-                              <TableCell className="text-right">
-                                <div className="space-y-1">
-                                  <div className="text-sm font-semibold">{row.trip_count ?? 0}</div>
-                                  <div className="h-1.5 rounded-full bg-muted overflow-hidden w-full">
-                                    <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                                  <span className="font-medium">{Number(row.avg_rating ?? 0).toFixed(1)}</span>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </TabsContent>
-
-          {/* Availability Tab */}
-          <TabsContent value="availability" className="space-y-6">
-            {loading ? (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[...Array(4)].map((_, i) => (
-                    <Card key={i}>
-                      <CardContent className="pt-4 space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-8 w-16" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                <ChartSkeleton />
-              </>
-            ) : error ? renderError() : availabilityData.length === 0 ? renderEmpty() : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Vehicles</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{totalVehicles}</div>
-                      <p className="text-xs text-muted-foreground mt-1">In fleet</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-green-600">Available</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-green-600">{totalAvailable}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Ready to deploy</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-yellow-600">In Maintenance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {availabilityData.reduce((s, r) => s + (r.in_maintenance ?? 0), 0)}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Under service</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-red-600">Inactive</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-red-600">
-                        {availabilityData.reduce((s, r) => s + (r.inactive ?? 0), 0)}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Out of service</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Fleet Distribution</CardTitle>
-                      <CardDescription>Vehicle count by type</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={availabilityPieData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, value }) => `${name} (${value})`}
-                            outerRadius={80}
-                            dataKey="value"
-                          >
-                            {availabilityPieData.map((_, idx) => (
-                              <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Status by Type</CardTitle>
-                      <CardDescription>Available vs maintenance vs inactive</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart
-                          data={availabilityData.map((r) => ({
-                            type: r.type ?? r.status ?? '—',
-                            Available: r.available ?? 0,
-                            Maintenance: r.in_maintenance ?? 0,
-                            Inactive: r.inactive ?? 0,
-                          }))}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="type" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="Available" fill="#10b981" stackId="a" />
-                          <Bar dataKey="Maintenance" fill="#f59e0b" stackId="a" />
-                          <Bar dataKey="Inactive" fill="#ef4444" stackId="a" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader><CardTitle>Availability Details</CardTitle></CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-right">Available</TableHead>
-                          <TableHead className="text-right">In Maintenance</TableHead>
-                          <TableHead className="text-right">Inactive</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {availabilityData.map((row, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="font-medium">{row.type ?? '—'}</TableCell>
-                            <TableCell><Badge variant="outline" className="text-xs">{row.status ?? '—'}</Badge></TableCell>
-                            <TableCell className="text-right">{row.vehicle_count ?? 0}</TableCell>
-                            <TableCell className="text-right text-green-600">{row.available ?? 0}</TableCell>
-                            <TableCell className="text-right text-yellow-600">{row.in_maintenance ?? 0}</TableCell>
-                            <TableCell className="text-right text-red-600">{row.inactive ?? 0}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </TabsContent>
-
-          {/* Trip Cost Analysis Tab */}
-          <TabsContent value="tripcost" className="space-y-6">
-            {loading ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[...Array(3)].map((_, i) => (
-                    <Card key={i}>
-                      <CardContent className="pt-4 space-y-2">
-                        <Skeleton className="h-4 w-24" />
-                        <Skeleton className="h-8 w-16" />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                <ChartSkeleton />
-              </>
-            ) : error ? renderError() : tripCostData.length === 0 ? renderEmpty() : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Cost</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{fmt(tripCostData.reduce((s, r) => s + (r.total_cost ?? 0), 0))}</div>
-                      <p className="text-xs text-muted-foreground mt-1">All trip types</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Avg Trip Cost</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {tripCostData.length > 0
-                          ? fmt(tripCostData.reduce((s, r) => s + (r.avg_trip_cost ?? 0), 0) / tripCostData.length)
-                          : '—'}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Average across types</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Avg Distance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {tripCostData.length > 0
-                          ? `${(tripCostData.reduce((s, r) => s + (r.avg_distance_km ?? 0), 0) / tripCostData.length).toFixed(0)} km`
-                          : '—'}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Per trip average</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Trip Cost by Type</CardTitle>
-                    <CardDescription>Average and total cost per trip type</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={tripCostData.map((r) => ({
-                          name: r.trip_type ?? '—',
-                          'Avg Cost': r.avg_trip_cost ?? 0,
-                          'Total Cost': r.total_cost ?? 0,
-                          Trips: r.trip_count ?? 0,
-                        }))}
-                        margin={{ top: 5, right: 30, left: 0, bottom: 40 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-35} textAnchor="end" height={80} />
-                        <YAxis yAxisId="left" tickFormatter={(v) => fmt(v)} />
-                        <YAxis yAxisId="right" orientation="right" />
-                        <Tooltip formatter={(v, name) => name === 'Trips' ? v : fmt(v as number)} />
-                        <Legend />
-                        <Bar yAxisId="left" dataKey="Avg Cost" fill="#3b82f6" />
-                        <Bar yAxisId="left" dataKey="Total Cost" fill="#10b981" />
-                        <Bar yAxisId="right" dataKey="Trips" fill="#f59e0b" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader><CardTitle>Trip Cost Analysis Details</CardTitle></CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Trip Type</TableHead>
-                          <TableHead className="text-right">Trips</TableHead>
-                          <TableHead className="text-right">Avg Distance (km)</TableHead>
-                          <TableHead className="text-right">Avg Trip Cost</TableHead>
-                          <TableHead className="text-right">Total Cost</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {[...tripCostData].sort((a, b) => (b.total_cost ?? 0) - (a.total_cost ?? 0)).map((row, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="font-medium">{row.trip_type ?? '—'}</TableCell>
-                            <TableCell className="text-right">{row.trip_count ?? 0}</TableCell>
-                            <TableCell className="text-right">{Number(row.avg_distance_km ?? 0).toFixed(1)}</TableCell>
-                            <TableCell className="text-right">{fmt(row.avg_trip_cost ?? 0)}</TableCell>
-                            <TableCell className="text-right font-semibold">{fmt(row.total_cost ?? 0)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+    <ReportPageTemplate
+      title="Fleet Reports"
+      description="Vehicle utilization, driver performance and trip costs"
+      hideRange={tab === 'availability'}
+      renderExport={(ctx) => (
+        <ReportExportButton
+          reportId={tab === 'driver' ? 'driver_performance' : tab === 'availability' ? 'fleet_availability' : tab === 'tripcost' ? 'trip_cost_analysis' : 'fleet_utilization'}
+          params={tab === 'availability' ? undefined : ctx.params}
+          filenamePrefix={`fleet-report-${tab}`}
+          rangeLabel={tab === 'availability' ? 'current' : ctx.rangeLabel}
+        />
+      )}
+    >
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="utilization">Utilization</TabsTrigger>
+          <TabsTrigger value="driver">Driver Performance</TabsTrigger>
+          <TabsTrigger value="availability">Availability</TabsTrigger>
+          <TabsTrigger value="tripcost">Trip Cost Analysis</TabsTrigger>
+        </TabsList>
+        <TabsContent value="utilization"><UtilizationTab /></TabsContent>
+        <TabsContent value="driver"><DriverTab /></TabsContent>
+        <TabsContent value="availability"><AvailabilityTab /></TabsContent>
+        <TabsContent value="tripcost"><TripCostTab /></TabsContent>
+      </Tabs>
+    </ReportPageTemplate>
   );
 }

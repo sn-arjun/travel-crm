@@ -1,0 +1,58 @@
+{
+  "slice": "ai-settings",
+  "title": "AI Settings & Usage",
+  "status": "existing",
+  "showcaseOrder": 41,
+  "endpoints": [
+    "GET /api/v1/ai/settings",
+    "GET /api/v1/ai/settings/features/check/:featureKey",
+    "GET /api/v1/ai/settings/provider",
+    "GET /api/v1/ai/settings/usage",
+    "PUT /api/v1/ai/settings/features"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/ai.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/ai/page.tsx",
+    "desktop/src/app/(app)/settings/ai-usage/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/ai-settings.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/ai/**",
+    "desktop/src/app/(app)/settings/ai-usage/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/e2e/ai-settings.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Not a list/table feature — settings + usage dashboard, so listPage/filterBar/infiniteScroll/hoverActions/detailDrawer/relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog/themedExport are N/A by design. Rebuilt both pages on PageHeader/SectionCard/Stat/Tag with ds-* tokens, gated settings/ai behind useFeatureGate('ai_assistant') with a proper disabled/upgrade state (never an error), fixed ai-usage page to call the real aiApi.settings.getUsage() endpoint instead of a nonexistent /ai/usage, and added an AI tab to /settings linking to /settings/ai and /settings/ai-usage since neither was reachable before.",
+  "showcaseScript": [
+    "Open Settings → AI",
+    "Toggle individual AI features on and off",
+    "Show the active provider and model",
+    "Open AI Usage and show consumption against the daily cap"
+  ]
+}

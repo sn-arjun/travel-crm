@@ -1,0 +1,112 @@
+{
+  "id": "R105",
+  "tier": 1,
+  "title": "Cron fan-out through a queue, working cron jobs, usage caps reset once per period",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Run scheduled work per agency through a queue so it scales past a few hundred agencies, fix the scheduled jobs that silently do nothing, and stop allowances refilling every five minutes.",
+  "why": "backend/src/index.ts scheduled() runs every job for every tenant in one invocation every 5 minutes (wall at about 500 agencies with 1,000 queries per invocation), calls resetUsageCaps daily on every tick and monthly on every tick of the 1st (an agency's AI allowance refills 288 times on the 1st: cost model item 4), and several handlers query a workspaces table or env.DB that do not exist (cron/auto-reminders.ts, services/follow-up-reminders.ts, cron/overdue-tasks.ts, cron/campaign-scheduler.ts, cron/fleet-alerts.ts tenants.is_active).",
+  "featuresToWorks": [
+    "platform.cron",
+    "followups.reminders",
+    "tasks.overdue-alerts",
+    "invoices.reminders-cron",
+    "visa.expiry-alerts",
+    "fleet.alerts-cron",
+    "marketing.campaign-schedule"
+  ],
+  "dependsOn": [
+    "R101",
+    "R103"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R119"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/index.ts",
+      "backend/src/queues/index.ts",
+      "backend/src/middleware/usage-cap.ts",
+      "backend/src/cron/auto-reminders.ts",
+      "backend/src/cron/overdue-tasks.ts",
+      "backend/src/cron/campaign-scheduler.ts",
+      "backend/src/cron/fleet-alerts.ts",
+      "backend/src/services/follow-up-reminders.ts",
+      "backend/src/services/automation/schedule.ts",
+      "backend/src/services/missed-call-handler.ts",
+      "backend/src/types.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/wrangler.base.toml",
+      "backend/wrangler.toml"
+    ],
+    "create": [
+      "backend/src/queues/tenant-jobs-queue.ts",
+      "backend/src/cron/dispatch.ts",
+      "backend/drizzle/master/0013_usage_cap_periods.sql",
+      "backend/test/cron-fanout.test.ts",
+      "backend/test/usage-cap-reset.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/**",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Crons in wrangler.base.toml and wrangler.toml: [\"*/5 * * * *\", \"0 * * * *\", \"30 0 * * *\"] (5-minute, hourly, daily at 00:30 UTC). cron/dispatch.ts maps event.cron to job sets: 5-min = automations schedule tick, campaign scheduler, follow-up reminders; hourly = invoice reminders, overdue tasks, fleet alerts; daily = birthdays/anniversaries, visa/passport expiry, missing visa documents, trip reminders, trial expiry check placeholder (R109 fills), cap resets.",
+    "scheduled(): for the given cron, list active tenants from MASTER_DB (status IN ('active','trial')) and env.TENANT_JOBS_QUEUE.sendBatch([{ body: { tenantId, jobSet, firedAt } }]) in chunks of 100; platform-wide work (cap resets) runs once in scheduled() itself.",
+    "queues/tenant-jobs-queue.ts: handleTenantJobs(batch, env): per message resolveTenantDb (R101); null -> ack and log; run the job set's handlers with (env, tenantId, db); each handler wrapped so one failure does not stop the others; message.retry() only on infrastructure errors. Register in queues/index.ts handleQueue by queue name travelcrm-tenant-jobs.",
+    "Refactor each handler to the signature (env, tenantId, db): delete the `SELECT db_binding FROM workspaces` loops in cron/auto-reminders.ts (5 places) and services/follow-up-reminders.ts; replace env.DB in cron/overdue-tasks.ts and cron/campaign-scheduler.ts with the passed db; cron/fleet-alerts.ts stops querying tenants.is_active. services/automation/schedule.ts runScheduledAutomations(env) becomes runScheduledAutomationsForTenant(env, tenantId, db) keeping its once-per-tenant-local-day guard.",
+    "Local and test mode: when env.TENANT_JOBS_QUEUE is missing or TEST_MODE is true and a header/flag asks for it, run the job set inline (keeps routes/automations.ts manual tick working).",
+    "Usage caps: master 0013 adds tenant_usage_caps.period_key TEXT. resetUsageCaps(db, period) computes key = UTC yyyy-mm-dd (daily) or yyyy-mm (monthly) and runs UPDATE ... SET current_usage = 0, period_key = ?, last_reset_at = now WHERE reset_period = ? AND (period_key IS NULL OR period_key <> ?). scheduled() calls both on every daily cron; repeated calls in the same period change nothing. Remove the isMonthStart logic.",
+    "services/missed-call-handler.ts: if it uses env.NOTIFICATION_QUEUE, switch to PUSH_NOTIFICATION_QUEUE (bound) and remove NOTIFICATION_QUEUE from Env."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0013_usage_cap_periods.sql"
+  ],
+  "tests": [
+    "backend/test/cron-fanout.test.ts: calling worker.scheduled({ cron: \"*/5 * * * *\" }) with a fake TENANT_JOBS_QUEUE (object with sendBatch spy) enqueues one message per active tenant and none for suspended ones; handleTenantJobs on a message for tenant A runs the follow-up reminder handler against A's DB only (multi mode, pool DBs); a message for an unknown tenant is acked without touching MASTER_DB.",
+    "backend/test/usage-cap-reset.test.ts: with a cap at 900/1000, calling the daily reset 5 times in one UTC day resets once and keeps later increments; a new day resets again; monthly resets only when the month key changes."
+  ],
+  "acceptance": [
+    "No handler references workspaces or env.DB (grep).",
+    "Repeated scheduled() calls within a period never reset a cap twice (test).",
+    "The cron schedule tick still creates scheduled automation suggestions (existing automation tests pass)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Queue consumer throughput with real tenant counts; cron triggers registered on the deployed Worker."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it.",
+    "worker.scheduled is exported as default.scheduled in index.ts; in tests call (worker as any).scheduled(event, env, ctx) with createExecutionContext().",
+    "Keep the waitUntil pattern; do not await long work in scheduled() itself beyond enqueueing."
+  ]
+}

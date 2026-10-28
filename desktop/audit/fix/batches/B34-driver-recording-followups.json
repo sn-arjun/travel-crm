@@ -1,0 +1,42 @@
+{
+  "id": "B34",
+  "title": "Driver flow follow-ups from the first emulator recording: Today tab hygiene, Navigate label, phone display, users create id",
+  "lane": "driver",
+  "backend": true,
+  "wave": "W5",
+  "dependsOn": ["B13", "B33"],
+  "parallelGroup": "W5",
+  "bugIds": [],
+  "fixReqs": ["FR-2"],
+  "estFiles": 10,
+  "goal": "Make the driver app clip clean on camera and close small API gaps the showcase seed hit.",
+  "context": "Added by the orchestrator 2026-10-04 from the showcase part-1 hand-off (first real emulator recording, desktop/showcase/.work/driver.mp4). Baselines: backend vitest 38 files / 1058 passed, tsc 0; driver flutter analyze clean, 86 tests. Findings: (1) the driver Today tab also lists cancelled/rejected trips, so stale trips clutter the list; (2) the trip-detail 'Navigate' button label wraps to 'Navig/ate' on a 1080px-wide phone; (3) passenger phone renders as raw digits '9820144562' with no country code/formatting; (4) the Special Instructions card is partly hidden behind the sticky action bar when the page is at rest (needs bottom padding = action bar height); (5) POST /users returns no user id in the response (seed had to look users up by email); (6) POST /contacts rejects source 'walkin' although the desktop offers walk-in style sources - align the validator enum with the desktop options.",
+  "steps": [
+    "Backend GET /api/v1/driver/trips: tab=today and tab=upcoming must exclude cancelled and rejected trips (they belong only in tab=past/history). Keep response shape. Add vitest coverage.",
+    "Driver app trip detail action bar: the secondary 'Navigate' button must never wrap - use an icon + single-line label with FittedBox/flexible sizing or an icon-only button with tooltip/semantics label when width is tight; verify at 360dp and 411dp widths with a widget test (no RenderFlex overflow, label on one line). Keep Key names.",
+    "Driver app trip detail: add bottom padding equal to the action bar height + safe area so the last card (Special Instructions) is fully visible when scrolled to the end.",
+    "Driver app: format passenger phone for display (E.164 -> '+91 98201 44562' style; if no country code, show as stored) via the existing lib/core/utils/phone.dart; the call button must still dial the raw number. Unit-test the formatter.",
+    "Backend POST /users: include the created user's id (and the same public fields GET /users returns) in the 201 response - additive. Test.",
+    "Backend contacts validator: compare the `source` enum with the options the desktop contact/lead forms offer (grep desktop/src for the source option lists) and accept every offered value (e.g. walk-in). Additive only. Test.",
+    "Run gates."
+  ],
+  "filesAllowlist": [
+    "packages/driver_app/lib/**",
+    "packages/driver_app/test/**",
+    "backend/src/routes/driver.ts",
+    "backend/src/routes/users.ts",
+    "backend/src/routes/contacts.ts",
+    "backend/src/validators/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/drizzle/**", "backend/.dev.vars", "desktop/**", "packages/driver_app/integration_test/demo_flow_test.dart", "scripts/**"],
+  "acceptance": [
+    "Driver Today/Upcoming never show cancelled or rejected trips (backend test).",
+    "No wrapped 'Navigate' label at 360dp/411dp (widget test); last card fully scrollable above the action bar.",
+    "Passenger phone formatted for display; dial uses raw number.",
+    "POST /users returns data.id; POST /contacts accepts every source the desktop offers.",
+    "backend vitest 0 failed, passed >= 1058; backend tsc 0; flutter analyze clean; flutter test all pass (>= 86)."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": true, "specs": []},
+  "notes": "Do not boot the emulator; the showcase executor re-records afterwards. Keep every widget Key used by integration_test/demo_flow_test.dart and smoke_login_test.dart."
+}

@@ -1,0 +1,99 @@
+{
+  "id": "R213",
+  "tier": 2,
+  "title": "WhatsApp direct through Meta's Cloud API behind the existing messaging interface",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Send and receive WhatsApp messages through Meta directly instead of paying a reseller fee on every message.",
+  "why": "COST-MODEL item 2: Twilio adds $0.005 to every WhatsApp message in and out (about ₹0.48), on top of Meta's fee; no Meta Cloud API code exists; services/voip-provider.ts defines MessagingProvider with Twilio and Plivo implementations only.",
+  "featuresToWorks": [
+    "inbox.whatsapp-sms-inbound",
+    "marketing.whatsapp-campaigns"
+  ],
+  "dependsOn": [
+    "R110",
+    "R107",
+    "R108"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R212"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/services/voip-provider.ts",
+      "backend/src/routes/inbound.ts",
+      "backend/src/routes/integrations.ts",
+      "backend/src/queues/whatsapp-campaign-queue.ts",
+      "backend/src/routes/communications.ts",
+      "backend/src/index.ts",
+      "desktop/src/app/(app)/settings/integrations/page.tsx",
+      "desktop/src/lib/api/integrations.ts"
+    ],
+    "create": [
+      "backend/src/services/messaging/meta-whatsapp.ts",
+      "backend/test/meta-whatsapp.test.ts",
+      "backend/test/fixtures/meta/inbound-text.json",
+      "backend/test/fixtures/meta/status-delivered.json"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/tenancy/**",
+      "backend/src/routes/files.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "meta-whatsapp.ts implements MessagingProvider for WhatsApp: send text inside the 24 h window, send template (name, language, components) with category for metering, media by URL; Graph API base https://graph.facebook.com/v<version>/<phone_number_id>/messages via fetch; access token per platform (WHATSAPP_META_TOKEN) or per agency (encrypted, R108) when the agency brings its own WABA.",
+    "Inbound webhook /api/v1/webhooks/inbound/meta/whatsapp: GET verification (hub.mode, hub.verify_token, hub.challenge), POST with X-Hub-Signature-256 (HMAC-SHA256 of raw body with the app secret) verified; tenant resolved from the receiving phone_number_id through tenant_channel_addresses; messages go through the existing inbound ingest (services/inbound/ingest.ts) and statuses through the delivery tracking path, deduped on Meta message id.",
+    "Provider selection per agency in integrations settings (twilio | meta) with Meta as the default for new agencies when the platform token is configured; Twilio stays available."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/meta-whatsapp.test.ts: verification challenge; signed inbound text creates an inbound message and lead flow as the Twilio path does; bad signature -> 401; status delivered updates the message; template send body shape (mocked fetch) includes category; metering called with whatsapp_utility vs whatsapp_marketing correctly."
+  ],
+  "acceptance": [
+    "Inbound and outbound WhatsApp work through Meta in tests with the same downstream behaviour as Twilio."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/communication-inbox.spec.ts e2e/whatsapp-campaigns.spec.ts e2e/webhooks-integrations.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/communication-inbox.spec.ts",
+      "e2e/whatsapp-campaigns.spec.ts",
+      "e2e/webhooks-integrations.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Meta Business verification, WABA, phone number registration, template approvals, app secret and verify token; real message round trip."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it."
+  ]
+}

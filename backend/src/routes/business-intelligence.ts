@@ -10,10 +10,24 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, paginated, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { AIRouter, type AITask } from '../services/ai-router';
+import { tenantToday, tenantTimeZone, localMonthWindow, sqlOffsetModifier, daysBetweenLocal } from '../utils/tz';
+import { AIRouter, AiUnavailableError, type AITask, type AIResponse } from '../services/ai-router';
+
+/** Runs the AI call only; resolves null when no provider is available so the caller can still return its SQL data. */
+async function routeOrNull(router: AIRouter, task: AITask, prompt: string, system: string): Promise<AIResponse | null> {
+  try {
+    return await router.route(task, prompt, system);
+  } catch (e) {
+    if (e instanceof AiUnavailableError) return null;
+    throw e;
+  }
+}
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const app = new Hono<AppContext>();
+app.onError(aiAwareErrorHandler);
 
 // ============================================================
 // BRIEFINGS (TICKET-482–485)
@@ -27,11 +41,13 @@ app.post('/briefings/generate', async (c) => {
   const { type } = await c.req.json<{ type: 'daily' | 'weekly' | 'monthly' }>();
 
   const now = new Date();
+  // the briefing period is the tenant's local day / week / month
+  const { today: localToday } = await tenantToday(c);
   const period = type === 'daily'
-    ? now.toISOString().substring(0, 10)
+    ? localToday
     : type === 'weekly'
-      ? `${now.getFullYear()}-W${String(Math.ceil(((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)).padStart(2, '0')}`
-      : now.toISOString().substring(0, 7);
+      ? `${localToday.slice(0, 4)}-W${String(Math.ceil((daysBetweenLocal(`${localToday.slice(0, 4)}-01-01`, localToday) + 1) / 7)).padStart(2, '0')}`
+      : localToday.slice(0, 7);
 
   // Collect metrics
   const metrics: Record<string, number | string> = {};
@@ -61,7 +77,7 @@ app.post('/briefings/generate', async (c) => {
   metrics.conversionRate = conversionRate;
 
   const taskType: AITask = type === 'daily' ? 'daily_briefing' : type === 'weekly' ? 'weekly_briefing' : 'monthly_briefing';
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Generate a ${type} business briefing for a travel agency CRM. Period: ${period}. Metrics: ${JSON.stringify(metrics)}. Output JSON with: { title, sections: [{ heading, body }], highlights: [string], actionItems: [string] }`;
   const aiResult = await router.route(taskType, prompt, 'You are a business intelligence analyst for a travel agency. Generate concise, actionable briefings. Always respond with valid JSON.');
 
@@ -134,6 +150,7 @@ app.post('/health-score/calculate', async (c) => {
   const env = c.env;
 
   const now = new Date();
+  const { today: localToday } = await tenantToday(c);
   const last30 = new Date(Date.now() - 30 * 86400000).toISOString();
   const prev30 = new Date(Date.now() - 60 * 86400000).toISOString();
 
@@ -146,7 +163,7 @@ app.post('/health-score/calculate', async (c) => {
     db.prepare(`SELECT COUNT(*) as c FROM contacts WHERE created_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE status = 'pending' AND scheduled_at < ?`).bind(now.toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'paid' AND updated_at >= ?`).bind(last30).first<{ c: number }>(),
-    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'sent' AND due_date < ?`).bind(now.toISOString().substring(0, 10)).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'sent' AND due_date < ?`).bind(localToday).first<{ c: number }>(),
   ]);
 
   const metrics = {
@@ -160,7 +177,7 @@ app.post('/health-score/calculate', async (c) => {
     overdueInvoices: overdueInvoices?.c || 0,
   };
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze these travel agency CRM metrics for the last 30 days and output a business health score. Metrics: ${JSON.stringify(metrics)}. Output JSON: { overallScore: 0-100, revenueScore: 0-100, pipelineScore: 0-100, customerScore: 0-100, teamScore: 0-100, operationsScore: 0-100, alerts: [string], recommendations: [string], trends: { revenue: "up"|"down"|"stable", pipeline: "up"|"down"|"stable" } }`;
   const aiResult = await router.route('business_health_score', prompt, 'You are a business health analyst. Score each dimension 0-100. Be data-driven. Always respond with valid JSON.');
 
@@ -261,9 +278,17 @@ app.get('/destination-profitability', async (c) => {
     LIMIT 20
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze destination profitability for a travel agency. Data: ${JSON.stringify(destinations.results || [])}. Output JSON: { destinations: [{ name, revenue, margin, leadCount, conversionRate, recommendation }], topPerformer, underPerformer, insights: [string] }`;
-  const aiResult = await router.route('destination_profitability', prompt, 'You are a travel business analyst. Analyze destination data and provide actionable insights. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'destination_profitability', prompt, 'You are a travel business analyst. Analyze destination data and provide actionable insights. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    // No AI provider: the SQL aggregates are still real, only the commentary is missing.
+    return success(c, {
+      destinations: destinations.results || [], topPerformer: null, underPerformer: null, insights: null,
+      rawData: destinations.results || [], aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {
@@ -283,8 +308,9 @@ app.get('/seasonal-demand', async (c) => {
   const db = c.get('tenantDb');
   const env = c.env;
 
+  const seasonalMod = sqlOffsetModifier(await tenantTimeZone(c));
   const monthly = await db.prepare(`
-    SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as lead_count,
+    SELECT strftime('%Y-%m', created_at, '${seasonalMod}') as month, COUNT(*) as lead_count,
       SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_count
     FROM leads
     WHERE created_at >= datetime('now', '-12 months')
@@ -293,14 +319,14 @@ app.get('/seasonal-demand', async (c) => {
   `).all();
 
   const byDestMonth = await db.prepare(`
-    SELECT destination, strftime('%m', created_at) as month_num, COUNT(*) as count
+    SELECT destination, strftime('%m', created_at, '${seasonalMod}') as month_num, COUNT(*) as count
     FROM leads
     WHERE destination IS NOT NULL AND destination != '' AND created_at >= datetime('now', '-24 months')
     GROUP BY destination, month_num
     ORDER BY destination, month_num
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze seasonal demand for a travel agency. Monthly data: ${JSON.stringify(monthly.results || [])}. By destination/month: ${JSON.stringify(byDestMonth.results || [])}. Output JSON: { peakMonths: [string], slowMonths: [string], forecast: [{ month, predictedLeads }], destinationSeasonality: [{ destination, peakMonths, slowMonths }], recommendations: [string] }`;
   const aiResult = await router.route('seasonal_demand', prompt, 'You are a travel demand analyst. Identify seasonal patterns and provide forecasts. Always respond with valid JSON.');
 
@@ -329,7 +355,7 @@ app.post('/customer-ltv/:contactId', async (c) => {
   const leads = await db.prepare(`SELECT status, estimated_value, created_at FROM leads WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
   const invoices = await db.prepare(`SELECT total, status, created_at FROM invoices WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Calculate customer lifetime value for this travel agency customer. Contact: ${JSON.stringify({ name: contact.name, email: contact.email, created_at: contact.created_at })}. Leads: ${JSON.stringify(leads.results || [])}. Invoices: ${JSON.stringify(invoices.results || [])}. Output JSON: { lifetimeValue, predictedNextValue, frequency, recency, monetaryValue, segment, prediction: string, confidence: 0.0-1.0 }`;
   const aiResult = await router.route('customer_ltv', prompt, 'You are a customer analytics expert. Calculate RFM-based LTV. Always respond with valid JSON.');
 
@@ -363,13 +389,14 @@ app.get('/cash-flow-forecast', async (c) => {
     FROM invoices WHERE status IN ('sent', 'partially_paid')
   `).first<{ receivable: number; count: number }>();
 
+  const cashMod = sqlOffsetModifier(await tenantTimeZone(c));
   const recentPayments = await db.prepare(`
-    SELECT strftime('%Y-%m', updated_at) as month, SUM(total) as amount
+    SELECT strftime('%Y-%m', updated_at, '${cashMod}') as month, SUM(total) as amount
     FROM invoices WHERE status = 'paid' AND updated_at >= datetime('now', '-6 months')
     GROUP BY month ORDER BY month
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Forecast cash flow for next 3 months for a travel agency. Pipeline: ${JSON.stringify(pipeline.results || [])}. Pending receivables: ${JSON.stringify(pendingInvoices)}. Recent payments: ${JSON.stringify(recentPayments.results || [])}. Output JSON: { forecast: [{ month, predictedInflow, predictedOutflow, netCashFlow }], totalExpectedInflow, riskFactors: [string], recommendations: [string] }`;
   const aiResult = await router.route('cash_flow_forecast', prompt, 'You are a financial analyst for a travel agency. Provide realistic cash flow forecasts. Always respond with valid JSON.');
 
@@ -405,9 +432,16 @@ app.get('/team-performance', async (c) => {
     GROUP BY u.id
   `).bind(since).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Score salesperson effectiveness for a travel agency team. Data: ${JSON.stringify(teamStats.results || [])}. Output JSON: { rankings: [{ userId, name, score: 0-100, strengths: [string], improvements: [string] }], topPerformer, insights: [string], coachingNeeds: [{ userId, area, suggestion }] }`;
-  const aiResult = await router.route('salesperson_scoring', prompt, 'You are a sales performance analyst. Be constructive and specific. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'salesperson_scoring', prompt, 'You are a sales performance analyst. Be constructive and specific. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    return success(c, {
+      rankings: null, topPerformer: null, insights: null, coachingNeeds: null,
+      rawData: teamStats.results || [], aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {
@@ -476,7 +510,7 @@ app.post('/customer-segments/calculate', async (c) => {
     LIMIT ?
   `).bind(limit).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Segment these travel agency customers. Data: ${JSON.stringify(contacts.results || [])}. For each customer, assign a segment (vip, high_potential, churn_risk, seasonal, dormant, new), confidence (0-1), churn risk (0-1), and predicted next booking date. Output JSON: { segments: [{ contactId, segment, confidence, churnRisk, nextTripPrediction, lifetimeValue, preferredChannel }] }`;
   const aiResult = await router.route('customer_segmentation', prompt, 'You are a customer segmentation expert. Use RFM analysis principles. Always respond with valid JSON.');
 
@@ -590,9 +624,17 @@ app.get('/lost-deal-analysis', async (c) => {
     GROUP BY status ORDER BY count DESC
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze lost deals for a travel agency. By reason: ${JSON.stringify(byReason.results || [])}. By status breakdown: ${JSON.stringify(byStatus.results || [])}. Recent lost: ${JSON.stringify((lostLeads.results || []).slice(0, 20))}. Output JSON: { patterns: [string], topReasons: [{ reason, count, lostValue, actionItem }], stageDropoffs: [{ stage, count, suggestion }], recoverable: number, recommendations: [string] }`;
-  const aiResult = await router.route('lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    return success(c, {
+      patterns: null, topReasons: byReason.results || [], stageDropoffs: null, recoverable: null, recommendations: null,
+      rawByReason: byReason.results || [], rawByStatus: byStatus.results || [],
+      aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {
@@ -645,13 +687,14 @@ app.post('/recommendations/generate', async (c) => {
   const db = c.get('tenantDb');
   const env = c.env;
   const userId = c.get('userId');
+  const { today: recToday } = await tenantToday(c);
 
   // Gather high-level metrics
   const [overdueFollowUps, hotLeads, staleLeads, overdueInvoices] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE created_by = ? AND status = 'pending' AND scheduled_at < ?`).bind(userId, new Date().toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND estimated_value > 100000`).bind(userId).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND updated_at < ?`).bind(userId, new Date(Date.now() - 7 * 86400000).toISOString()).first<{ c: number }>(),
-    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE created_by = ? AND status = 'sent' AND due_date < ?`).bind(userId, new Date().toISOString().substring(0, 10)).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE created_by = ? AND status = 'sent' AND due_date < ?`).bind(userId, recToday).first<{ c: number }>(),
   ]);
 
   const context = {
@@ -661,7 +704,7 @@ app.post('/recommendations/generate', async (c) => {
     overdueInvoices: overdueInvoices?.c || 0,
   };
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Generate actionable recommendations for a travel agency salesperson. Context: ${JSON.stringify(context)}. Output JSON: { recommendations: [{ title, description, reasoning, impactScore: 0.0-1.0, confidenceScore: 0.0-1.0, recommendationType: "prioritize"|"re_engage"|"upsell"|"timing"|"channel", actionUrl: "/leads?status=stale" }] }. Max 5 recommendations.`;
   const aiResult = await router.route('ai_recommendation_gen', prompt, 'You are a sales coach. Give practical, specific recommendations. Always respond with valid JSON.');
 
@@ -693,12 +736,14 @@ app.get('/usage', async (c) => {
   const period = c.req.query('period') || '30d';
   const days = parseInt(period.replace('d', '')) || 30;
   const since = new Date(Date.now() - days * 86400000).toISOString();
+  const usageMod = sqlOffsetModifier(await tenantTimeZone(c));
 
   const [totalUsage, byTask, byModel, byDay] = await Promise.all([
+
     db.prepare(`SELECT COUNT(*) as calls, COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens, COALESCE(SUM(cost_estimate), 0) as total_cost FROM ai_usage_log WHERE created_at >= ?`).bind(since).first<{ calls: number; input_tokens: number; output_tokens: number; total_cost: number }>(),
     db.prepare(`SELECT task_type, COUNT(*) as calls, COALESCE(SUM(input_tokens + output_tokens), 0) as tokens, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY task_type ORDER BY cost DESC`).bind(since).all(),
     db.prepare(`SELECT model_name, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY model_name ORDER BY cost DESC`).bind(since).all(),
-    db.prepare(`SELECT strftime('%Y-%m-%d', created_at) as day, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY day ORDER BY day`).bind(since).all(),
+    db.prepare(`SELECT strftime('%Y-%m-%d', created_at, '${usageMod}') as day, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY day ORDER BY day`).bind(since).all(),
   ]);
 
   return success(c, {
@@ -713,13 +758,14 @@ app.get('/usage', async (c) => {
 // Revenue pulse widget data (TICKET-491)
 app.get('/revenue-pulse', async (c) => {
   const db = c.get('tenantDb');
-  const now = new Date();
-  const thisMonth = now.toISOString().substring(0, 7);
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 7);
+  const pulseTz = await tenantTimeZone(c);
+  const pulseMod = sqlOffsetModifier(pulseTz);
+  const thisMonth = localMonthWindow(pulseTz).startDate.substring(0, 7);
+  const lastMonth = localMonthWindow(pulseTz, new Date(), -1).startDate.substring(0, 7);
 
   const [currentRevenue, lastRevenue, pipelineValue, avgDealSize] = await Promise.all([
-    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(thisMonth).first<{ t: number }>(),
-    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(lastMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at, '${pulseMod}') = ?`).bind(thisMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at, '${pulseMod}') = ?`).bind(lastMonth).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(SUM(estimated_value), 0) as t FROM leads WHERE status NOT IN ('won', 'lost', 'closed')`).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(AVG(estimated_value), 0) as t FROM leads WHERE status = 'won' AND updated_at >= datetime('now', '-3 months')`).first<{ t: number }>(),
   ]);

@@ -1,0 +1,28 @@
+{
+  "note": "Bundle status poll, rejected; the reason comes from the bundle's evaluation. Written from Twilio's documentation; verify at go-live.",
+  "account": "ACsub0000000000000000000000000000",
+  "calls": [
+    {
+      "request": { "method": "GET", "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001" },
+      "response": { "status": 200, "body": { "sid": "BU00000000000000000000000000000001", "status": "twilio-rejected" } }
+    },
+    {
+      "request": { "method": "GET", "url": "https://numbers.twilio.com/v2/RegulatoryCompliance/Bundles/BU00000000000000000000000000000001/Evaluations" },
+      "response": {
+        "status": 200,
+        "body": {
+          "results": [
+            {
+              "status": "noncompliant",
+              "results": [
+                { "passed": true, "friendly_name": "Business name" },
+                { "passed": false, "friendly_name": "Business registration number", "failure_reason": "The registration number does not match the extract" }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "result": { "status": "twilio-rejected", "failureReason": "The registration number does not match the extract" }
+}

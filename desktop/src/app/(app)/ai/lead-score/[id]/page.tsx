@@ -1,189 +1,227 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  Target,
-  ArrowLeft,
-  Loader2,
-  RefreshCw,
-  TrendingUp,
-  Star,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { RefreshCw, Star, Target } from 'lucide-react';
 import { toast } from 'sonner';
+import { DetailPage } from '@/components/domain';
+import { Badge, Button, Progress, Separator, Skeleton, Tag } from '@/components/ui';
+import { cn } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
-import { aiApi, type LeadScore } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type LeadScore, type LeadScoreHistoryEntry } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability, useNotConfiguredError } from '@/components/domain/ai/use-ai-availability';
 
 function getScoreColor(score: number) {
-  if (score >= 80) return 'text-emerald-600';
-  if (score >= 60) return 'text-blue-600';
-  if (score >= 40) return 'text-amber-600';
-  return 'text-red-600';
+  if (score >= 80) return 'text-ds-success-on-subtle';
+  if (score >= 60) return 'text-ds-info-on-subtle';
+  if (score >= 40) return 'text-ds-warning-on-subtle';
+  return 'text-ds-danger-on-subtle';
 }
 
 function getScoreBg(score: number) {
-  if (score >= 80) return 'bg-emerald-100 dark:bg-emerald-950/30';
-  if (score >= 60) return 'bg-blue-100 dark:bg-blue-950/30';
-  if (score >= 40) return 'bg-amber-100 dark:bg-amber-950/30';
-  return 'bg-red-100 dark:bg-red-950/30';
+  if (score >= 80) return 'bg-ds-success-subtle';
+  if (score >= 60) return 'bg-ds-info-subtle';
+  if (score >= 40) return 'bg-ds-warning-subtle';
+  return 'bg-ds-danger-subtle';
 }
 
 function getScoreLabel(score: number) {
-  if (score >= 80) return 'Hot Lead';
-  if (score >= 60) return 'Warm Lead';
-  if (score >= 40) return 'Cool Lead';
-  return 'Cold Lead';
+  if (score >= 80) return 'Hot lead';
+  if (score >= 60) return 'Warm lead';
+  if (score >= 40) return 'Cool lead';
+  return 'Cold lead';
 }
 
-function getProgressColor(score: number) {
-  if (score >= 80) return '[&>div]:bg-emerald-600';
-  if (score >= 60) return '[&>div]:bg-blue-600';
-  if (score >= 40) return '[&>div]:bg-amber-500';
-  return '[&>div]:bg-red-500';
+function scoreTone(score: number): 'success' | 'info' | 'warning' | 'danger' {
+  if (score >= 80) return 'success';
+  if (score >= 60) return 'info';
+  if (score >= 40) return 'warning';
+  return 'danger';
+}
+
+function LeadScoreDetailContent({ id }: { id: string }) {
+  const router = useRouter();
+  const { data, loading, refetch } = useApiQuery(() => aiApi.intelligence.getLeadScore(id), [id]);
+  const { data: historyData, loading: historyLoading, refetch: refetchHistory } = useApiQuery(
+    () => aiApi.intelligence.getLeadScoreHistory(id),
+    [id],
+  );
+  const [recalculating, setRecalculating] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
+  const notConfigured = useNotConfiguredError();
+
+  const score: LeadScore | null = data?.data ?? null;
+  const history: LeadScoreHistoryEntry[] = historyData?.data ?? [];
+
+  const handleRecalculate = async () => {
+    setRecalculating(true);
+    setUnavailable(null);
+    try {
+      await aiApi.intelligence.calculateLeadScore(id);
+      toast.success('Lead score recalculated');
+      refetch();
+      refetchHistory();
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not recalculate lead score');
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
+  const unavailableNotice =
+    unavailable ? (
+      <AiUnavailableNotice
+        error={unavailable ?? notConfigured}
+        onRetry={() => {
+          setUnavailable(null);
+          availability.recheck();
+        }}
+      />
+    ) : null;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-ds-6">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full lg:col-span-2" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!score && unavailableNotice) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        {unavailableNotice}
+        <div>
+          <Button size="sm" variant="outline" onClick={() => router.push('/ai/lead-score')}>
+            Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!score) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
+        <Target className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
+        <div>
+          <p className="text-sm font-medium text-ds-foreground">No score calculated yet</p>
+          <p className="mt-ds-1 text-xs text-ds-foreground-muted">Run the AI scoring model to get a breakdown for this lead</p>
+        </div>
+        <div className="flex gap-ds-2">
+          <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalculating}>
+            <RefreshCw className="h-4 w-4" />
+            {recalculating ? 'Calculating…' : 'Calculate score'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => router.push('/ai/lead-score')}>
+            Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <DetailPage<LeadScore>
+      entity={score}
+      title="Lead score"
+      subtitle={`AI-powered scoring analysis for lead ${id}`}
+      status={<Tag tone={scoreTone(score.score)}>{getScoreLabel(score.score)}</Tag>}
+      onBack={() => router.push('/ai/lead-score')}
+      primaryActions={
+        <Button variant="outline" size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalculating}>
+          <RefreshCw className="h-4 w-4" />
+          {recalculating ? 'Recalculating…' : 'Recalculate'}
+        </Button>
+      }
+      overview={
+        <div className="flex flex-col gap-ds-6">
+        {unavailableNotice}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-ds-6">
+          <div className="rounded-ds-lg border border-ds-border p-ds-6 flex flex-col items-center gap-ds-4">
+            <p className="text-lg font-semibold text-ds-foreground">Overall score</p>
+            <div
+              className={cn(
+                'flex items-center justify-center h-36 w-36 rounded-ds-full border-4 border-current',
+                getScoreBg(score.score),
+                getScoreColor(score.score),
+              )}
+            >
+              <div className="text-center">
+                <p className="text-4xl font-bold">{score.score}</p>
+                <p className="text-xs text-ds-foreground-muted">/100</p>
+              </div>
+            </div>
+            <Badge className={cn('text-sm px-ds-3 py-ds-1', getScoreBg(score.score), getScoreColor(score.score))}>
+              {getScoreLabel(score.score)}
+            </Badge>
+            <Progress value={score.score} className="h-3 w-full" />
+          </div>
+
+          <div className="rounded-ds-lg border border-ds-border p-ds-6 lg:col-span-2 flex flex-col gap-ds-4">
+            <div>
+              <p className="text-lg font-semibold text-ds-foreground">Score breakdown</p>
+              <p className="text-sm text-ds-foreground-muted">Factors contributing to the overall lead score</p>
+            </div>
+            <div className="flex flex-col gap-ds-4">
+              {score.factors.map((factor, idx) => (
+                <div key={idx} className="flex flex-col gap-ds-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-ds-foreground">{factor.name}</span>
+                    <div className="flex items-center gap-ds-3">
+                      <span className="text-xs text-ds-foreground-muted">Weight: {Math.round(factor.weight * 100)}%</span>
+                      <span className="font-semibold text-ds-foreground">+{factor.contribution.toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <Progress value={(factor.contribution / score.score) * 100} className="h-2" />
+                </div>
+              ))}
+              {score.factors.length === 0 && (
+                <p className="text-sm text-ds-foreground-muted">No factor breakdown available.</p>
+              )}
+            </div>
+
+            {score.recommendation && (
+              <>
+                <Separator />
+                <div className="flex items-start gap-ds-3 rounded-ds-lg border border-ds-primary-subtle bg-ds-primary-subtle p-ds-4">
+                  <Star className="h-5 w-5 text-ds-primary-on-subtle shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-ds-foreground">AI recommendation</p>
+                    <p className="text-sm text-ds-foreground-muted mt-ds-1">{score.recommendation}</p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        </div>
+      }
+      activity={history.map((h) => ({
+        id: h.id,
+        title: `Score: ${h.score} (${h.category ?? getScoreLabel(h.score)})`,
+        timestamp: formatLocaleDateTime(h.createdAt),
+      }))}
+      activityLoading={historyLoading}
+    />
+  );
 }
 
 export default function LeadScorePage() {
-  const params = useParams();
-  const router = useRouter();
-  const id = params.id as string;
-
-  const { data, loading, refetch } = useApiQuery(
-    () => aiApi.intelligence.getLeadScore(id),
-    [id],
-  );
-
-  const score: LeadScore | null = (data as { data?: LeadScore })?.data ?? null;
-
+  const params = useParams<{ id: string }>();
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Lead Score</h1>
-          <p className="text-muted-foreground mt-1">
-            AI-powered scoring analysis for lead {id}
-          </p>
-        </div>
-        <Button variant="outline" className="gap-2" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
-          Recalculate
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <Skeleton className="h-32 w-32 rounded-full mx-auto" />
-              <Skeleton className="h-6 w-24 mx-auto" />
-            </CardContent>
-          </Card>
-          <Card className="lg:col-span-2">
-            <CardContent className="pt-6 space-y-4">
-              {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      ) : !score ? (
-        <Card>
-          <CardContent className="py-12">
-            <div className="flex flex-col items-center justify-center text-muted-foreground">
-              <Target className="h-12 w-12 mb-3 opacity-30" />
-              <p className="text-sm">Unable to calculate lead score</p>
-              <p className="text-xs mt-1">This lead may not have enough data for scoring</p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Score Gauge */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg text-center">Overall Score</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center space-y-4">
-              <div
-                className={cn(
-                  'flex items-center justify-center h-36 w-36 rounded-full border-4',
-                  getScoreBg(score.score),
-                )}
-                style={{ borderColor: 'currentColor' }}
-              >
-                <div className="text-center">
-                  <p className={cn('text-4xl font-bold', getScoreColor(score.score))}>
-                    {score.score}
-                  </p>
-                  <p className="text-xs text-muted-foreground">/100</p>
-                </div>
-              </div>
-              <Badge className={cn('text-sm px-3 py-1', getScoreBg(score.score), getScoreColor(score.score))}>
-                {getScoreLabel(score.score)}
-              </Badge>
-              <Progress
-                value={score.score}
-                className={cn('h-3 w-full', getProgressColor(score.score))}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Factor Breakdown */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-lg">Score Breakdown</CardTitle>
-              <CardDescription>
-                Factors contributing to the overall lead score
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {score.factors.map((factor, idx) => (
-                <div key={idx} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{factor.name}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">
-                        Weight: {Math.round(factor.weight * 100)}%
-                      </span>
-                      <span className="font-semibold">
-                        +{factor.contribution.toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
-                  <Progress
-                    value={(factor.contribution / score.score) * 100}
-                    className="h-2"
-                  />
-                </div>
-              ))}
-
-              {score.recommendation && (
-                <>
-                  <Separator />
-                  <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
-                    <Star className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">AI Recommendation</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {score.recommendation}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
+    <AiFeaturePageGate feature="ai_intelligence" title="Lead Score" featureName="AI Intelligence" benefit="AI-powered lead scoring">
+      <LeadScoreDetailContent id={params.id} />
+    </AiFeaturePageGate>
   );
 }

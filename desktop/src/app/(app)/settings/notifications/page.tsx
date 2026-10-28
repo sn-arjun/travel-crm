@@ -2,13 +2,14 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
 import {
   ArrowLeft,
   Save,
   Loader2,
   Bell,
   Mail,
-  MessageSquare,
   Smartphone,
   Moon,
   VolumeX,
@@ -34,6 +35,7 @@ type NotificationPreferences = Record<string, ChannelPrefs>;
 interface QuietHours {
   startHour: number;
   endHour: number;
+  enabled?: boolean;
 }
 
 // UI quiet hours state (for time inputs)
@@ -89,8 +91,8 @@ export default function NotificationSettingsPage() {
   React.useEffect(() => {
     if (prefsResponse && 'data' in prefsResponse && prefsResponse.data) {
       // Backend returns { preferences: {...}, quietHours: {...} } — extract just preferences
-      const raw = prefsResponse.data as any;
-      const data: NotificationPreferences = raw.preferences ?? (raw as NotificationPreferences);
+      const raw = prefsResponse.data as unknown as { preferences?: NotificationPreferences } & NotificationPreferences;
+      const data: NotificationPreferences = raw.preferences ?? raw;
       // Merge with defaults to ensure all keys present
       setPrefs({ ...DEFAULT_PREFS, ...data });
     }
@@ -100,7 +102,7 @@ export default function NotificationSettingsPage() {
     if (qhResponse && 'data' in qhResponse && qhResponse.data) {
       const qh = qhResponse.data as QuietHours;
       if (qh.startHour !== undefined) {
-        setQuietHoursUi({ enabled: true, startHour: qh.startHour, endHour: qh.endHour });
+        setQuietHoursUi({ enabled: qh.enabled ?? true, startHour: qh.startHour, endHour: qh.endHour });
       }
     }
   }, [qhResponse]);
@@ -128,11 +130,7 @@ export default function NotificationSettingsPage() {
     setSavingQh(true);
     try {
       if (!quietHoursUi.enabled) {
-        // Backend has no "enabled" flag — delete quiet hours by sending null/empty or a special call
-        // Use DELETE if the endpoint supports it, otherwise send empty object
-        await client.delete(API_ENDPOINTS.notificationPreferences.quietHours).catch(() => {
-          // Fallback: send hours that effectively disable (equal hours = no quiet period)
-        });
+        await client.delete(API_ENDPOINTS.notificationPreferences.quietHours);
         toast.success('Quiet hours disabled');
       } else {
         const payload: QuietHours = {
@@ -149,25 +147,32 @@ export default function NotificationSettingsPage() {
     }
   };
 
+  const header = (
+    <PageHeader
+      title="Notification preferences"
+      description="Choose how and when you receive notifications"
+      back={
+        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+      }
+    />
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <PageContainer>
+        {header}
+        <div className="flex items-center justify-center py-ds-8">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Notification Preferences</h1>
-          <p className="text-muted-foreground mt-1">Choose how and when you receive notifications</p>
-        </div>
-      </div>
+    <PageContainer>
+      {header}
 
       {/* Mute All toggle */}
       <Card>
@@ -197,7 +202,7 @@ export default function NotificationSettingsPage() {
         <CardContent>
           <div className="space-y-1">
             {/* Header */}
-            <div className="grid grid-cols-[1fr_80px_80px_80px] gap-4 py-2 px-2">
+            <div className="grid grid-cols-[1fr_5rem_5rem_5rem] gap-4 py-2 px-2">
               <div />
               <div className="flex items-center justify-center gap-1 text-xs font-medium text-muted-foreground">
                 <Mail className="h-3.5 w-3.5" />
@@ -218,7 +223,7 @@ export default function NotificationSettingsPage() {
             {NOTIFICATION_TYPES.map((nt) => (
               <div
                 key={nt.key}
-                className="grid grid-cols-[1fr_80px_80px_80px] gap-4 py-3 px-2 rounded-lg hover:bg-muted/50"
+                className="grid grid-cols-[1fr_5rem_5rem_5rem] gap-4 py-3 px-2 rounded-lg hover:bg-muted/50"
               >
                 <div>
                   <p className="text-sm font-medium">{nt.label}</p>
@@ -304,6 +309,6 @@ export default function NotificationSettingsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

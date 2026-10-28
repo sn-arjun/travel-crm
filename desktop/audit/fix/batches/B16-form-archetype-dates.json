@@ -1,0 +1,101 @@
+{
+  "id": "B16",
+  "title": "Form archetype: save errors surface, live re-validation, local dates everywhere, DatePicker month/year, Combobox fixes",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W5",
+  "dependsOn": [
+    "B14"
+  ],
+  "parallelGroup": "W5",
+  "bugIds": [
+    "BUG-014",
+    "BUG-015",
+    "BUG-032",
+    "BUG-041",
+    "BUG-042",
+    "BUG-077"
+  ],
+  "fixReqs": [],
+  "estFiles": 65,
+  "goal": "Failed saves always tell the user why, validation errors clear as soon as a field is fixed, no date is ever saved a day early, DOB/expiry are quick to pick, and comboboxes search by label and keep the selection visible.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: entity-form.tsx:119 `handleSubmit(onSubmit)` has no try/catch; the client throws ApiError {status, message, code, errors?} so a 400 shows nothing (invoice with unit price 0). 214 of 262 setValue calls omit shouldValidate -> stale errors after picking a value. 71 occurrences of `toISOString().split('T')[0]` / `.slice(0, 10)` across ~50 files (grep list) convert local midnight to the previous UTC day in IST (runtime: picked 15 Oct -> travelDate \"2026-10-14\"). src/lib/utils.ts is a FILE, so put date helpers in src/lib/dates.ts. ui/date-picker.tsx (MiniCalendar) only has prev/next month. ui/combobox.tsx:63 uses `w-[--radix-popover-trigger-width]` (invalid in Tailwind v4; v4 syntax is w-(--radix-popover-trigger-width)), CommandItem value=option.value so cmdk filters by id, and the selected label disappears when server search replaces options. relation-combobox.tsx: `load` depends on `fetcher` (inline in pages) so the effect re-fires on parent renders and cancels results; error element id is the constant \"relation-error\" (duplicate ids); calls.spec.ts:30/:271 and documents.spec.ts:27/:295 type a seeded name and never see the option. fleet/drivers/new requires licence number + expiry while the API makes them optional. Six specs locate the calendar by `.w-\\[280px\\]`: fleet-drivers, fleet-rate-cards, fleet-trips, leads, rate-cards, whatsapp-campaigns (fleet-drivers.spec.ts:27 also clicks day \"15\", which min/max disables - BUG-087 item fixed here).",
+  "steps": [
+    "Create src/lib/dates.ts: toLocalDateString(d: Date): 'YYYY-MM-DD' from local parts; parseLocalDate(s: string): Date at local midnight (accept 'YYYY-MM-DD' or ISO -> date part); formatDisplayDate(d: Date | string | null | undefined, style: 'short' | 'medium' | 'long' = 'medium'): string using 'en-IN' ('' for null); toLocalDateTimeInput if needed. Unit tests that pass with TZ=Asia/Kolkata and TZ=America/Los_Angeles (set process.env.TZ per test file or use fixed Date components).",
+    "Codemod: replace every `<expr>.toISOString().split('T')[0]`, `.toISOString().slice(0, 10)` and `.toISOString().substring(0, 10)` in desktop/src (non-test and tests) with `toLocalDateString(<expr>)` + import; review each hit - a value that must stay a UTC timestamp (rare) keeps toISOString() but not the split. Where edit forms turn a stored 'YYYY-MM-DD' into a Date with new Date(str), use parseLocalDate(str).",
+    "eslint.config.mjs: add to the SAME no-restricted-syntax entry a selector banning the idiom: `CallExpression[callee.property.name=/^(split|slice|substring)$/][callee.object.callee.property.name='toISOString']` with message \"Use toLocalDateString() from @/lib/dates\". Then regenerate the lint baseline (`node scripts/lint-gate.mjs --update`) - you are the only batch in W5 allowed to.",
+    "EntityForm: `handleSubmit(async (values) => { setSubmitError(null); try { await onSubmit(values); } catch (e) { const err = e as ApiError; for (const [field, msgs] of Object.entries(err.errors ?? {})) form.setError(field as Path<T>, { type: 'server', message: msgs[0] }); const msg = err.message || 'Could not save. Please try again.'; setSubmitError(msg); toast.error(msg); } }, onInvalid)`; onInvalid -> toast.error('Please fix the highlighted fields') and focus/scroll the first invalid field. Render submitError (falls back to the `error` prop) in the existing role=alert slot near the actions.",
+    "EntityForm re-validation: `reValidateMode: 'onChange'`; wrap form.setValue so callers get defaults `{ shouldDirty: true, shouldTouch: true, shouldValidate: form.formState.isSubmitted || !!get(form.formState.errors, name), ...opts }` - pass the wrapped object to renderSections and FormProvider (same type UseFormReturn<T>).",
+    "DatePicker: month and year <Select>s in the caption (aria-label \"Month\"/\"Year\"; year range = fromYear/toYear props, else minDate/maxDate years, else today-100..today+10), keep prev/next; respect minDate/maxDate; popover content `data-slot=\"date-picker-content\"` and width `w-72` (no px); every day button `data-day=\"YYYY-MM-DD\"` (local).",
+    "e2e/helpers/date-picker.ts: `pickDate(page, trigger: Locator, date: Date)` -> open, choose year + month via the selects, click [data-day=...]. Update fleet-drivers, fleet-rate-cards, fleet-trips, leads, rate-cards, whatsapp-campaigns specs to use it instead of `.w-\\[280px\\]`; in fleet-drivers.spec.ts:27 pick an enabled date relative to today (e.g. today + 30 days within min/max) rather than day \"15\".",
+    "Combobox: width w-(--radix-popover-trigger-width); CommandItem value={option.label} keywords={[option.value]} and onSelect maps the label back to the option; cache the selected option (state) so its label stays when onSearch replaces options.",
+    "RelationCombobox: keep fetcher in a ref (load stable, effect depends on [open, debouncedQuery]); cache the selected item; error id from React.useId() (and aria-errormessage uses it). Then run calls.spec.ts and documents.spec.ts: if the seeded name still never appears, inspect the page fetchers (communication/calls dial contact search; documents lead/itinerary pickers) and pass the typed query as `search` to the API (edit only the fetcher lines in those files).",
+    "BUG-015 explicit pages: leads/new, leads/[id]/edit, invoices/new, invoices/[id]/edit, fleet/drivers/new, fleet/drivers/[id]/edit, calendar, fleet/page - verify after the codemod that picking the 15th sends the 15th (runtime or unit test of the payload builder).",
+    "BUG-077: fleet/drivers/new and [id]/edit schemas make licence number and expiry optional (match backend validator). invoices/new: line item unit price must be > 0 in the client schema (\"Unit price must be greater than 0\").",
+    "From B09 merge: e2e/rate-cards.spec.ts pickDate() (lines ~30-42) locates the calendar popover via the CSS class .w-[280px] and the next-month button by DOM position; B06 changed the popover width class so rate-cards.spec.ts:71 and :265 time out. Give the DatePicker stable accessible hooks (role=dialog with aria-label, labelled month/year selects, named prev/next buttons, day buttons with full date aria-label) and add a shared e2e helper (e2e/helpers/date-picker.ts) that picks a date via those hooks; switch every spec that drives the calendar (grep -l \"w-[280px]|nextMonth|pickDate\" e2e) to it. rate-cards.spec.ts must fully pass."
+  ],
+  "filesAllowlist": [
+    "desktop/src/lib/dates.ts",
+    "desktop/src/lib/dates.test.ts",
+    "desktop/src/components/domain/entity-form.tsx",
+    "desktop/src/components/ui/date-picker.tsx",
+    "desktop/src/components/ui/combobox.tsx",
+    "desktop/src/components/domain/relation-combobox.tsx",
+    "every desktop/src file containing the toISOString date idiom (codemod lines + import only)",
+    "desktop/src/app/(app)/fleet/drivers/new/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/invoices/new/page.tsx",
+    "desktop/src/app/(app)/communication/calls/** (fetcher lines only)",
+    "desktop/src/app/(app)/documents/page.tsx (fetcher lines only)",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/helpers/date-picker.ts",
+    "desktop/e2e/{fleet-drivers,fleet-rate-cards,fleet-trips,leads,rate-cards,whatsapp-campaigns}.spec.ts",
+    "desktop/e2e/*.spec.ts (date-picker call sites only)"
+  ],
+  "mustNotTouch": [
+    "backend/**",
+    "desktop/src/components/domain/list-page.tsx",
+    "desktop/e2e/{campaigns,communication-inbox,contacts,fleet-vehicles,ai-business-intelligence,auth-shell,super-admin}.spec.ts (B17)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "`grep -rnE \"toISOString\\(\\)\\.(split|slice|substring)\" desktop/src` -> 0.",
+    "leads/new: pick the 15th -> POST body travelDate ends with \"-15\".",
+    "Invoice with unit price 0 -> inline error under the field; a backend 400 shows a toast with a readable message.",
+    "Submit empty /leads/new, then pick a contact -> the contact error disappears immediately.",
+    "DatePicker year select jumps to 1990 in one action.",
+    "calls.spec.ts:30/:271 and documents.spec.ts:27/:295 pass.",
+    "Two RelationComboboxes on one form have different error ids."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/components/domain/{entity-form,relation-combobox}.tsx",
+      "src/components/ui/{date-picker,combobox}.tsx",
+      "src/lib/dates.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/leads.spec.ts",
+      "desktop/e2e/invoices.spec.ts",
+      "desktop/e2e/fleet-drivers.spec.ts",
+      "desktop/e2e/calls.spec.ts",
+      "desktop/e2e/documents.spec.ts",
+      "desktop/e2e/rate-cards.spec.ts",
+      "desktop/e2e/fleet-trips.spec.ts",
+      "desktop/e2e/fleet-rate-cards.spec.ts",
+      "desktop/e2e/whatsapp-campaigns.spec.ts"
+    ],
+    "allowedSpecFailures": []
+  },
+  "notes": "Large but mechanical codemod; do it with a reviewed script (scratchpad) and inspect the diff. Runs in parallel with B17 (disjoint spec files)."
+}

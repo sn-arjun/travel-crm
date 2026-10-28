@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
@@ -9,6 +9,10 @@ import { logActivity } from '../utils/activity-logger';
 import { resolveSegment, type SegmentFilter } from '../services/segment-resolver';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
+import { AllowanceExhausted, meterUsage } from '../services/metering/meter';
+import { marketingBlockedReason, unsubscribeUrl } from '../services/privacy/consent';
+import { resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -236,11 +240,15 @@ campaignRoutes.post(
       const env = c.env;
       let queuedCount = 0;
       let failureCount = 0;
+      let skippedAllowance = 0;
+      // R128: customer replies to a campaign reach the agency, not the no-reply sender
+      const replyTo = await resolveReplyTo(env, tenantDb, c.get('tenantId'), userId);
+      let capReached = false;
 
       for (const contactId of contactIds) {
         try {
           const contact = await tenantDb
-            .prepare('SELECT id, email, name FROM contacts WHERE id = ?')
+            .prepare('SELECT id, email, name, email_undeliverable FROM contacts WHERE id = ?')
             .bind(contactId)
             .first<any>();
 
@@ -249,17 +257,48 @@ campaignRoutes.post(
             continue;
           }
 
+          // R128: the address hard-bounced earlier: no message, no allowance used
+          if (contact.email_undeliverable) {
+            failureCount++;
+            continue;
+          }
+
+          // R208: opted out or marketing consent withdrawn: no message, no allowance used
+          if (await marketingBlockedReason(tenantDb, contactId, 'email')) {
+            continue;
+          }
+
+          // Every email takes one unit of the monthly email allowance before it is queued (R110).
+          // At the cap the remaining recipients are recorded as skipped_allowance; the campaign still completes.
+          if (!capReached) {
+            try {
+              await meterUsage(env, c.get('tenantId'), 'email');
+            } catch (meterErr) {
+              if (!(meterErr instanceof AllowanceExhausted)) throw meterErr;
+              capReached = true;
+            }
+          }
+
           // Create message log entry
           const logId = generateId();
           const now = new Date().toISOString();
 
           await tenantDb
             .prepare(`
-              INSERT INTO email_message_log (id, campaign_id, contact_id, recipient_email, status, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO email_message_log (id, campaign_id, contact_id, recipient_email, status, failure_reason, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `)
-            .bind(logId, campaignId, contactId, contact.email, 'queued', now, now)
+            .bind(
+              logId, campaignId, contactId, contact.email,
+              capReached ? 'skipped_allowance' : 'queued',
+              capReached ? 'Monthly email allowance used up' : null,
+              now, now,
+            )
             .run();
+          if (capReached) {
+            skippedAllowance++;
+            continue;
+          }
 
           // Queue email job
           await env.EMAIL_QUEUE.send({
@@ -270,8 +309,13 @@ campaignRoutes.post(
               html: campaign.body || undefined,
               templateId: campaign.template_id || undefined,
               templateData: { contactName: contact.name },
+              unsubscribeUrl: await unsubscribeUrl(env, c.get('tenantId'), contactId, 'email', new URL(c.req.url).origin),
               from: undefined,
-              replyTo: undefined,
+              replyTo: inboundDomain(env) ? await resolveReplyTo(env, tenantDb, c.get('tenantId'), userId, { contactId }) : replyTo,
+              emailLogId: logId,
+              tenantId: c.get('tenantId'),
+              metered: true,
+              refundOnFailure: true,
             },
           });
 
@@ -301,7 +345,7 @@ campaignRoutes.post(
         action: 'send',
         entityType: 'email_campaign',
         entityId: campaignId,
-        details: JSON.stringify({ queuedCount, failureCount }),
+        details: JSON.stringify({ queuedCount, failureCount, skippedAllowance }),
       });
 
       // Broadcast real-time event
@@ -317,7 +361,9 @@ campaignRoutes.post(
         message: `Campaign sent to ${queuedCount} recipients`,
         queuedCount,
         failureCount,
+        skippedAllowance,
         totalContacts: contactIds.length,
+        ...(skippedAllowance > 0 && { allowanceExhausted: true, options: ['upgrade', 'top_up'] }),
       });
     } catch (err: any) {
       console.error('[CAMPAIGNS] Send error:', err.message);
@@ -551,12 +597,13 @@ campaignRoutes.get(
         .prepare(`
           SELECT
             m.id, m.contact_id, m.recipient_email, m.status,
-            m.opened_at, m.clicked_at, m.sent_at, m.error_message,
+            m.opened_at, m.clicked_at, m.created_at AS sent_at,
+            COALESCE(m.failure_reason, m.bounce_reason) AS error_message,
             c.name AS contact_name, c.email AS contact_email
           FROM email_message_log m
           LEFT JOIN contacts c ON c.id = m.contact_id
           WHERE m.campaign_id = ?
-          ORDER BY m.sent_at DESC
+          ORDER BY m.created_at DESC
           LIMIT ? OFFSET ?
         `)
         .bind(campaignId, limit, offset)

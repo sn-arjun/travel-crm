@@ -1,0 +1,82 @@
+{
+  "slice": "fleet-vehicles",
+  "title": "Fleet — Vehicles",
+  "status": "existing",
+  "showcaseOrder": 16,
+  "endpoints": [
+    "DELETE /api/v1/fleet/vehicles/:id",
+    "DELETE /api/v1/fleet/vehicles/:vehicleId/documents/:docId",
+    "GET /api/v1/fleet/documents/expiring",
+    "GET /api/v1/fleet/maintenance/due",
+    "GET /api/v1/fleet/vehicles",
+    "GET /api/v1/fleet/vehicles/:id",
+    "GET /api/v1/fleet/vehicles/:id/availability",
+    "GET /api/v1/fleet/vehicles/:id/documents",
+    "GET /api/v1/fleet/vehicles/:id/maintenance",
+    "GET /api/v1/fleet/vehicles/:id/photo",
+    "GET /api/v1/fleet/vehicles/:id/trips",
+    "GET /api/v1/fleet/vehicles/:vehicleId/documents/:docId/download",
+    "GET /api/v1/fleet/vehicles/availability",
+    "POST /api/v1/fleet/vehicles",
+    "POST /api/v1/fleet/vehicles/:id/documents",
+    "POST /api/v1/fleet/vehicles/:id/maintenance",
+    "POST /api/v1/fleet/vehicles/:id/photo",
+    "PUT /api/v1/fleet/vehicles/:id",
+    "PUT /api/v1/fleet/vehicles/:id/odometer",
+    "PUT /api/v1/fleet/vehicles/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/vehicles/page.tsx",
+    "desktop/src/app/(app)/fleet/vehicles/[id]/page.tsx",
+    "desktop/src/app/(app)/fleet/vehicles/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/fleet/vehicles/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/fleet-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/09-fleet.spec.ts",
+    "desktop/e2e/18-m18-fleet.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/fleet-vehicles.spec.ts",
+  "seedHelpers": [
+    "seedVehicle"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/vehicles/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/src/stores/fleet-store.ts",
+    "desktop/src/components/domain/fleet/**",
+    "desktop/e2e/fleet-vehicles.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "No relation fields on Vehicle, so relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog N/A for this entity. availability-picker.tsx still imports fleet-mock-data but is out of scope (not one of the 4 pages in this slice's fileAllowlist) — flagging for a future slice.",
+  "showcaseScript": [
+    "Open Fleet → Vehicles and filter by vehicle type",
+    "Add a vehicle with registration and seating capacity",
+    "Upload the RC and insurance documents with expiry dates",
+    "Log a maintenance entry and update the odometer",
+    "Check availability for a date range"
+  ]
+}

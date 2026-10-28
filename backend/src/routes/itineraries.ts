@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { emitFromRequest } from '../services/automation/events';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, like, sql, count, isNull } from 'drizzle-orm';
@@ -17,7 +18,15 @@ import {
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
+import { quoteUrl } from '../utils/app-urls';
+import { formatMoney, loadLocaleContext } from '../utils/money';
+import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 import { success, created, paginated, error, notFound } from '../utils/response';
+import { requireFeature } from '../middleware/feature-gate';
+import { getDepartureSummary } from '../services/departures/capacity';
+import { AcceptError, markAccepted } from '../services/quotes/accept';
+import { bandsFromColumn, bandsFor, countByBand, fillQuantities, loadAgencyBands, loadDepartureTourBands } from '../services/pricing/age-bands';
+import { paxFromAges, paxFromLead, paxFromTravellers, travelDateFor, type ResolvedPax } from '../services/pricing/quote-fill';
 
 const itineraryRoutes = new Hono<AppContext>();
 
@@ -38,8 +47,10 @@ const itineraryItemSchema = z.object({
   markupValue: z.number().optional().nullable(),
   taxRate: z.number().min(0).optional().default(0),
   taxAmount: z.number().min(0).optional().default(0),
-  quantity: z.number().int().min(1).optional().default(1),
-  paxType: z.enum(['adult', 'child', 'infant']).optional().nullable(),
+  // 0 is a band nobody falls in (R149).
+  quantity: z.number().int().min(0).optional().default(1),
+  // A band key of the agency (adult, child, infant or its own) or per_person (R149).
+  paxType: z.string().regex(/^[a-z0-9_]{1,30}$/).optional().nullable(),
   timeStart: z.string().optional().nullable(),
   timeEnd: z.string().optional().nullable(),
   sortOrder: z.number().int().optional().default(0),
@@ -67,7 +78,8 @@ const createItinerarySchema = z.object({
   inclusions: z.array(z.string()).optional().default([]),
   exclusions: z.array(z.string()).optional().default([]),
   termsConditions: z.string().optional().nullable(),
-  currency: z.string().optional().default('INR'),
+  // Absent means the agency currency, filled in by the handler.
+  currency: z.string().optional(),
   markupType: z.enum(['percentage', 'fixed']).optional().nullable(),
   markupValue: z.number().optional().nullable(),
   days: z.array(itineraryDaySchema).min(1),
@@ -100,12 +112,24 @@ const cloneSchema = z.object({
 
 const shareLinkSchema = z.object({});
 
+const fillQuantitiesSchema = z.object({
+  source: z.enum(['ages', 'travellers', 'lead']),
+  adults: z.number().int().min(0).max(200).optional(),
+  ages: z.array(z.number().min(0).max(120)).max(100).optional(),
+  travellerIds: z.array(z.string().min(1)).max(100).optional(),
+});
+
+function parseJsonColumn(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
 // ============================================================
 // Helper: Calculate totals from days/items
 // ============================================================
 
 function calculateTotals(
-  days: Array<{ items: Array<{ costPrice?: number; sellingPrice?: number; taxRate?: number; quantity?: number }> }>,
+  days: Array<{ items: Array<{ costPrice?: number | null; sellingPrice?: number | null; taxRate?: number | null; quantity?: number | null }> }>,
   markupType?: string | null,
   markupValue?: number | null
 ) {
@@ -115,7 +139,7 @@ function calculateTotals(
 
   for (const day of days) {
     for (const item of day.items) {
-      const qty = item.quantity || 1;
+      const qty = item.quantity ?? 1;
       const cost = (item.costPrice || 0) * qty;
       const selling = (item.sellingPrice || 0) * qty;
       const tax = selling * ((item.taxRate || 0) / 100);
@@ -180,8 +204,11 @@ async function getFullItinerary(db: ReturnType<typeof drizzle>, itineraryId: str
 
   return {
     ...itin,
+    acceptedIpHash: undefined, // R155: kept for the audit trail, never sent to the app
     inclusions: itin.inclusions ? JSON.parse(itin.inclusions) : [],
     exclusions: itin.exclusions ? JSON.parse(itin.exclusions) : [],
+    ageBands: bandsFromColumn(itin.ageBands),
+    paxAges: parseJsonColumn(itin.paxAges),
     isDeleted: !!itin.isDeleted,
     shareLinkActive: !!itin.shareLinkActive,
     days: daysWithItems,
@@ -207,11 +234,16 @@ itineraryRoutes.get('/', requirePermission('itineraries', 'view'), async (c) => 
   const statusFilter = url.searchParams.get('status');
   const leadIdFilter = url.searchParams.get('leadId');
   const createdByFilter = url.searchParams.get('createdBy');
+  const contactIdFilter = url.searchParams.get('contactId');
 
   const conditions = [eq(itineraries.isDeleted, 0)];
 
   if (statusFilter) conditions.push(eq(itineraries.status, statusFilter));
   if (leadIdFilter) conditions.push(eq(itineraries.leadId, leadIdFilter));
+  // Itineraries hang off a lead, so a contact's itineraries are those of its leads
+  if (contactIdFilter) {
+    conditions.push(sql`${itineraries.leadId} IN (SELECT id FROM leads WHERE contact_id = ${contactIdFilter} AND is_deleted = 0)`);
+  }
   if (createdByFilter) conditions.push(eq(itineraries.createdBy, createdByFilter));
   if (search) conditions.push(like(itineraries.title, `%${search}%`));
 
@@ -297,7 +329,7 @@ itineraryRoutes.post('/', requirePermission('itineraries', 'create'), zValidator
     inclusions: JSON.stringify(body.inclusions),
     exclusions: JSON.stringify(body.exclusions),
     termsConditions: body.termsConditions || null,
-    currency: body.currency || 'INR',
+    currency: body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(c.get('tenantDb'))).currency,
     totalCost: totals.totalCost,
     totalSelling: totals.totalSelling,
     totalTax: totals.totalTax,
@@ -340,7 +372,7 @@ itineraryRoutes.post('/', requirePermission('itineraries', 'create'), zValidator
         markupValue: item.markupValue || null,
         taxRate: item.taxRate || 0,
         taxAmount: item.taxAmount || 0,
-        quantity: item.quantity || 1,
+        quantity: item.quantity ?? 1,
         paxType: item.paxType || null,
         timeStart: item.timeStart || null,
         timeEnd: item.timeEnd || null,
@@ -385,7 +417,13 @@ itineraryRoutes.get('/:id', requirePermission('itineraries', 'view'), async (c) 
   const id = c.req.param('id');
   const full = await getFullItinerary(db, id);
   if (!full) return notFound(c, 'Itinerary');
-  return success(c, full);
+  // A quote for a group departure shows the departure and the seats left without opening it (R146).
+  if (!full.departureId) return success(c, { ...full, departure: null, seats: null });
+  const departure = await getDepartureSummary(c.get('tenantDb'), full.departureId);
+  const requested = full.seatsRequested ?? null;
+  // The bands the quote is priced by: the tour's own when it has them (R164), so the editor shows the same ranges the fill uses.
+  const tourBands = await loadDepartureTourBands(c.get('tenantDb'), full.departureId);
+  return success(c, { ...full, ...(tourBands ? { ageBands: tourBands } : {}), departure, seats: departure && { requested, left: departure.seats.left, fits: requested === null || requested <= departure.seats.left } });
 });
 
 // ============================================================
@@ -451,7 +489,7 @@ itineraryRoutes.put('/:id', requirePermission('itineraries', 'edit'), zValidator
           markupValue: item.markupValue || null,
           taxRate: item.taxRate || 0,
           taxAmount: item.taxAmount || 0,
-          quantity: item.quantity || 1,
+          quantity: item.quantity ?? 1,
           paxType: item.paxType || null,
           timeStart: item.timeStart || null,
           timeEnd: item.timeEnd || null,
@@ -550,6 +588,8 @@ itineraryRoutes.post('/:id/clone', requirePermission('itineraries', 'create'), z
     grandTotal: original.grandTotal,
     markupType: original.markupType,
     markupValue: original.markupValue,
+    ageBands: original.ageBands ? JSON.stringify(original.ageBands) : null,
+    paxAges: original.paxAges ? JSON.stringify(original.paxAges) : null,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -660,6 +700,8 @@ itineraryRoutes.post('/:id/new-version', requirePermission('itineraries', 'creat
     grandTotal: original.grandTotal,
     markupType: original.markupType,
     markupValue: original.markupValue,
+    ageBands: original.ageBands ? JSON.stringify(original.ageBands) : null,
+    paxAges: original.paxAges ? JSON.stringify(original.paxAges) : null,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -721,6 +763,113 @@ itineraryRoutes.post('/:id/new-version', requirePermission('itineraries', 'creat
 });
 
 // ============================================================
+// POST /:id/fill-quantities — Fill the band quantities from ages, travellers or the lead (R149, design 14)
+// ============================================================
+
+itineraryRoutes.post('/:id/fill-quantities', requireFeature('age_band_pricing'), requirePermission('itineraries', 'edit'), zValidator('json', fillQuantitiesSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const db = drizzle(tenantDb);
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const body = c.req.valid('json');
+  const apply = ['1', 'true'].includes(c.req.query('apply') ?? '');
+
+  const [itin] = await db.select().from(itineraries).where(and(eq(itineraries.id, id), eq(itineraries.isDeleted, 0)));
+  if (!itin) return notFound(c, 'Itinerary');
+
+  // A quote for a departure follows that tour's bands when the tour has its own, then the quote's own snapshot, then the agency's (R164).
+  const tourBands = await loadDepartureTourBands(tenantDb, itin.departureId);
+  const bands = tourBands ?? bandsFor(bandsFromColumn(itin.ageBands), await loadAgencyBands(tenantDb));
+  const travelDate = await travelDateFor(tenantDb, { departureId: itin.departureId, leadId: itin.leadId });
+
+  let pax: ResolvedPax | null;
+  if (body.source === 'ages') {
+    let adults = body.adults;
+    if (adults === undefined) adults = (await tenantDb.prepare('SELECT pax_adults FROM leads WHERE id = ?').bind(itin.leadId).first<{ pax_adults: number | null }>())?.pax_adults ?? 1;
+    pax = paxFromAges(adults, body.ages ?? []);
+  } else if (body.source === 'travellers') {
+    if (!body.travellerIds?.length) return error(c, 'Pick at least one traveller', 400, { code: 'NO_TRAVELLERS' });
+    pax = await paxFromTravellers(tenantDb, body.travellerIds, travelDate);
+  } else {
+    pax = await paxFromLead(tenantDb, itin.leadId);
+  }
+  if (!pax) return notFound(c, 'Lead');
+
+  const items = await tenantDb
+    .prepare(
+      `SELECT i.id, i.title, i.pax_type, i.quantity FROM itinerary_items i JOIN itinerary_days d ON d.id = i.day_id
+       WHERE d.itinerary_id = ? ORDER BY d.day_number, i.sort_order`,
+    )
+    .bind(id)
+    .all<{ id: string; title: string; pax_type: string | null; quantity: number | null }>();
+  const rows = items.results ?? [];
+  const changes = fillQuantities(rows.map((r) => ({ id: r.id, paxType: r.pax_type, quantity: r.quantity })), bands, pax);
+  const titleOf = new Map(rows.map((r) => [r.id, r]));
+  const { counts, total } = countByBand(bands, pax);
+  const summary = {
+    source: pax.source,
+    travelDate,
+    bands,
+    counts,
+    total,
+    adults: pax.adults ?? 0,
+    ages: pax.ages ?? [],
+    unknown: pax.unknown,
+    lines: changes.map((ch) => ({ ...ch, title: titleOf.get(ch.id)?.title ?? '', paxType: titleOf.get(ch.id)?.pax_type ?? null })),
+  };
+  if (!apply) return success(c, { ...summary, applied: false });
+
+  const now = new Date().toISOString();
+  const statements = changes.map((ch) => tenantDb.prepare('UPDATE itinerary_items SET quantity = ? WHERE id = ?').bind(ch.to, ch.id));
+  for (let i = 0; i < statements.length; i += 80) await tenantDb.batch(statements.slice(i, i + 80));
+
+  // Totals from the lines as they now stand, with the quote's own markup.
+  const full = await getFullItinerary(db, id);
+  const totals = calculateTotals(full?.days ?? [], itin.markupType, itin.markupValue);
+  const paxAges = { adults: pax.adults ?? 0, ages: pax.ages ?? [], children: pax.children ?? 0, infants: pax.infants ?? 0, source: pax.source };
+  await db
+    .update(itineraries)
+    .set({ ...totals, ageBands: tourBands ? JSON.stringify(bands) : itin.ageBands ?? JSON.stringify(bands), paxAges: JSON.stringify(paxAges), updatedAt: now })
+    .where(eq(itineraries.id, id));
+
+  await logActivity(db, {
+    userId,
+    action: 'update',
+    entityType: 'itinerary',
+    entityId: id,
+    details: JSON.stringify({ fillQuantities: body.source, lines: changes.length }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, { ...summary, applied: true, totals });
+});
+
+// ============================================================
+// PUT /:id/departure — Link the quote to a group departure (R146)
+// ============================================================
+
+const linkDepartureSchema = z.object({
+  departureId: z.string().min(1).max(64).nullable(),
+  seatsRequested: z.number().int().min(1).max(200).nullable().optional(),
+});
+
+itineraryRoutes.put('/:id/departure', requireFeature('group_departures'), requirePermission('itineraries', 'edit'), zValidator('json', linkDepartureSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const { departureId, seatsRequested } = c.req.valid('json');
+  const itin = await db.prepare('SELECT i.id, l.pax_adults, l.pax_children FROM itineraries i LEFT JOIN leads l ON l.id = i.lead_id WHERE i.id = ? AND i.is_deleted = 0').bind(id).first<{ pax_adults: number | null; pax_children: number | null }>();
+  if (!itin) return notFound(c, 'Itinerary');
+  let seats: number | null = null;
+  if (departureId) {
+    const departure = await getDepartureSummary(db, departureId);
+    if (!departure) return error(c, 'Departure not found', 404, { code: 'DEPARTURE_NOT_FOUND' });
+    // No number given: the party size of the lead, so the quote shows whether the party fits.
+    seats = seatsRequested ?? (Math.max(1, (itin.pax_adults ?? 0) + (itin.pax_children ?? 0)));
+  }
+  await db.prepare('UPDATE itineraries SET departure_id = ?, seats_requested = ?, updated_at = ? WHERE id = ?').bind(departureId, seats, new Date().toISOString(), id).run();
+  return success(c, { id, departureId, seatsRequested: seats });
+});
+
+// ============================================================
 // GET /:id/versions — Version history
 // ============================================================
 
@@ -770,19 +919,30 @@ itineraryRoutes.post('/:id/send', requirePermission('itineraries', 'edit'), zVal
   const now = new Date().toISOString();
 
   if (body.channel === 'email') {
-    // Queue email send
+    // R128: a real email job (the queue only knows type 'email'), carrying the secure quotation link
     try {
-      await c.env.EMAIL_QUEUE.send({
-        type: 'itinerary_send',
-        itineraryId: id,
+      const tenantDb = c.get('tenantDb');
+      const lead = await tenantDb.prepare('SELECT contact_id FROM leads WHERE id = ?').bind(itin.leadId).first<{ contact_id: string | null }>();
+      const shareToken = await ensureShareLink(c, db, itin);
+      const locale = await loadLocaleContext(tenantDb);
+      const total = itin.grandTotal ? formatMoney(itin.grandTotal, itin.currency || locale.currency, locale.locale) : '';
+      const subject = body.subject || `Travel Quotation — ${itin.title}`;
+      const queuedMail = await queueAgencyEmail(c.env, tenantDb, { tenantId: c.get('tenantId'), userId }, {
         to: body.to,
-        subject: body.subject || `Travel Quotation — ${itin.title}`,
-        message: body.message,
-        tenantId: c.get('tenantId'),
-        userId,
+        subject,
+        contactId: lead?.contact_id ?? null,
+        html: agencyEmailHtml({
+          heading: itin.title,
+          bodyHtml: textToHtml(body.message) + (total ? `<p>Total: <strong>${escapeHtml(total)}</strong></p>` : ''),
+          button: { label: 'View your quotation', url: quoteUrl(c.env, shareToken) },
+        }),
       });
+      if (!queuedMail.queued) {
+        return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+      }
     } catch (err) {
       console.error('Failed to queue email:', err);
+      return error(c, 'Failed to queue the email', 500);
     }
   } else if (body.channel === 'whatsapp') {
     // Queue WhatsApp send
@@ -834,12 +994,32 @@ itineraryRoutes.post('/:id/send', requirePermission('itineraries', 'edit'), zVal
     ipAddress: c.get('clientIp'),
   });
 
+  await emitFromRequest(c, { type: 'itinerary.sent', entityType: 'itinerary', entityId: id, payload: { leadId: itin.leadId, channel: body.channel } });
+
   return success(c, { message: `Quotation queued for ${body.channel} delivery` });
 });
 
 // ============================================================
 // POST /:id/share-link — Generate shareable link (TICKET-100)
 // ============================================================
+
+/** The itinerary's public quotation token: reuse the existing one or create it, and (re)activate the link. */
+async function ensureShareLink(c: any, db: ReturnType<typeof drizzle>, itin: { id: string; shareToken: string | null }): Promise<string> {
+  const shareToken = itin.shareToken || generateId();
+
+  await db.update(itineraries).set({
+    shareToken,
+    shareLinkActive: 1,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(itineraries.id, itin.id));
+
+  // Store in master DB for cross-tenant lookup
+  await c.env.MASTER_DB.prepare(
+    `INSERT OR REPLACE INTO quotation_links (token, tenant_id, itinerary_id, is_active, created_at)
+     VALUES (?, ?, ?, 1, ?)`
+  ).bind(shareToken, c.get('tenantId'), itin.id, new Date().toISOString()).run();
+  return shareToken;
+}
 
 itineraryRoutes.post('/:id/share-link', requirePermission('itineraries', 'edit'), async (c) => {
   const db = drizzle(c.get('tenantDb'));
@@ -849,22 +1029,9 @@ itineraryRoutes.post('/:id/share-link', requirePermission('itineraries', 'edit')
   const [itin] = await db.select().from(itineraries).where(and(eq(itineraries.id, id), eq(itineraries.isDeleted, 0)));
   if (!itin) return notFound(c, 'Itinerary');
 
-  const shareToken = itin.shareToken || generateId();
+  const shareToken = await ensureShareLink(c, db, itin);
 
-  await db.update(itineraries).set({
-    shareToken,
-    shareLinkActive: 1,
-    updatedAt: new Date().toISOString(),
-  }).where(eq(itineraries.id, id));
-
-  // Store in master DB for cross-tenant lookup
-  const masterDb = c.env.MASTER_DB;
-  await masterDb.prepare(
-    `INSERT OR REPLACE INTO quotation_links (token, tenant_id, itinerary_id, is_active, created_at)
-     VALUES (?, ?, ?, 1, ?)`
-  ).bind(shareToken, c.get('tenantId'), id, new Date().toISOString()).run();
-
-  const shareUrl = `https://quotes.travelcrm.pro/q/${shareToken}`;
+  const shareUrl = quoteUrl(c.env, shareToken);
 
   await logActivity(db, {
     userId,
@@ -901,6 +1068,36 @@ itineraryRoutes.delete('/:id/share-link', requirePermission('itineraries', 'edit
 });
 
 // ============================================================
+// POST /:id/mark-accepted — Staff record an acceptance that came by message or call (R155)
+// ============================================================
+
+const markAcceptedSchema = z.object({
+  via: z.enum(['staff', 'message']).optional(),
+  name: z.string().trim().max(120).optional(),
+});
+
+itineraryRoutes.post('/:id/mark-accepted', requirePermission('itineraries', 'edit'), zValidator('json', markAcceptedSchema), async (c) => {
+  const body = c.req.valid('json');
+  let waiter: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try {
+    waiter = c.executionCtx;
+  } catch {
+    waiter = undefined;
+  }
+  try {
+    const res = await markAccepted(
+      { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), waiter },
+      c.req.param('id'),
+      { via: body.via ?? 'staff', name: body.name, userId: c.get('userId') },
+    );
+    return success(c, { id: c.req.param('id'), ...res });
+  } catch (e) {
+    if (e instanceof AcceptError) return e.status === 404 ? notFound(c, 'Itinerary') : error(c, e.message, e.status, { code: e.code });
+    throw e;
+  }
+});
+
+// ============================================================
 // GET /:id/pdf — Generate quotation PDF (TICKET-097)
 // ============================================================
 
@@ -913,11 +1110,25 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
   if (!full) return notFound(c, 'Itinerary');
 
   const itin = full;
+  // Money prints in the quote's currency with the agency's number format.
+  const localeCtx = await loadLocaleContext(c.get('tenantDb'));
+  const currency = itin.currency || localeCtx.currency;
   const daysData = full.days;
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // The built-in PDF fonts only encode Latin text; a symbol or digit set they cannot draw falls back to the code.
+  const money = (amount: number): string => {
+    const text = formatMoney(amount, currency, localeCtx.locale);
+    try {
+      font.encodeText(text);
+      return text;
+    } catch {
+      return `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+    }
+  };
 
   const pageWidth = 595; // A4 portrait
   const pageHeight = 842;
@@ -955,7 +1166,7 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
     drawText(`Valid until: ${itin.validityDate}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
     y -= 14;
   }
-  drawText(`Currency: ${itin.currency || 'INR'}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+  drawText(`Currency: ${currency}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
   y -= 25;
 
   // Separator
@@ -974,12 +1185,13 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
       y -= 14;
     }
 
-    for (const item of day.items) {
+    // A line for an age band nobody falls in (quantity 0, R149) stays in the builder but is not printed for the customer (R155).
+    for (const item of day.items.filter((i) => i.quantity !== 0)) {
       checkPageBreak(30);
       const typeLabel: Record<string, string> = { hotel: '[Hotel]', transport: '[Transport]', activity: '[Activity]', meal: '[Meal]', flight: '[Flight]' };
       const label = typeLabel[item.type] || '[*]';
       drawText(`${label} ${item.title || item.type}`, margin + 15, y, { size: 10 });
-      const price = `${itin.currency || 'INR'} ${(item.sellingPrice || 0).toFixed(2)}`;
+      const price = money(item.sellingPrice || 0);
       const priceWidth = font.widthOfTextAtSize(price, 10);
       drawText(price, pageWidth - margin - priceWidth, y, { size: 10 });
       y -= 14;
@@ -999,13 +1211,13 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
   y -= 18;
   const summaryX = pageWidth - margin - 120;
   drawText('Subtotal:', margin + 10, y, { size: 10 });
-  drawText(`${itin.currency || 'INR'} ${(itin.totalSelling || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  drawText(money(itin.totalSelling || 0), summaryX, y, { size: 10 });
   y -= 14;
   drawText('Tax:', margin + 10, y, { size: 10 });
-  drawText(`${itin.currency || 'INR'} ${(itin.totalTax || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  drawText(money(itin.totalTax || 0), summaryX, y, { size: 10 });
   y -= 14;
   drawText('Grand Total:', margin + 10, y, { font: boldFont, size: 11 });
-  drawText(`${itin.currency || 'INR'} ${(itin.grandTotal || 0).toFixed(2)}`, summaryX, y, { font: boldFont, size: 11, color: rgb(0.1, 0.5, 0.1) });
+  drawText(money(itin.grandTotal || 0), summaryX, y, { font: boldFont, size: 11, color: rgb(0.1, 0.5, 0.1) });
   y -= 25;
 
   // Inclusions

@@ -1,0 +1,21 @@
+{
+  "calendar.today": "आज",
+  "calendar.month": "महीना",
+  "calendar.week": "सप्ताह",
+  "calendar.day": "दिन",
+  "calendar.createEvent": "ईवेंट बनाएं",
+  "calendar.editEvent": "ईवेंट संपादित करें",
+  "calendar.deleteEvent": "ईवेंट हटाएं",
+  "calendar.eventTitle": "ईवेंट शीर्षक",
+  "calendar.eventDescription": "विवरण",
+  "calendar.startTime": "शुरुआत का समय",
+  "calendar.endTime": "समाप्ति का समय",
+  "calendar.allDay": "पूरे दिन",
+  "calendar.recurring": "आवर्ती",
+  "calendar.noEvents": "कोई ईवेंट नहीं",
+  "calendar.eventTypes": "ईवेंट प्रकार",
+  "calendar.meeting": "बैठक",
+  "calendar.call": "कॉल",
+  "calendar.task": "कार्य",
+  "calendar.trip": "यात्रा"
+}

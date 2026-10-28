@@ -1,8 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { X, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { formatDisplayDate } from '@/lib/dates';
+import { formatCurrency as formatMoney } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
+import { paymentMethodLabel } from '@/lib/payment-methods';
 
 interface PaymentReceiptProps {
   payment: {
@@ -22,12 +27,8 @@ interface PaymentReceiptProps {
   onClose: () => void;
 }
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatMoney(amount, currency || undefined);
 }
 
 function numberToWords(num: number): string {
@@ -55,106 +56,97 @@ function numberToWords(num: number): string {
   return result;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Reads the active design-token colours so the printed receipt matches the app theme. */
+function readPrintColours() {
+  const style = getComputedStyle(document.documentElement);
+  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+  return {
+    ink: token('--ds-foreground', 'currentColor'),
+    muted: token('--ds-foreground-muted', 'currentColor'),
+    border: token('--ds-border', 'currentColor'),
+    accent: token('--ds-primary', 'currentColor'),
+    success: token('--ds-success', 'currentColor'),
+    sunken: token('--ds-surface-sunken', 'transparent'),
+  };
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between border-b border-ds-border py-ds-2 text-sm">
+      <span className="text-ds-foreground-muted">{label}</span>
+      <span className={mono ? 'font-medium font-mono' : 'font-medium'}>{value}</span>
+    </div>
+  );
+}
+
 export function PaymentReceipt({ payment, companyName, onClose }: PaymentReceiptProps) {
+  const t = useT();
   const receiptRef = React.useRef<HTMLDivElement>(null);
 
-  const dateStr = payment.paymentDate || payment.date;
-  const formattedDate = dateStr
-    ? new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
-    : new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const formattedDate = formatDisplayDate(payment.paymentDate || payment.date, 'long')
+    || formatDisplayDate(new Date(), 'long');
 
   const method = payment.paymentMethod || payment.method || 'N/A';
-  const methodLabel: Record<string, string> = {
-    bank_transfer: 'Bank Transfer',
-    transfer: 'Bank Transfer',
-    upi: 'UPI',
-    cash: 'Cash',
-    card: 'Card',
-    cheque: 'Cheque',
-    check: 'Cheque',
-    other: 'Other',
-  };
-
+  const methodText = method === 'N/A' ? method : paymentMethodLabel(method, t);
   const receiptNumber = `REC-${payment.id.slice(0, 8).toUpperCase()}`;
+  const company = companyName || 'TravelCRM';
 
   const handlePrint = () => {
-    const printContent = receiptRef.current;
-    if (!printContent) return;
-
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
+    const c = readPrintColours();
+    const row = (label: string, value: string, extra = '') =>
+      `<div class="detail-row ${extra}"><span class="detail-label">${escapeHtml(label)}</span><span class="detail-value">${escapeHtml(value)}</span></div>`;
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Payment Receipt - ${receiptNumber}</title>
-        <style>
-          @page { size: A5; margin: 15mm; }
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a; padding: 20px; }
-          .receipt { max-width: 500px; margin: 0 auto; border: 2px solid #e5e7eb; padding: 32px; }
-          .header { text-align: center; border-bottom: 2px solid #4f46e5; padding-bottom: 16px; margin-bottom: 20px; }
-          .company-name { font-size: 20px; font-weight: 700; color: #4f46e5; }
-          .receipt-title { font-size: 16px; font-weight: 600; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px; color: #6b7280; }
-          .receipt-meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; color: #6b7280; }
-          .details { margin-bottom: 20px; }
-          .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
-          .detail-label { color: #6b7280; }
-          .detail-value { font-weight: 500; text-align: right; }
-          .amount-row { border-top: 2px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; margin-top: 8px; padding: 12px 0; }
-          .amount-row .detail-value { font-size: 18px; font-weight: 700; color: #059669; }
-          .amount-words { font-size: 12px; color: #6b7280; font-style: italic; margin-top: 8px; text-align: center; padding: 8px; background: #f9fafb; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px dashed #d1d5db; }
-          .thank-you { font-size: 15px; font-weight: 600; color: #4f46e5; }
-          .footer-note { font-size: 11px; color: #9ca3af; margin-top: 4px; }
-        </style>
-      </head>
-      <body>
-        <div class="receipt">
-          <div class="header">
-            <div class="company-name">${companyName || 'TravelCRM'}</div>
-            <div class="receipt-title">Payment Receipt</div>
-          </div>
-          <div class="receipt-meta">
-            <span>Receipt #: ${receiptNumber}</span>
-            <span>Date: ${formattedDate}</span>
-          </div>
-          <div class="details">
-            <div class="detail-row">
-              <span class="detail-label">Received From</span>
-              <span class="detail-value">${payment.clientName || 'N/A'}</span>
-            </div>
-            ${payment.invoiceNumber ? `<div class="detail-row">
-              <span class="detail-label">Invoice Reference</span>
-              <span class="detail-value">${payment.invoiceNumber}</span>
-            </div>` : ''}
-            <div class="detail-row">
-              <span class="detail-label">Payment Method</span>
-              <span class="detail-value">${methodLabel[method] ?? method}</span>
-            </div>
-            ${payment.reference ? `<div class="detail-row">
-              <span class="detail-label">Transaction Reference</span>
-              <span class="detail-value">${payment.reference}</span>
-            </div>` : ''}
-            ${payment.recordedBy ? `<div class="detail-row">
-              <span class="detail-label">Recorded By</span>
-              <span class="detail-value">${payment.recordedBy}</span>
-            </div>` : ''}
-            <div class="detail-row amount-row">
-              <span class="detail-label" style="font-weight:600;font-size:15px">Amount Received</span>
-              <span class="detail-value">${formatCurrency(payment.amount ?? 0)}</span>
-            </div>
-          </div>
-          <div class="amount-words">${numberToWords(payment.amount ?? 0)}</div>
-          <div class="footer">
-            <div class="thank-you">Thank you for your payment!</div>
-            <div class="footer-note">This is a computer-generated receipt and does not require a signature.</div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `);
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>Payment Receipt - ${escapeHtml(receiptNumber)}</title>
+<style>
+@page { size: A5; margin: 15mm; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Arial, sans-serif; color: ${c.ink}; padding: 1.25rem; }
+.receipt { max-width: 32rem; margin: 0 auto; border: 0.125rem solid ${c.border}; padding: 2rem; }
+.header { text-align: center; border-bottom: 0.125rem solid ${c.accent}; padding-bottom: 1rem; margin-bottom: 1.25rem; }
+.company-name { font-size: 1.25rem; font-weight: 700; color: ${c.accent}; }
+.receipt-title { font-size: 1rem; font-weight: 600; margin-top: 0.5rem; text-transform: uppercase; letter-spacing: 0.125rem; color: ${c.muted}; }
+.receipt-meta { display: flex; justify-content: space-between; margin-bottom: 1.25rem; font-size: 0.8rem; color: ${c.muted}; }
+.details { margin-bottom: 1.25rem; }
+.detail-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 0.0625rem solid ${c.border}; font-size: 0.875rem; }
+.detail-label { color: ${c.muted}; }
+.detail-value { font-weight: 500; text-align: right; }
+.amount-row { border-top: 0.125rem solid ${c.border}; border-bottom: 0.125rem solid ${c.border}; margin-top: 0.5rem; padding: 0.75rem 0; }
+.amount-row .detail-value { font-size: 1.125rem; font-weight: 700; color: ${c.success}; }
+.amount-words { font-size: 0.75rem; color: ${c.muted}; font-style: italic; margin-top: 0.5rem; text-align: center; padding: 0.5rem; background: ${c.sunken}; border-radius: 0.25rem; }
+.footer { text-align: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 0.0625rem dashed ${c.border}; }
+.thank-you { font-size: 0.95rem; font-weight: 600; color: ${c.accent}; }
+.footer-note { font-size: 0.7rem; color: ${c.muted}; margin-top: 0.25rem; }
+</style>
+</head>
+<body>
+<div class="receipt">
+<div class="header"><div class="company-name">${escapeHtml(company)}</div><div class="receipt-title">Payment Receipt</div></div>
+<div class="receipt-meta"><span>Receipt #: ${escapeHtml(receiptNumber)}</span><span>Date: ${escapeHtml(formattedDate)}</span></div>
+<div class="details">
+${row('Received From', payment.clientName || 'N/A')}
+${payment.invoiceNumber ? row('Invoice Reference', payment.invoiceNumber) : ''}
+${row('Payment Method', methodText)}
+${payment.reference ? row('Transaction Reference', payment.reference) : ''}
+${row('Amount Received', formatCurrency(payment.amount ?? 0), 'amount-row')}
+</div>
+<div class="amount-words">${escapeHtml(numberToWords(payment.amount ?? 0))}</div>
+<div class="footer"><div class="thank-you">Thank you for your payment!</div><div class="footer-note">This is a computer-generated receipt and does not require a signature.</div></div>
+</div>
+</body>
+</html>`);
 
     printWindow.document.close();
     printWindow.addEventListener('load', () => {
@@ -163,88 +155,56 @@ export function PaymentReceipt({ payment, companyName, onClose }: PaymentReceipt
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-background rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold text-sm">Payment Receipt Preview</h3>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1.5" />
-              Print / Save PDF
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Payment Receipt Preview</DialogTitle>
+          <DialogDescription className="sr-only">Printable receipt for this payment.</DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer aria-hidden="true" />
+            Print / Save PDF
+          </Button>
         </div>
 
-        {/* Receipt Preview */}
-        <div ref={receiptRef} className="p-6">
-          <div className="border-2 border-border rounded-lg p-6 space-y-5">
-            {/* Header */}
-            <div className="text-center border-b-2 border-primary pb-4">
-              <p className="text-lg font-bold text-primary">{companyName || 'TravelCRM'}</p>
-              <p className="text-sm font-semibold mt-1 uppercase tracking-[3px] text-muted-foreground">Payment Receipt</p>
+        <div ref={receiptRef}>
+          <div className="space-y-ds-5 rounded-ds-lg border-2 border-ds-border p-ds-6">
+            <div className="border-b-2 border-ds-primary pb-ds-4 text-center">
+              <p className="text-lg font-bold text-ds-primary">{company}</p>
+              <p className="mt-ds-1 text-sm font-semibold uppercase tracking-widest text-ds-foreground-muted">Payment Receipt</p>
             </div>
 
-            {/* Meta */}
-            <div className="flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-ds-foreground-muted">
               <span>Receipt #: {receiptNumber}</span>
               <span>Date: {formattedDate}</span>
             </div>
 
-            {/* Details */}
-            <div className="space-y-0">
-              <div className="flex justify-between py-2 border-b text-sm">
-                <span className="text-muted-foreground">Received From</span>
-                <span className="font-medium">{payment.clientName || 'N/A'}</span>
-              </div>
-              {payment.invoiceNumber && (
-                <div className="flex justify-between py-2 border-b text-sm">
-                  <span className="text-muted-foreground">Invoice Reference</span>
-                  <span className="font-medium font-mono">{payment.invoiceNumber}</span>
-                </div>
-              )}
-              <div className="flex justify-between py-2 border-b text-sm">
-                <span className="text-muted-foreground">Payment Method</span>
-                <span className="font-medium">{methodLabel[method] ?? method}</span>
-              </div>
-              {payment.reference && (
-                <div className="flex justify-between py-2 border-b text-sm">
-                  <span className="text-muted-foreground">Transaction Reference</span>
-                  <span className="font-medium font-mono">{payment.reference}</span>
-                </div>
-              )}
-              {payment.recordedBy && (
-                <div className="flex justify-between py-2 border-b text-sm">
-                  <span className="text-muted-foreground">Recorded By</span>
-                  <span className="font-medium">{payment.recordedBy}</span>
-                </div>
-              )}
+            <div>
+              <Row label="Received From" value={payment.clientName || 'N/A'} />
+              {payment.invoiceNumber && <Row label="Invoice Reference" value={payment.invoiceNumber} mono />}
+              <Row label="Payment Method" value={methodText} />
+              {payment.reference && <Row label="Transaction Reference" value={payment.reference} mono />}
 
-              {/* Amount */}
-              <div className="flex justify-between py-3 border-y-2 mt-2">
+              <div className="mt-ds-2 flex justify-between border-y-2 border-ds-border py-ds-3">
                 <span className="font-semibold">Amount Received</span>
-                <span className="text-lg font-bold text-green-600">{formatCurrency(payment.amount ?? 0)}</span>
+                <span className="text-lg font-bold text-ds-success">{formatCurrency(payment.amount ?? 0)}</span>
               </div>
             </div>
 
-            {/* Amount in words */}
-            <div className="text-xs text-muted-foreground italic text-center bg-muted/50 py-2 rounded">
+            <div className="rounded-ds-md bg-ds-surface-sunken py-ds-2 text-center text-xs italic text-ds-foreground-muted">
               {numberToWords(payment.amount ?? 0)}
             </div>
 
-            {/* Footer */}
-            <div className="text-center pt-4 border-t border-dashed">
-              <p className="text-sm font-semibold text-primary">Thank you for your payment!</p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+            <div className="border-t border-dashed border-ds-border pt-ds-4 text-center">
+              <p className="text-sm font-semibold text-ds-primary">Thank you for your payment!</p>
+              <p className="mt-ds-1 text-xs text-ds-foreground-muted">
                 This is a computer-generated receipt and does not require a signature.
               </p>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

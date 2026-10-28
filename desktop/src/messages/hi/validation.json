@@ -1,0 +1,8 @@
+{
+  "validation.required": "यह क्षेत्र आवश्यक है",
+  "validation.email": "कृपया एक वैध ईमेल दर्ज करें",
+  "validation.phone": "कृपया एक वैध फोन नंबर दर्ज करें",
+  "validation.minLength": "न्यूनतम {min} वर्ण आवश्यक",
+  "validation.maxLength": "अधिकतम {max} वर्ण की अनुमति",
+  "validation.pattern": "अमान्य प्रारूप"
+}

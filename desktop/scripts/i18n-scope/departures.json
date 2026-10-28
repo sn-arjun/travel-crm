@@ -1,0 +1,6 @@
+[
+  "src/app/(app)/departures",
+  "src/app/(app)/tours",
+  "src/app/(app)/settings/group-tours",
+  "src/lib/departures.ts"
+]

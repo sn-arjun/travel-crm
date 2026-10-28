@@ -1,0 +1,53 @@
+{
+  "slice": "marketing-opt-out",
+  "title": "Opt-Out Management",
+  "status": "existing",
+  "showcaseOrder": 35,
+  "endpoints": [
+    "GET /api/v1/marketing/opt-out",
+    "POST /api/v1/marketing/opt-out/:contactId",
+    "POST /api/v1/marketing/opt-out/:contactId/opt-in"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/opted-out/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/marketing-opt-out.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/opted-out/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-opt-out.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Migrated to ListPage archetype with bulk re-subscribe, per-row hover re-subscribe action, channel filter, and full-dataset CSV export. No detail drawer (opt-out records have no separate detail view worth a tab) and no relation/phone/address/currency/date fields apply to this entity. Still points at the manifest's real /marketing/opt-out endpoints (list, opt-in) instead of hijacking /contacts; wired resubscribe to POST /marketing/opt-out/:contactId/opt-in.",
+  "showcaseScript": [
+    "Open Marketing → Opted-Out",
+    "Show contacts who unsubscribed and when",
+    "Re-subscribe a contact who asked to opt back in"
+  ]
+}

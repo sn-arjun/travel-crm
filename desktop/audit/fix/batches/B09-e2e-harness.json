@@ -1,0 +1,71 @@
+{
+  "id": "B09",
+  "title": "E2E harness: refresh-safe per-test auth state, port parametrisation, next start",
+  "lane": "tests",
+  "backend": false,
+  "wave": "W2",
+  "dependsOn": [
+    "B00",
+    "B01"
+  ],
+  "parallelGroup": "W2",
+  "bugIds": [
+    "BUG-039"
+  ],
+  "fixReqs": [
+    "FR-11"
+  ],
+  "estFiles": 58,
+  "goal": "One rotated refresh token can never cascade through the suite again; specs can run against any stack slot; the web server is a production build.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: desktop/playwright.config.ts sets use.storageState = ./e2e/.auth/admin.json for every test (global-setup.ts logs in once via UI). Refresh tokens are single-use, so once any context refreshes (after the 15-minute access TTL), every later context presents a used token and is bounced to /login: 164 of 179 failures in the 56-minute baseline run are this cascade (payments -> whatsapp-campaigns, from run #517). Only e2e/helpers/auth.ts and helpers/api-seed.ts hard-code http://localhost:8787 / :3100. 54 files import from '@playwright/test'; auth-shell.spec.ts uses `test.use({ storageState: undefined })`. webServer runs `next dev --turbopack` (crashed under load during the remake). Two e2e tsc errors: e2e/itineraries.spec.ts:40 and e2e/webhooks-integrations.spec.ts:61. B07 runs in parallel and deliberately edits NO spec files; B01 added e2e/token-refresh.spec.ts.",
+  "steps": [
+    "Create desktop/e2e/fixtures.ts: `import { test as base, expect } from '@playwright/test'`; export `test = base.extend({ storageState: async ({}, use) => { await use(await freshAuthState()); } })` and re-export expect + useful types. freshAuthState(): module-level (= per worker) cache {state, mintedAt}; when absent or older than Number(process.env.E2E_AUTH_MAX_AGE_MS ?? 8 * 60_000) (well under the 15-minute access TTL, so no test ever needs to refresh), mint a new one: POST `${E2E_API_URL}/auth/login` with the admin credentials/tenant from helpers/auth.ts; load the template e2e/.auth/admin.json (written by global-setup's UI login), replace accessToken/refreshToken (and user if present) inside the 'travelcrm-auth' localStorage JSON value for the E2E_BASE_URL origin, and return the object. `test.use({ storageState: undefined })` in a spec must still yield a logged-out context.",
+    "Codemod every desktop/e2e/*.spec.ts (NOT e2e/showcase/**): replace the `test`/`expect` named imports from '@playwright/test' with `import { test, expect } from './fixtures'`, keeping any other named/type imports from '@playwright/test' in a separate import line. Do a scripted edit (node script in your scratchpad), then review the diff: only import lines may change (plus the two tsc fixes).",
+    "Parametrise: helpers/auth.ts and helpers/api-seed.ts read `process.env.E2E_API_URL ?? 'http://localhost:8787/api/v1'` (derive the bare origin where needed); playwright.config.ts BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3100', API health URL from E2E_API_URL. Remove use.storageState from the global `use` (the fixture provides it) but keep the 'setup' project + dependency so admin.json exists.",
+    "webServer: backend command unchanged except `--port` from the API port and `--var TEST_MODE:true`; web command `npx next start -p <port>` (requires `npm run build` first; document in the config comment and in fix-stack). reuseExistingServer: true; timeout 120_000.",
+    "Fix the two e2e tsc errors (itineraries.spec.ts:40, webhooks-integrations.spec.ts:61).",
+    "Prove isolation: bring up slot 0 (`node scripts/fix-stack.mjs up --slot 0`), run `E2E_AUTH_MAX_AGE_MS=60000 npx playwright test payments.spec.ts rate-cards.spec.ts suppliers.spec.ts` (former cascade victims; > 2 minutes, so several states are minted) -> no failure lands on the login page (check error-context). Also run token-refresh.spec.ts and auth-shell.spec.ts (auth-shell:154 is expected to fail until B17)."
+  ],
+  "filesAllowlist": [
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/*.spec.ts (import lines only, plus the 2 tsc fixes)",
+    "desktop/e2e/helpers/*.ts",
+    "desktop/e2e/global-setup.ts",
+    "desktop/playwright.config.ts"
+  ],
+  "mustNotTouch": [
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/src/**",
+    "backend/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "tsc: 0 errors in e2e/.",
+    "Every spec under desktop/e2e (excluding showcase) imports test/expect from ./fixtures.",
+    "The 3-spec run with E2E_AUTH_MAX_AGE_MS=60000 has no login-page failures; failures (if any) are listed with their owning batch.",
+    "Running a spec with E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 targets slot 1."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": false,
+    "lint": true,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/token-refresh.spec.ts",
+      "desktop/e2e/payments.spec.ts",
+      "desktop/e2e/rate-cards.spec.ts",
+      "desktop/e2e/suppliers.spec.ts"
+    ],
+    "allowedSpecFailures": [
+      "any failure whose error-context is NOT the login page and that appears in desktop/audit/fix/e2e-parsed.json or belongs to a later batch - list it"
+    ]
+  },
+  "notes": "Parallel slots need B08 (CORS for ports != 3100). Until B08 merges, use slot 0 only."
+}

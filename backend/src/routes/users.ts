@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and } from 'drizzle-orm';
@@ -7,12 +7,37 @@ import type { AppContext } from '../types';
 import { tenantUsers, tenants } from '../db/master-schema';
 import { users, loginHistory } from '../db/tenant-schema';
 import { rbac } from '../middleware/rbac';
+import { permissionsForRole } from '../constants/permissions';
 import { hashPassword } from '../utils/password';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
+import { appUrl } from '../utils/app-urls';
+import { sendTransactional } from '../services/mail/transactional';
+import { agencyDefaultLanguage, isUiLanguage } from '../i18n';
+import { revokeAllSessions } from '../services/two-factor';
+import { seatLimitResponse } from '../services/plans/seats';
+import { isValidLocale } from '../utils/money';
+import { isValidTimeZone } from '../utils/tz';
 
 const userRoutes = new Hono<AppContext>();
+
+/** A user row for the client: no password hash and none of the two-factor material (R209), just whether 2FA is on. */
+function withoutSecrets(user: typeof users.$inferSelect) {
+  const { passwordHash: _p, totpSecretEnc: _s, recoveryCodesHash: _r, totpLastStep: _l, totpEnabled, ...rest } = user;
+  return { ...rest, twoFactorEnabled: totpEnabled === 1 };
+}
+
+// ============================================================
+// GET /me/permissions — What the signed-in user's role may do
+// ============================================================
+// The matrix in constants/permissions.ts is the single source; clients read it here
+// instead of keeping their own copy.
+
+userRoutes.get('/me/permissions', (c) => {
+  const role = c.get('role');
+  return success(c, { role, permissions: permissionsForRole(role) });
+});
 
 // ============================================================
 // GET /me — Current user profile
@@ -32,7 +57,10 @@ userRoutes.get('/me', async (c) => {
       avatarUrl: users.avatarUrl,
       department: users.department,
       language: users.language,
+      locale: users.locale,
+      timezone: users.timezone,
       isActive: users.isActive,
+      totpEnabled: users.totpEnabled,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -45,7 +73,8 @@ userRoutes.get('/me', async (c) => {
     return error(c, 'User not found', 404);
   }
 
-  return success(c, user);
+  const { totpEnabled, ...profile } = user;
+  return success(c, { ...profile, twoFactorEnabled: totpEnabled === 1 });
 });
 
 // ============================================================
@@ -56,7 +85,10 @@ const updateProfileSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
   department: z.string().optional(),
-  language: z.string().optional(),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
+  // R202: personal display overrides; null clears the override and the agency setting applies again
+  locale: z.string().refine((v) => isValidLocale(v), 'Not a valid locale tag').nullable().optional(),
+  timezone: z.string().refine((v) => isValidTimeZone(v), 'Not a valid IANA time zone').nullable().optional(),
 });
 
 userRoutes.put(
@@ -92,6 +124,8 @@ userRoutes.put(
       avatarUrl: updated.avatarUrl,
       department: updated.department,
       language: updated.language,
+      locale: updated.locale,
+      timezone: updated.timezone,
       isActive: updated.isActive,
       lastLoginAt: updated.lastLoginAt,
       createdAt: updated.createdAt,
@@ -225,6 +259,8 @@ const createUserSchema = z.object({
   role: z.enum(['admin', 'sales_manager', 'salesperson', 'operations', 'accountant', 'view_only']),
   phone: z.string().optional(),
   department: z.string().optional(),
+  // The language of the invitation email and of the new user's interface; the agency default_language when omitted.
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
 });
 
 userRoutes.post(
@@ -248,6 +284,10 @@ userRoutes.post(
       return error(c, 'A user with this email already exists', 409);
     }
 
+    // Seats: active users and pending invites count against the plan's limit (plan catalogue)
+    const noSeat = await seatLimitResponse(c);
+    if (noSeat) return noSeat;
+
     // Create invite token
     const inviteToken = generateId();
     await c.env.SESSIONS.put(
@@ -258,6 +298,7 @@ userRoutes.post(
 
     // Insert invited user into tenant DB so they appear in team list
     const newUserId = generateId();
+    const inviteLanguage = data.language ?? (await agencyDefaultLanguage(c.get('tenantDb')));
     await db.insert(users).values({
       id: newUserId,
       email: data.email.toLowerCase(),
@@ -266,6 +307,7 @@ userRoutes.post(
       passwordHash: 'INVITE_PENDING',
       role: data.role,
       department: data.department || null,
+      language: inviteLanguage,
       inviteStatus: 'pending',
       invitedAt: new Date().toISOString(),
     });
@@ -289,9 +331,33 @@ userRoutes.post(
       ipAddress: c.get('clientIp'),
     });
 
+    const setupUrl = `${appUrl(c.env)}/setup-account?token=${inviteToken}`;
+    const [tenantRow] = await masterDb
+      .select({ name: tenants.companyName })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const [inviter] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, c.get('userId')))
+      .limit(1);
+    await sendTransactional(c.env, {
+      to: data.email.toLowerCase(),
+      template: 'invite_user',
+      tenantId,
+      data: { name: data.name, role: data.role, setupUrl, agencyName: tenantRow?.name, inviterName: inviter?.name },
+    });
+
     return created(c, {
+      id: newUserId,
+      name: data.name,
+      phone: data.phone || null,
+      department: data.department || null,
+      inviteStatus: 'pending',
+      isActive: 1,
       inviteToken,
-      inviteUrl: `https://app.travelcrm.pro/setup-account?token=${inviteToken}`,
+      inviteUrl: setupUrl,
       email: data.email,
       role: data.role,
     });
@@ -312,8 +378,7 @@ userRoutes.get('/:id', rbac(['admin', 'sales_manager']), async (c) => {
     return error(c, 'User not found', 404);
   }
 
-  const { passwordHash: _, ...userWithoutPassword } = user;
-  return success(c, userWithoutPassword);
+  return success(c, withoutSecrets(user));
 });
 
 // ============================================================
@@ -356,7 +421,7 @@ userRoutes.put(
     }
 
     const [updated] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const { passwordHash: _, ...userWithoutPassword } = updated;
+    const userWithoutPassword = withoutSecrets(updated);
 
     await logActivity(db, {
       userId: c.get('userId'),
@@ -410,6 +475,13 @@ userRoutes.put('/:id/activate', rbac(['admin']), async (c) => {
   const db = drizzle(c.get('tenantDb'));
   const masterDb = drizzle(c.env.MASTER_DB);
 
+  // Reactivating a deactivated user takes a seat; an already-active user needs none.
+  const [target] = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
+  if (target && !target.isActive) {
+    const noSeat = await seatLimitResponse(c);
+    if (noSeat) return noSeat;
+  }
+
   await db.update(users).set({ isActive: 1, updatedAt: new Date().toISOString() }).where(eq(users.id, userId));
   await masterDb
     .update(tenantUsers)
@@ -454,6 +526,44 @@ userRoutes.post('/:id/unlock', rbac(['admin']), async (c) => {
   });
 
   return success(c, { message: 'Account unlocked' });
+});
+
+// ============================================================
+// POST /:id/two-factor/reset — Turn off a user's two-factor sign-in (admin only, R209)
+// ============================================================
+// For a lost phone with no recovery codes left. The person is signed out everywhere and told by email.
+
+userRoutes.post('/:id/two-factor/reset', rbac(['admin']), async (c) => {
+  const targetId = c.req.param('id');
+  const db = drizzle(c.get('tenantDb'));
+
+  if (targetId === c.get('userId')) {
+    return error(c, 'Use Settings > Security to change your own two-factor sign-in', 400);
+  }
+  const [target] = await db
+    .select({ id: users.id, email: users.email, name: users.name, totpEnabled: users.totpEnabled })
+    .from(users)
+    .where(eq(users.id, targetId))
+    .limit(1);
+  if (!target) return error(c, 'User not found', 404);
+
+  await db
+    .update(users)
+    .set({ totpSecretEnc: null, totpEnabled: 0, recoveryCodesHash: null, totpLastStep: null, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, targetId));
+  await revokeAllSessions(c.env, targetId);
+
+  await logActivity(db, {
+    userId: c.get('userId'),
+    action: 'two_factor_reset',
+    entityType: 'user',
+    entityId: targetId,
+    ipAddress: c.get('clientIp'),
+  });
+  if (target.totpEnabled === 1) {
+    await sendTransactional(c.env, { to: target.email, template: 'two_factor_disabled', tenantId: c.get('tenantId'), data: { name: target.name } });
+  }
+  return success(c, { message: 'Two-factor sign-in turned off for this user' });
 });
 
 // ============================================================

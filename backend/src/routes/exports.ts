@@ -5,8 +5,15 @@ import type { AppContext } from '../types';
 import * as schema from '../db/tenant-schema';
 import { success, error } from '../utils/response';
 import * as XLSX from 'xlsx';
+import { generateId } from '../utils/uuid';
+import { requirePermission } from '../middleware/rbac';
 
 const exportRoutes = new Hono<AppContext>();
+
+// Exports move whole datasets out of the system: salesperson, operations and view_only roles may not run them.
+// The full tenant export (GDPR) is an owner-level action and needs the settings export permission.
+exportRoutes.use('/full', requirePermission('settings', 'export'));
+exportRoutes.use('*', requirePermission('reports', 'export'));
 
 // GET /api/v1/exports/contacts - Export contacts
 exportRoutes.get('/contacts', async (c) => {
@@ -15,7 +22,16 @@ exportRoutes.get('/contacts', async (c) => {
 
     const contacts = await db.query.contacts.findMany();
 
+    const format = c.req.query('format') === 'csv' ? 'csv' : 'xlsx';
     const ws = XLSX.utils.json_to_sheet(contacts);
+
+    if (format === 'csv') {
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        c.header('Content-Type', 'text/csv');
+        c.header('Content-Disposition', 'attachment; filename="contacts_export.csv"');
+        return c.body(csv);
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Contacts');
 
@@ -67,7 +83,16 @@ exportRoutes.get('/leads', async (c) => {
         CreatedAt: l.createdAt
     }));
 
+    const format = c.req.query('format') === 'csv' ? 'csv' : 'xlsx';
     const ws = XLSX.utils.json_to_sheet(flatData);
+
+    if (format === 'csv') {
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        c.header('Content-Type', 'text/csv');
+        c.header('Content-Disposition', 'attachment; filename="leads_export.csv"');
+        return c.body(csv);
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Leads');
 
@@ -91,7 +116,7 @@ exportRoutes.post('/invoices/bulk-pdf', async (c) => {
     }
 
     const now = new Date().toISOString();
-    const jobId = crypto.randomUUID();
+    const jobId = generateId();
     const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,
@@ -125,7 +150,7 @@ exportRoutes.post('/full', async (c) => {
     const userId = c.get('userId') || 'system';
 
     const now = new Date().toISOString();
-    const jobId = crypto.randomUUID();
+    const jobId = generateId();
     const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,

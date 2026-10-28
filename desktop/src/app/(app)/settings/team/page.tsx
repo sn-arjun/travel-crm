@@ -1,109 +1,109 @@
 'use client';
+import { formatDisplayDate } from '@/lib/dates';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  Loader2,
-  Users,
-  Plus,
-  MoreHorizontal,
+  History,
+  Lock,
   Mail,
+  Pencil,
+  Plus,
   Shield,
+  ShieldOff,
   UserCheck,
   UserX,
-  Search,
+  Users,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { ListPage } from '@/components/domain/list-page';
+import type { DataTableColumn } from '@/components/ui/data-table';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { toast } from 'sonner';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { Spinner } from '@/components/ui/spinner';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { usersApi } from '@/lib/api/users';
-import { client, type ApiResponse } from '@/lib/api/client';
-import { cn } from '@/lib/utils';
+import type { User } from '@travelcrm/shared';
 
-interface TeamUser {
-  id: string;
-  name?: string;
-  email: string;
-  role: string;
-  status?: string;
-  lastLoginAt?: string;
-  avatar?: string;
-}
+type Role = 'admin' | 'sales_manager' | 'salesperson' | 'operations' | 'accountant' | 'view_only';
+
+const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Admin',
+  sales_manager: 'Sales Manager',
+  salesperson: 'Salesperson',
+  operations: 'Operations',
+  accountant: 'Accountant',
+  view_only: 'View only',
+};
+
+const ROLE_OPTIONS = Object.entries(ROLE_LABELS) as [Role, string][];
 
 function formatDate(iso?: string) {
   if (!iso) return 'Never';
-  try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+  try {
+    return formatDisplayDate(iso) || iso;
+  } catch {
+    return iso;
+  }
 }
+
+function initialsOf(name?: string, email?: string) {
+  const source = name || email || 'U';
+  return source
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+interface InviteFormState {
+  email: string;
+  name: string;
+  role: Role;
+  phone: string;
+  department: string;
+}
+
+const emptyInvite: InviteFormState = { email: '', name: '', role: 'salesperson', phone: '', department: '' };
 
 export default function TeamSettingsPage() {
   const router = useRouter();
-  const [search, setSearch] = React.useState('');
-  const [roleFilter, setRoleFilter] = React.useState<string>('all');
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [editingUser, setEditingUser] = React.useState<TeamUser | null>(null);
-  const [inviteForm, setInviteForm] = React.useState({ email: '', role: 'agent' });
-  const [editRole, setEditRole] = React.useState('');
-
-  const { data: usersResponse, loading, refetch } = useApiQuery(
-    () => usersApi.list({
-      ...(search ? { search } : {}),
-      ...(roleFilter !== 'all' ? { role: roleFilter } : {}),
-    }),
-    [search, roleFilter],
-  );
-
-  const users: TeamUser[] = React.useMemo(() => {
-    if (!usersResponse || !('data' in usersResponse)) return [];
-    const d = usersResponse.data as any;
-    return d?.data ?? d ?? [];
-  }, [usersResponse]);
-
+  const [editingUser, setEditingUser] = React.useState<User | null>(null);
+  const [editRole, setEditRole] = React.useState<Role>('salesperson');
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [inviteForm, setInviteForm] = React.useState<InviteFormState>(emptyInvite);
+  const [inviteError, setInviteError] = React.useState<string | undefined>();
   const [isInviting, setIsInviting] = React.useState(false);
+  const [isSavingRole, setIsSavingRole] = React.useState(false);
 
   const handleInvite = async () => {
-    if (!inviteForm.email) {
-      toast.error('Email is required');
+    if (!inviteForm.email || !inviteForm.name) {
+      setInviteError('Name and email are required');
       return;
     }
+    setInviteError(undefined);
     setIsInviting(true);
     try {
-      await client.post<ApiResponse<any>>('/users', {
+      await usersApi.invite({
         email: inviteForm.email,
-        name: inviteForm.email.split('@')[0],
-        role: inviteForm.role === 'manager' ? 'sales_manager' : inviteForm.role === 'agent' ? 'salesperson' : inviteForm.role,
+        name: inviteForm.name,
+        role: inviteForm.role,
+        phone: inviteForm.phone || undefined,
+        department: inviteForm.department || undefined,
       });
       toast.success(`Invitation sent to ${inviteForm.email}`);
       setInviteOpen(false);
-      setInviteForm({ email: '', role: 'agent' });
-      refetch();
+      setInviteForm(emptyInvite);
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to send invitation');
     } finally {
@@ -113,248 +113,331 @@ export default function TeamSettingsPage() {
 
   const handleEditRole = async () => {
     if (!editingUser) return;
+    setIsSavingRole(true);
     try {
-      await usersApi.update(editingUser.id, { role: editRole } as any);
+      await usersApi.update(editingUser.id, { role: editRole } as never);
       toast.success('User role updated');
       setEditingUser(null);
-      refetch();
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to update user role');
+    } finally {
+      setIsSavingRole(false);
     }
   };
 
-  const handleToggleStatus = async (user: TeamUser) => {
-    const newStatus = user.status === 'active' ? 'inactive' : 'active';
+  const handleToggleStatus = async (user: User) => {
     try {
-      await usersApi.update(user.id, { status: newStatus } as any);
-      toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
-      refetch();
+      if (user.isActive) {
+        await usersApi.deactivate(user.id);
+        toast.success('User deactivated');
+      } else {
+        await usersApi.activate(user.id);
+        toast.success('User activated');
+      }
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to update user status');
     }
   };
 
-  const handleDelete = async (userId: string) => {
+  const handleUnlock = async (user: User) => {
     try {
-      await usersApi.delete(userId);
-      toast.success('User removed');
-      refetch();
+      await usersApi.unlock(user.id);
+      toast.success('Account unlocked');
     } catch {
-      toast.error('Failed to remove user');
+      toast.error('Failed to unlock account');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const handleResetTwoFactor = async (user: User) => {
+    const ok = await confirm({
+      title: `Turn off two-factor sign-in for ${user.name ?? user.email}?`,
+      description: 'They are signed out everywhere and emailed. They can set up two-factor sign-in again in Settings > Security.',
+      confirmLabel: 'Turn off',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await usersApi.resetTwoFactor(user.id);
+      toast.success('Two-factor sign-in turned off');
+    } catch (err) {
+      toast.error((err as { message?: string } | null)?.message || 'Failed to reset two-factor sign-in');
+    }
+  };
+
+  const columns: DataTableColumn<User>[] = [
+    {
+      key: 'name',
+      header: 'User',
+      sortable: true,
+      cell: (u) => (
+        <div className="flex items-center gap-ds-3">
+          <Avatar className="size-8">
+            <AvatarFallback className="text-xs">{initialsOf(u.name, u.email)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="text-sm font-medium">{u.name ?? u.email}</p>
+            <p className="text-xs text-ds-foreground-muted">{u.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      sortable: true,
+      cell: (u) => <Badge variant="secondary">{ROLE_LABELS[u.role] ?? u.role}</Badge>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (u) => (
+        <Badge variant={u.isActive ? 'default' : 'outline'}>{u.isActive ? 'Active' : 'Inactive'}</Badge>
+      ),
+    },
+    {
+      key: 'lastLoginAt',
+      header: 'Last login',
+      cell: (u) => formatDate((u as unknown as { lastLoginAt?: string }).lastLoginAt),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Team Management</h1>
-          <p className="text-muted-foreground mt-1">Manage team members, roles, and permissions</p>
-        </div>
-        <Button onClick={() => setInviteOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Invite User
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="manager">Manager</SelectItem>
-            <SelectItem value="agent">Agent</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Users Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Team Members ({users.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {users.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No team members found</p>
+    <>
+      <ListPage<User>
+        refreshKey={refreshKey}
+        title="Team"
+        description="Manage team members, roles, and access."
+        getRowId={(u) => u.id}
+        fetcher={({ page, limit, search }) => usersApi.list({ page, limit, search: search.trim() || undefined })}
+        columns={columns}
+        primaryAction={
+          <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-ds-2">
+            <Plus aria-hidden="true" /> Invite user
+          </Button>
+        }
+        searchPlaceholder="Search by name or email…"
+        rowActions={(u) => (
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="View login history"
+              onClick={() => router.push(`/settings/login-history?userId=${u.id}`)}
+            >
+              <History aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Edit role"
+              onClick={() => {
+                setEditingUser(u);
+                setEditRole((u.role as Role) ?? 'salesperson');
+              }}
+            >
+              <Shield aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={u.isActive ? 'Deactivate' : 'Activate'}
+              onClick={() => void handleToggleStatus(u)}
+            >
+              {u.isActive ? <UserX aria-hidden="true" /> : <UserCheck aria-hidden="true" />}
+            </Button>
+          </>
+        )}
+        renderDetail={(u) => (
+          <div className="flex flex-col gap-ds-4 pt-ds-4">
+            <div className="flex items-center gap-ds-3">
+              <Avatar className="size-12">
+                <AvatarFallback>{initialsOf(u.name, u.email)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{u.name ?? u.email}</p>
+                <p className="text-sm text-ds-foreground-muted">{u.email}</p>
+              </div>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Login</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((u) => {
-                  const initials = (u.name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                  const isActive = (u.status ?? 'active') === 'active';
-                  return (
-                    <TableRow key={u.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium text-sm">
-                            {u.name ?? u.email}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">{u.email}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="capitalize">{u.role}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn(
-                            isActive
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                              : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
-                          )}
-                        >
-                          {isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">{formatDate(u.lastLoginAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Edit role"
-                            onClick={() => {
-                              setEditingUser(u);
-                              setEditRole(u.role);
-                            }}
-                          >
-                            <Shield className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title={isActive ? 'Deactivate' : 'Activate'}
-                            onClick={() => handleToggleStatus(u)}
-                          >
-                            {isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+            <dl className="grid grid-cols-2 gap-ds-3 text-sm">
+              <div>
+                <dt className="text-ds-foreground-muted">Role</dt>
+                <dd>{ROLE_LABELS[u.role] ?? u.role}</dd>
+              </div>
+              <div>
+                <dt className="text-ds-foreground-muted">Status</dt>
+                <dd>{u.isActive ? 'Active' : 'Inactive'}</dd>
+              </div>
+              <div>
+                <dt className="text-ds-foreground-muted">Phone</dt>
+                <dd>{u.phone ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-ds-foreground-muted">Department</dt>
+                <dd>{u.department ?? '—'}</dd>
+              </div>
+            </dl>
+            <div className="flex flex-wrap gap-ds-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditingUser(u);
+                  setEditRole((u.role as Role) ?? 'salesperson');
+                }}
+                className="gap-ds-2"
+              >
+                <Pencil aria-hidden="true" /> Edit role
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void handleUnlock(u)} className="gap-ds-2">
+                <Lock aria-hidden="true" /> Unlock account
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void handleResetTwoFactor(u)} className="gap-ds-2">
+                <ShieldOff aria-hidden="true" /> Reset two-factor
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/settings/login-history?userId=${u.id}`)}
+                className="gap-ds-2"
+              >
+                <History aria-hidden="true" /> Login history
+              </Button>
+            </div>
+          </div>
+        )}
+        detailTitle={(u) => u.name ?? u.email}
+        emptyIcon={<Users aria-hidden="true" className="size-10" />}
+        emptyTitle="No team members yet"
+        emptyDescription="Invite your first teammate to get started."
+        emptyAction={
+          <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-ds-2">
+            <Plus aria-hidden="true" /> Invite user
+          </Button>
+        }
+      />
 
-      {/* Invite Dialog */}
+      {/* Invite dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite Team Member</DialogTitle>
+            <DialogTitle>Invite team member</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="inviteEmail">Email Address</Label>
+          <div className="flex flex-col gap-ds-4 py-ds-2">
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-name">
+                Full name<span aria-hidden="true" className="ml-0.5 text-ds-danger">*</span>
+              </Label>
               <Input
-                id="inviteEmail"
+                id="invite-name"
+                value={inviteForm.name}
+                onChange={(e) => setInviteForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="e.g., Priya Sharma"
+              />
+            </div>
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-email">
+                Email address<span aria-hidden="true" className="ml-0.5 text-ds-danger">*</span>
+              </Label>
+              <Input
+                id="invite-email"
                 type="email"
                 value={inviteForm.email}
                 onChange={(e) => setInviteForm((p) => ({ ...p, email: e.target.value }))}
                 placeholder="colleague@company.com"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="inviteRole">Role</Label>
-              <Select value={inviteForm.role} onValueChange={(v) => setInviteForm((p) => ({ ...p, role: v }))}>
-                <SelectTrigger id="inviteRole">
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-phone">Phone</Label>
+              <PhoneInput
+                value={inviteForm.phone}
+                onChange={(v) => setInviteForm((p) => ({ ...p, phone: v }))}
+              />
+            </div>
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-department">Department</Label>
+              <Input
+                id="invite-department"
+                value={inviteForm.department}
+                onChange={(e) => setInviteForm((p) => ({ ...p, department: e.target.value }))}
+                placeholder="e.g., Sales"
+              />
+            </div>
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select
+                value={inviteForm.role}
+                onValueChange={(v) => setInviteForm((p) => ({ ...p, role: v as Role }))}
+              >
+                <SelectTrigger id="invite-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="agent">Agent</SelectItem>
+                  {ROLE_OPTIONS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+            {inviteError && (
+              <p role="alert" className="text-sm text-ds-danger">
+                {inviteError}
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
-            <Button onClick={handleInvite} className="gap-2" disabled={isInviting}>
-              {isInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-              {isInviting ? 'Sending...' : 'Send Invitation'}
+            <Button variant="outline" onClick={() => setInviteOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInvite} disabled={isInviting} className="gap-ds-2">
+              {isInviting ? <Spinner className="size-4" /> : <Mail aria-hidden="true" />}
+              Send invitation
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Role Dialog */}
-      <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
+      {/* Edit role dialog */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit User Role</DialogTitle>
+            <DialogTitle>Edit user role</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Changing role for <strong>{editingUser?.name ?? editingUser?.email}</strong> ({editingUser?.email})
-            </p>
-            <div className="space-y-2">
+          <p className="text-sm text-ds-foreground-muted">
+            Changing role for <strong>{editingUser?.name ?? editingUser?.email}</strong>
+          </p>
+          <div className="flex flex-col gap-ds-4 py-ds-2">
+            <div className="flex flex-col gap-ds-1">
               <Label>Role</Label>
-              <Select value={editRole} onValueChange={setEditRole}>
+              <Select value={editRole} onValueChange={(v) => setEditRole(v as Role)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="agent">Agent</SelectItem>
+                  {ROLE_OPTIONS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button onClick={handleEditRole}>Save</Button>
+            <Button variant="outline" onClick={() => setEditingUser(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditRole} disabled={isSavingRole} className="gap-ds-2">
+              {isSavingRole && <Spinner className="size-4" />}
+              Save
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      {confirmDialog}
+    </>
   );
 }

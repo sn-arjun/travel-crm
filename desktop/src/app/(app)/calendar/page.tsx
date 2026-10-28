@@ -1,9 +1,11 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Clock, Bell, AlertCircle, Loader2,
-  Pencil, Link2, Users, User,
+  Pencil, Link2, Users, User, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,47 +22,73 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Combobox } from '@/components/ui/combobox';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FilterBar } from '@/components/domain/filter-bar';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { eventsApi, type CalendarEvent, type EventType } from '@/lib/api/events';
+import { eventsApi, normalizeEventFlags, type CalendarEvent, type CreateEventRequest, type UpdateEventRequest, type EventType } from '@/lib/api/events';
+import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { toLocalDateString, toLocalDayKey } from '@/lib/dates';
+import { PageContainer } from '@/components/layout/page-container';
+import { chartColors } from '@/design-system/tokens';
+import { unwrapList, unwrapEntity } from '@/lib/api/envelope';
+import { DepartureQuickDrawer, DepartureSeatsChip } from '@/components/domain/departure-seats';
+import { useDepartureSeatsLive } from '@/hooks/use-departure-seats-live';
+import { useGroupTours } from '@/hooks/use-group-tours';
+import { useT } from '@/lib/i18n';
+import type { SeatsSummary } from '@/lib/api/departures';
+
+const DEFAULT_EVENT_COLOR = chartColors['chart-1'].light;
 
 const REF_DATE = Date.now();
 
 type ViewMode = 'month' | 'week' | 'day';
 
 // ─── Event type config ───
+const TONE = {
+  info: { bg: 'bg-ds-info-subtle text-ds-info-on-subtle', dot: 'bg-ds-info', edge: 'border-l-ds-info' },
+  primary: { bg: 'bg-ds-primary-subtle text-ds-primary-on-subtle', dot: 'bg-ds-primary', edge: 'border-l-ds-primary' },
+  warning: { bg: 'bg-ds-warning-subtle text-ds-warning-on-subtle', dot: 'bg-ds-warning', edge: 'border-l-ds-warning' },
+  danger: { bg: 'bg-ds-danger-subtle text-ds-danger-on-subtle', dot: 'bg-ds-danger', edge: 'border-l-ds-danger' },
+  success: { bg: 'bg-ds-success-subtle text-ds-success-on-subtle', dot: 'bg-ds-success', edge: 'border-l-ds-success' },
+  cyan: { bg: 'bg-ds-chart-2/15 text-ds-foreground', dot: 'bg-ds-chart-2', edge: 'border-l-ds-chart-2' },
+  pink: { bg: 'bg-ds-chart-5/15 text-ds-foreground', dot: 'bg-ds-chart-5', edge: 'border-l-ds-chart-5' },
+  neutral: { bg: 'bg-ds-surface-sunken text-ds-foreground-muted', dot: 'bg-ds-foreground-subtle', edge: 'border-l-ds-border-strong' },
+} as const;
+
 const EVENT_TYPES: {
   value: EventType;
   label: string;
   bg: string;
   dot: string;
+  edge: string;
   badge: string;
 }[] = [
-  { value: 'trip_departure', label: 'Trip Departure', bg: 'text-blue-700 bg-blue-50 dark:bg-blue-950/50', dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800' },
-  { value: 'trip_return', label: 'Trip Return', bg: 'text-cyan-700 bg-cyan-50 dark:bg-cyan-950/50', dot: 'bg-cyan-500', badge: 'bg-cyan-100 text-cyan-800' },
-  { value: 'meeting', label: 'Meeting', bg: 'text-purple-700 bg-purple-50 dark:bg-purple-950/50', dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800' },
-  { value: 'follow_up', label: 'Follow Up', bg: 'text-amber-700 bg-amber-50 dark:bg-amber-950/50', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' },
-  { value: 'deadline', label: 'Deadline', bg: 'text-red-700 bg-red-50 dark:bg-red-950/50', dot: 'bg-red-500', badge: 'bg-red-100 text-red-800' },
-  { value: 'reminder', label: 'Reminder', bg: 'text-orange-700 bg-orange-50 dark:bg-orange-950/50', dot: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800' },
-  { value: 'holiday', label: 'Holiday', bg: 'text-green-700 bg-green-50 dark:bg-green-950/50', dot: 'bg-green-500', badge: 'bg-green-100 text-green-800' },
-  // legacy
-  { value: 'call' as EventType, label: 'Call', bg: 'text-teal-700 bg-teal-50', dot: 'bg-teal-500', badge: 'bg-teal-100 text-teal-800' },
-  { value: 'other' as EventType, label: 'Other', bg: 'text-gray-700 bg-gray-50', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-800' },
+  { value: 'trip_departure', label: 'Trip Departure', ...TONE.info, badge: TONE.info.bg },
+  { value: 'trip_return', label: 'Trip Return', ...TONE.cyan, badge: TONE.cyan.bg },
+  { value: 'meeting', label: 'Meeting', ...TONE.primary, badge: TONE.primary.bg },
+  { value: 'follow_up', label: 'Follow Up', ...TONE.warning, badge: TONE.warning.bg },
+  { value: 'deadline', label: 'Deadline', ...TONE.danger, badge: TONE.danger.bg },
+  { value: 'reminder', label: 'Reminder', ...TONE.pink, badge: TONE.pink.bg },
+  { value: 'holiday', label: 'Holiday', ...TONE.success, badge: TONE.success.bg },
+  { value: 'call', label: 'Call', ...TONE.cyan, badge: TONE.cyan.bg },
+  { value: 'other', label: 'Other', ...TONE.neutral, badge: TONE.neutral.bg },
 ];
 
 function getTypeConfig(type: string) {
   return EVENT_TYPES.find((t) => t.value === type) ?? EVENT_TYPES.find((t) => t.value === 'other')!;
 }
 
-function normalizeEvent(e: any): CalendarEvent & { startTime: string; endTime: string; type: EventType } {
+function normalizeEvent(e: CalendarEvent): CalendarEvent & { startTime: string; endTime: string; type: EventType } {
   const startTime = e.startTime || e.start_at || '';
   const endTime = e.endTime || e.end_at || '';
   const type = (e.event_type || e.type || 'other') as EventType;
   return {
-    ...e,
+    ...normalizeEventFlags(e),
     startTime, endTime, type, event_type: type,
     leadId: e.leadId || e.related_lead_id,
     lead_title: e.lead_title as string | undefined,
@@ -110,44 +138,63 @@ function getEventHourPosition(event: ReturnType<typeof normalizeEvent>) {
 
 // ─── Calendar Grid (Month View) ───
 function CalendarGrid({
-  year, month, onDateSelect, events, selectedDate,
+  year, month, onDateSelect, events, selectedDate, onEventDrop, onDepartureOpen,
 }: {
   year: number; month: number;
   onDateSelect: (date: string) => void;
+  onDepartureOpen: (departureId: string) => void;
   events: ReturnType<typeof normalizeEvent>[];
   selectedDate: string | null;
+  onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startingDayOfWeek = firstDay.getDay();
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
 
   const getDayEvents = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return events.filter((e) => (e.startTime || '').split('T')[0] === dateStr);
+    return events.filter((e) => toLocalDayKey(e.startTime || '') === dateStr);
   };
 
-  const days: (number | null)[] = Array.from({ length: startingDayOfWeek }, () => null);
-  for (let i = 1; i <= daysInMonth; i++) days.push(i);
-  const weeks: (number | null)[][] = [];
-  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+  type Cell = { day: number; inMonth: boolean; dayStr: string };
+  const cells: Cell[] = [];
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+    cells.push({ day: prevMonthDays - i, inMonth: false, dayStr: '' });
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    cells.push({ day: i, inMonth: true, dayStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}` });
+  }
+  for (let i = 1; cells.length % 7 !== 0; i++) cells.push({ day: i, inMonth: false, dayStr: '' });
+  const weeks: Cell[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <div className="grid grid-cols-7 bg-muted border-b">
+    <div className="overflow-hidden rounded-ds-lg border border-ds-border">
+      <div className="grid grid-cols-7 border-b border-ds-border bg-ds-surface-sunken">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="p-3 text-center text-xs font-semibold border-r last:border-r-0 text-muted-foreground">
+          <div key={d} className="border-r border-ds-border p-ds-3 text-center text-xs font-semibold text-ds-foreground-muted last:border-r-0">
             {d}
           </div>
         ))}
       </div>
       {weeks.map((week, wi) => (
-        <div key={wi} className="grid grid-cols-7 border-b last:border-b-0">
-          {week.map((day, di) => {
-            const dayStr = day
-              ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              : null;
-            const dayEvents = day ? getDayEvents(day) : [];
+        <div key={wi} className="grid grid-cols-7 border-b border-ds-border last:border-b-0">
+          {week.map((cell, di) => {
+            if (!cell.inMonth) {
+              return (
+                <div
+                  key={di}
+                  data-out-of-month="true"
+                  className="min-h-24 border-r border-ds-border bg-ds-surface-sunken p-ds-2 last:border-r-0"
+                >
+                  <span className="inline-flex size-6 items-center justify-center text-sm text-ds-foreground-subtle">{cell.day}</span>
+                </div>
+              );
+            }
+            const { day, dayStr } = cell;
+            const dayEvents = getDayEvents(day);
             const isToday = dayStr === todayStr;
             const isSelected = dayStr === selectedDate;
 
@@ -155,39 +202,49 @@ function CalendarGrid({
               <div
                 key={di}
                 className={cn(
-                  'min-h-24 p-2 border-r last:border-r-0 cursor-pointer hover:bg-muted/50 transition-colors',
-                  isToday && 'bg-primary/5',
-                  isSelected && 'ring-2 ring-inset ring-primary/40',
-                  !day && 'bg-muted/20 cursor-default',
+                  'min-h-24 cursor-pointer border-r border-ds-border p-ds-2 transition-colors last:border-r-0 hover:bg-ds-surface-sunken',
+                  isSelected && 'ring-2 ring-inset ring-ds-ring',
                 )}
-                onClick={() => day && dayStr && onDateSelect(dayStr)}
+                onClick={() => onDateSelect(dayStr)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const eventId = e.dataTransfer.getData('text/event-id');
+                  if (eventId) onEventDrop(eventId, dayStr);
+                }}
               >
-                {day && (
-                  <>
-                    <div className={cn(
-                      'inline-flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold mb-1',
-                      isToday && 'bg-primary text-primary-foreground',
-                    )}>
-                      {day}
-                    </div>
-                    <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((event) => (
-                        <div
-                          key={event.id}
-                          className={cn('text-[10px] px-1.5 py-0.5 rounded truncate', getTypeConfig(event.type).bg)}
-                          title={event.title}
-                        >
-                          {event.title}
-                        </div>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <div className="text-[10px] px-1.5 text-muted-foreground font-medium">
-                          +{dayEvents.length - 3} more
-                        </div>
+                <div className={cn(
+                  'mb-ds-1 inline-flex size-6 items-center justify-center rounded-full text-sm font-semibold text-ds-foreground',
+                  isToday && 'bg-ds-primary text-ds-primary-foreground',
+                )}>
+                  {day}
+                </div>
+                <div className="space-y-0.5">
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <div
+                      key={event.id}
+                      // A departure moves with its dates, not by dragging its calendar entry.
+                      draggable={!event.departure}
+                      onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
+                      onClick={event.departure ? (e) => { e.stopPropagation(); onDepartureOpen(event.departure!.id); } : undefined}
+                      className={cn(
+                        'truncate rounded-ds-sm px-ds-2 py-0.5 text-xs',
+                        event.departure ? 'flex cursor-pointer items-center justify-between gap-ds-1' : 'cursor-grab active:cursor-grabbing',
+                        getTypeConfig(event.type).bg,
                       )}
+                      title={event.title}
+                      data-testid={event.departure ? 'calendar-departure-event' : undefined}
+                    >
+                      <span className="truncate">{event.title}</span>
+                      {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                     </div>
-                  </>
-                )}
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <div className="px-ds-2 text-xs font-medium text-ds-foreground-muted">
+                      +{dayEvents.length - 3} more
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -199,28 +256,28 @@ function CalendarGrid({
 
 // ─── Week View ───
 function WeekView({
-  currentDate, events, onEventClick, onDateSelect, selectedDate,
+  currentDate, events, onEventClick, onDateSelect, onEventDrop,
 }: {
   currentDate: Date;
   events: ReturnType<typeof normalizeEvent>[];
   onEventClick: (event: ReturnType<typeof normalizeEvent>) => void;
   onDateSelect: (date: string) => void;
-  selectedDate: string | null;
+  onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const weekDays = getWeekDays(currentDate);
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
   const ROW_HEIGHT = 60; // px per hour
 
   const getEventsForDay = (dayStr: string) =>
-    events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+    events.filter((e) => toLocalDayKey(e.startTime || '') === dayStr);
 
   const getAllDayEvents = (dayStr: string) =>
-    events.filter((e) => e.all_day && (e.startTime || '').split('T')[0] === dayStr);
+    events.filter((e) => e.all_day && toLocalDayKey(e.startTime || '') === dayStr);
 
   return (
     <div className="border rounded-lg overflow-hidden flex flex-col">
       {/* Day headers */}
-      <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-muted border-b">
+      <div className="grid grid-cols-[3.75rem_repeat(7,1fr)] bg-muted border-b">
         <div className="p-2 border-r" />
         {weekDays.map((day) => {
           const dayStr = formatDateStr(day);
@@ -234,7 +291,7 @@ function WeekView({
               )}
               onClick={() => onDateSelect(dayStr)}
             >
-              <div className="text-[10px] font-medium text-muted-foreground uppercase">
+              <div className="text-xs font-medium text-muted-foreground uppercase">
                 {day.toLocaleDateString('en-US', { weekday: 'short' })}
               </div>
               <div className={cn(
@@ -250,25 +307,26 @@ function WeekView({
 
       {/* All-day events row */}
       {weekDays.some((day) => getAllDayEvents(formatDateStr(day)).length > 0) && (
-        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b bg-muted/30">
-          <div className="p-1 border-r text-[10px] text-muted-foreground text-right pr-2 pt-2">
+        <div className="grid grid-cols-[3.75rem_repeat(7,1fr)] border-b bg-muted/30">
+          <div className="p-1 border-r text-xs text-muted-foreground text-right pr-2 pt-2">
             All Day
           </div>
           {weekDays.map((day) => {
             const dayStr = formatDateStr(day);
             const allDayEvts = getAllDayEvents(dayStr);
             return (
-              <div key={dayStr} className="p-1 border-r last:border-r-0 min-h-[28px]">
+              <div key={dayStr} className="p-1 border-r last:border-r-0 min-h-7">
                 {allDayEvts.map((event) => {
                   const cfg = getTypeConfig(event.type);
                   return (
                     <div
                       key={event.id}
-                      className={cn('text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer mb-0.5', cfg.bg)}
+                      className={cn('mb-0.5 flex cursor-pointer items-center justify-between gap-1 truncate rounded px-1.5 py-0.5 text-xs', cfg.bg)}
                       title={event.title}
                       onClick={() => onEventClick(event)}
                     >
-                      {event.title}
+                      <span className="truncate">{event.title}</span>
+                      {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                     </div>
                   );
                 })}
@@ -280,13 +338,13 @@ function WeekView({
 
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
-        <div className="relative grid grid-cols-[60px_repeat(7,1fr)]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+        <div className="relative grid grid-cols-[3.75rem_repeat(7,1fr)]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
           {/* Time labels */}
           <div className="border-r">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="border-b last:border-b-0 text-[10px] text-muted-foreground text-right pr-2 pt-1"
+                className="border-b last:border-b-0 text-xs text-muted-foreground text-right pr-2 pt-1"
                 style={{ height: ROW_HEIGHT }}
               >
                 {formatHour(hour)}
@@ -304,6 +362,8 @@ function WeekView({
               <div
                 key={dayStr}
                 className={cn('relative border-r last:border-r-0', isToday && 'bg-primary/[0.02] dark:bg-primary/[0.04]')}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const eventId = e.dataTransfer.getData('text/event-id'); if (eventId) onEventDrop(eventId, dayStr); }}
               >
                 {/* Hour grid lines */}
                 {HOURS.map((hour) => (
@@ -323,34 +383,28 @@ function WeekView({
                   return (
                     <div
                       key={event.id}
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
                       className={cn(
-                        'absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-pointer',
+                        'absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-grab active:cursor-grabbing',
                         'border-l-2 shadow-sm hover:shadow-md transition-shadow',
                         cfg.bg,
                       )}
                       style={{
                         top: pos.top * ROW_HEIGHT,
                         height: Math.max(pos.height * ROW_HEIGHT - 2, 20),
-                        borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
-                          : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
-                          : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
-                          : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
-                          : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
-                          : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
-                          : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
-                          : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
-                          : '#9ca3af',
                       }}
-                      title={`${event.title}\n${new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                      title={`${event.title}\n${formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' }) : ''}`}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                     >
-                      <div className="text-[10px] font-semibold truncate leading-tight">
-                        {event.title}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate text-xs font-semibold leading-tight">{event.title}</span>
+                        {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                       </div>
                       {pos.height * ROW_HEIGHT > 30 && (
-                        <div className="text-[9px] opacity-75 truncate">
-                          {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                          {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                        <div className="text-xs opacity-75 truncate">
+                          {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
+                          {event.endTime && ` - ${formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}`}
                         </div>
                       )}
                     </div>
@@ -375,11 +429,11 @@ function DayView({
   onDateSelect: (date: string) => void;
 }) {
   const dayStr = formatDateStr(currentDate);
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
   const isToday = dayStr === todayStr;
   const ROW_HEIGHT = 64; // px per hour
 
-  const dayEvents = events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+  const dayEvents = events.filter((e) => toLocalDayKey(e.startTime || '') === dayStr);
   const allDayEvents = dayEvents.filter((e) => e.all_day);
   const timedEvents = dayEvents.filter((e) => !e.all_day);
 
@@ -404,16 +458,17 @@ function DayView({
       {/* All-day events */}
       {allDayEvents.length > 0 && (
         <div className="border-b bg-muted/30 p-2 space-y-1">
-          <div className="text-[10px] text-muted-foreground font-medium mb-1">All Day</div>
+          <div className="text-xs text-muted-foreground font-medium mb-1">All Day</div>
           {allDayEvents.map((event) => {
             const cfg = getTypeConfig(event.type);
             return (
               <div
                 key={event.id}
-                className={cn('text-xs px-2 py-1 rounded cursor-pointer', cfg.bg)}
+                className={cn('flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 text-xs', cfg.bg)}
                 onClick={() => onEventClick(event)}
               >
-                {event.title}
+                <span className="truncate">{event.title}</span>
+                {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
               </div>
             );
           })}
@@ -422,13 +477,13 @@ function DayView({
 
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
-        <div className="relative grid grid-cols-[60px_1fr]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+        <div className="relative grid grid-cols-[3.75rem_1fr]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
           {/* Time labels */}
           <div className="border-r">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="border-b last:border-b-0 text-[11px] text-muted-foreground text-right pr-2 pt-1"
+                className="border-b last:border-b-0 text-xs text-muted-foreground text-right pr-2 pt-1"
                 style={{ height: ROW_HEIGHT }}
               >
                 {formatHour(hour)}
@@ -464,28 +519,22 @@ function DayView({
                   style={{
                     top: pos.top * ROW_HEIGHT,
                     height: Math.max(pos.height * ROW_HEIGHT - 2, 24),
-                    borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
-                      : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
-                      : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
-                      : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
-                      : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
-                      : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
-                      : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
-                      : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
-                      : '#9ca3af',
                   }}
                   title={event.title}
                   onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                 >
-                  <div className="text-xs font-semibold truncate">{event.title}</div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-xs font-semibold">{event.title}</span>
+                    {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
+                  </div>
                   {pos.height * ROW_HEIGHT > 36 && (
-                    <div className="text-[10px] opacity-75 mt-0.5">
-                      {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                    <div className="text-xs opacity-75 mt-0.5">
+                      {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
+                      {event.endTime && ` - ${formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}`}
                     </div>
                   )}
                   {pos.height * ROW_HEIGHT > 56 && event.location && (
-                    <div className="text-[10px] opacity-60 mt-0.5 truncate">{event.location}</div>
+                    <div className="text-xs opacity-60 mt-0.5 truncate">{event.location}</div>
                   )}
                 </div>
               );
@@ -538,14 +587,10 @@ interface EventFormData {
 }
 
 function EventForm({
-  value, onChange, selectedDate, leadOptions, userOptions, onLeadSearch,
+  value, onChange,
 }: {
   value: EventFormData;
   onChange: (v: EventFormData) => void;
-  selectedDate?: string | null;
-  leadOptions: { value: string; label: string }[];
-  userOptions: { value: string; label: string }[];
-  onLeadSearch: (q: string) => void;
 }) {
   const set = (patch: Partial<EventFormData>) => onChange({ ...value, ...patch });
 
@@ -576,7 +621,7 @@ function EventForm({
           <Label>Color</Label>
           <Input
             type="color"
-            value={value.color || '#6366F1'}
+            value={value.color || DEFAULT_EVENT_COLOR}
             onChange={(e) => set({ color: e.target.value })}
             className="h-9 p-1 cursor-pointer"
           />
@@ -624,17 +669,19 @@ function EventForm({
 
       <div className="space-y-2">
         <Label>Linked Lead</Label>
-        <Combobox
-          options={[
-            ...(value.leadId && value.leadTitle ? [{ value: value.leadId, label: value.leadTitle }] : []),
-            ...leadOptions.filter((o) => o.value !== value.leadId),
-          ]}
-          value={value.leadId}
-          onValueChange={(v) => {
-            const opt = leadOptions.find((o) => o.value === v);
-            set({ leadId: v, leadTitle: opt?.label || '' });
+        <RelationCombobox<{ id: string; title?: string; name?: string }>
+          value={value.leadId || null}
+          onChange={(id, item) => set({ leadId: id ?? '', leadTitle: item ? (item.title || item.name || '') : '' })}
+          fetcher={async (q, page) => {
+            const r = unwrapList<{ id: string; title?: string; name?: string }>(await leadsApi.list({ search: q || undefined, page, limit: 20 }));
+            return { items: r.data, total: r.pagination.total };
           }}
-          onSearch={onLeadSearch}
+          getOptionId={(l) => l.id}
+          getOptionLabel={(l) => l.title || l.name || l.id}
+          resolveSelected={async (id) => {
+            const r = await leadsApi.getById(id);
+            return unwrapEntity<{ id: string; title?: string; name?: string } | null>(r) ?? null;
+          }}
           placeholder="Search leads..."
           searchPlaceholder="Search by lead title..."
         />
@@ -656,7 +703,7 @@ function EventForm({
 // ─── Main Page ───
 const EMPTY_FORM: EventFormData = {
   title: '', type: 'meeting', startTime: '09:00', endTime: '10:00',
-  allDay: false, description: '', location: '', color: '#6366F1',
+  allDay: false, description: '', location: '', color: DEFAULT_EVENT_COLOR,
   leadId: '', leadTitle: '', assignedTo: '',
 };
 
@@ -670,7 +717,13 @@ export default function CalendarPage() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [formData, setFormData] = React.useState<EventFormData>(EMPTY_FORM);
   const [editFormData, setEditFormData] = React.useState<EventFormData>(EMPTY_FORM);
-  const [leadSearch, setLeadSearch] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState<string>('');
+  // A group departure's entry opens its drawer; its seats redraw when the API announces a change.
+  const [drawerDeparture, setDrawerDeparture] = React.useState<string | null>(null);
+  const [liveSeats, setLiveSeats] = React.useState<Record<string, SeatsSummary>>({});
+  const { enabled: groupToursOn } = useGroupTours();
+  const t = useT();
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -704,26 +757,62 @@ export default function CalendarPage() {
     [rangeStart, rangeEnd, calendarView],
   );
 
-  const { data: leadsResp } = useApiQuery(
-    () => import('@/lib/api/leads').then((m) => m.leadsApi.list({ search: leadSearch || undefined, limit: 30 })),
-    [leadSearch],
-  );
-
-  const leads = React.useMemo(() => {
-    const raw = (leadsResp as any)?.data?.data ?? (leadsResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [leadsResp]);
-  const leadOptions = leads.map((l: any) => ({ value: l.id, label: l.title || l.name || l.id }));
-
-  const createMutation = useApiMutation((data: any) => eventsApi.create(data));
-  const updateMutation = useApiMutation(({ id, data }: { id: string; data: any }) => eventsApi.update(id, data));
+  const createMutation = useApiMutation((data: CreateEventRequest) => eventsApi.create(data));
+  const updateMutation = useApiMutation(({ id, data }: { id: string; data: UpdateEventRequest }) => eventsApi.update(id, data));
   const deleteMutation = useApiMutation((eventId: string) => eventsApi.delete(eventId));
+  const rescheduleMutation = useApiMutation(({ id, data }: { id: string; data: { start_at: string; end_at?: string } }) => eventsApi.reschedule(id, data));
 
-  const rawEvents = (eventsResp as any)?.data?.data ?? (eventsResp as any)?.data ?? [];
-  const events = React.useMemo(
-    () => (Array.isArray(rawEvents) ? rawEvents : []).map(normalizeEvent),
-    [rawEvents],
+  const rawEvents = unwrapList<CalendarEvent>(eventsResp).data;
+
+  // Seats announced since the list was read are shown until the next read.
+  useDepartureSeatsLive((e) => {
+    if (e.seats) setLiveSeats((prev) => ({ ...prev, [e.departureId]: e.seats! }));
+  });
+  React.useEffect(() => setLiveSeats({}), [eventsResp]);
+
+  const allEvents = React.useMemo(
+    () =>
+      rawEvents.map((raw) => {
+        const e = normalizeEvent(raw);
+        // Seat chips show only when the plan has group departures and the agency switched them on.
+        if (!e.departure) return e;
+        if (!groupToursOn) return { ...e, departure: undefined };
+        const live = liveSeats[e.departure.id];
+        return live ? { ...e, departure: { ...e.departure, seats: live } } : e;
+      }),
+    [rawEvents, liveSeats, groupToursOn],
   );
+
+  const events = React.useMemo(() => {
+    return allEvents.filter((e) => {
+      if (typeFilter && e.type !== typeFilter) return false;
+      if (search && !e.title.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [allEvents, typeFilter, search]);
+
+  const handleEventDrop = async (eventId: string, newDateStr: string) => {
+    const event = allEvents.find((e) => e.id === eventId);
+    if (!event) return;
+    const oldDateStr = toLocalDayKey(event.startTime || '');
+    if (oldDateStr === newDateStr) return;
+    const start = event.startTime ? new Date(event.startTime) : null;
+    const end = event.endTime ? new Date(event.endTime) : null;
+    const [ny, nm, nd] = newDateStr.split('-').map(Number);
+    const newStart = event.all_day || !start
+      ? `${newDateStr}T00:00:00.000Z`
+      : new Date(ny!, nm! - 1, nd!, start.getHours(), start.getMinutes()).toISOString();
+    const newEnd = event.all_day || !end
+      ? `${newDateStr}T23:59:59.000Z`
+      : new Date(ny!, nm! - 1, nd!, end.getHours(), end.getMinutes()).toISOString();
+    try {
+      await rescheduleMutation.mutate({ id: eventId, data: { start_at: newStart, end_at: newEnd } });
+      toast.success('Event rescheduled');
+      await refetch();
+    } catch {
+      toast.error('Failed to reschedule event');
+    }
+  };
 
   // ─── View-aware navigation ───
   const handlePrev = () => {
@@ -758,11 +847,11 @@ export default function CalendarPage() {
 
   const handleToday = () => {
     setCurrentDate(new Date(REF_DATE));
-    setSelectedDate(new Date(REF_DATE).toISOString().split('T')[0] ?? null);
+    setSelectedDate(toLocalDateString(new Date(REF_DATE)));
   };
 
   const selectedDateEvents = selectedDate
-    ? events.filter((e) => (e.startTime || '').split('T')[0] === selectedDate)
+    ? events.filter((e) => toLocalDayKey(e.startTime || '') === selectedDate)
     : [];
 
   // ─── View-aware header label ───
@@ -822,7 +911,6 @@ export default function CalendarPage() {
 
   const handleEditOpen = (event: typeof events[number]) => {
     setEditEvent(event);
-    const startDate = (event.startTime || '').split('T')[0] ?? '';
     const startTimePart = event.all_day ? '09:00'
       : new Date(event.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const endTimePart = event.all_day ? '10:00'
@@ -835,7 +923,7 @@ export default function CalendarPage() {
       allDay: Boolean(event.all_day),
       description: event.description || '',
       location: event.location || '',
-      color: event.color || '#6366F1',
+      color: event.color || DEFAULT_EVENT_COLOR,
       leadId: event.leadId || event.related_lead_id || '',
       leadTitle: '',
       assignedTo: event.assigned_to || '',
@@ -844,8 +932,12 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (event: typeof events[number]) => {
+    if (event.departure) {
+      setDrawerDeparture(event.departure.id);
+      return;
+    }
     // Set selected date to the event's date and open side panel
-    const eventDate = (event.startTime || '').split('T')[0];
+    const eventDate = toLocalDayKey(event.startTime || '');
     if (eventDate) {
       setSelectedDate(eventDate);
     }
@@ -856,7 +948,7 @@ export default function CalendarPage() {
       toast.error('Title is required');
       return;
     }
-    const startDate = (editEvent.startTime || '').split('T')[0] ?? selectedDate ?? new Date().toISOString().split('T')[0]!;
+    const startDate = (toLocalDayKey(editEvent.startTime || '') || selectedDate) ?? toLocalDateString(new Date());
     try {
       await updateMutation.mutate({ id: editEvent.id, data: buildEventPayload(editFormData, startDate) });
       toast.success('Event updated');
@@ -878,14 +970,47 @@ export default function CalendarPage() {
     }
   };
 
+  const handleExport = () => {
+    const header = ['Title', 'Type', 'Start', 'End', 'All day', 'Location', 'Linked lead'];
+    const rows = events.map((e) => [
+      e.title,
+      getTypeConfig(e.type).label,
+      e.startTime ?? '',
+      e.endTime ?? '',
+      e.all_day ? 'Yes' : 'No',
+      e.location ?? '',
+      e.lead_title ?? '',
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calendar-events-${formatDateStr(currentDate)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="flex h-full gap-6 p-6 overflow-hidden">
+    <PageContainer>
       {/* Calendar */}
-      <div className="flex-1 flex flex-col gap-4 overflow-auto">
-        {/* Header */}
+      <div className="flex flex-col gap-ds-4">
+        <PageHeader
+          title="Calendar"
+          description="Trip departures, meetings, deadlines and reminders."
+          count={events.length}
+          actions={
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={events.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" /> Export
+            </Button>
+          }
+        />
+
+        {/* View controls */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold tracking-tight">Calendar</h1>
             {/* My / Team toggle */}
             <div className="flex rounded-md border overflow-hidden text-xs font-medium">
               <button
@@ -920,15 +1045,35 @@ export default function CalendarPage() {
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleToday}>Today</Button>
-            <Button variant="ghost" size="icon-sm" onClick={handlePrev}>
+            <Button variant="ghost" size="icon-sm" aria-label="Previous" onClick={handlePrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="text-sm font-medium min-w-[130px] text-center">{headerLabel}</div>
-            <Button variant="ghost" size="icon-sm" onClick={handleNext}>
+            <div className="text-sm font-medium min-w-32 text-center">{headerLabel}</div>
+            <Button variant="ghost" size="icon-sm" aria-label="Next" onClick={handleNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
+
+        <FilterBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search events..."
+          activeFilters={typeFilter ? [{ id: 'type', label: 'Type', value: getTypeConfig(typeFilter).label }] : []}
+          onRemoveFilter={() => setTypeFilter('')}
+          onClearFilters={() => { setSearch(''); setTypeFilter(''); }}
+          actions={
+            <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Event type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {EVENT_TYPES.slice(0, 7).map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
 
         {/* Legend — all 7 event types */}
         <div className="flex gap-3 flex-wrap text-xs">
@@ -954,27 +1099,43 @@ export default function CalendarPage() {
           </div>
         )}
 
+        {/* Empty state — no events at all in range (regardless of filters) */}
+        {!loading && !error && allEvents.length === 0 && (
+          <EmptyState
+            icon={<Bell className="h-8 w-8" />}
+            title="No events in this range"
+            description="Create an event to see it on the calendar."
+            action={
+              <Button size="sm" onClick={() => { setSelectedDate(formatDateStr(currentDate)); setFormData(EMPTY_FORM); setCreateOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1.5" /> Add event
+              </Button>
+            }
+          />
+        )}
+
         {/* Calendar Views */}
-        {!loading && !error && viewMode === 'month' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'month' && (
           <CalendarGrid
             year={year} month={month}
             onDateSelect={setSelectedDate}
             events={events}
             selectedDate={selectedDate}
+            onEventDrop={handleEventDrop}
+            onDepartureOpen={setDrawerDeparture}
           />
         )}
 
-        {!loading && !error && viewMode === 'week' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'week' && (
           <WeekView
             currentDate={currentDate}
             events={events}
             onEventClick={handleEventClick}
             onDateSelect={setSelectedDate}
-            selectedDate={selectedDate}
+            onEventDrop={handleEventDrop}
           />
         )}
 
-        {!loading && !error && viewMode === 'day' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'day' && (
           <DayView
             currentDate={currentDate}
             events={events}
@@ -986,22 +1147,22 @@ export default function CalendarPage() {
 
       {/* Side Panel — Events for Selected Date */}
       <Sheet open={!!selectedDate} onOpenChange={(open) => !open && setSelectedDate(null)}>
-        <SheetContent className="w-[360px] flex flex-col p-0">
+        <SheetContent className="w-90 flex flex-col p-0">
           <SheetHeader className="px-6 pt-6 pb-4 border-b">
             <SheetTitle>
               {selectedDate
-                ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatLocaleDate(selectedDate + 'T12:00:00', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
                 : 'Events'}
             </SheetTitle>
           </SheetHeader>
 
           <div className="flex-1 overflow-auto space-y-3 px-6 py-4">
             {selectedDateEvents.length === 0 ? (
-              <div className="text-center text-muted-foreground py-12">
-                <Bell className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">No events on this day</p>
-                <p className="text-xs mt-1">Click "Add Event" to create one</p>
-              </div>
+              <EmptyState
+                icon={<Bell className="h-8 w-8" />}
+                title="No events on this day"
+                description='Click "Add Event" to create one.'
+              />
             ) : (
               selectedDateEvents.map((event) => {
                 const cfg = getTypeConfig(event.type);
@@ -1013,16 +1174,28 @@ export default function CalendarPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-center gap-2">
-                            <Badge className={cn('text-[10px]', cfg.badge)}>{cfg.label}</Badge>
-                            {event.all_day && <Badge variant="outline" className="text-[10px]">All Day</Badge>}
+                            <Badge className={cn('text-xs', cfg.badge)}>{cfg.label}</Badge>
+                            {event.all_day ? <Badge variant="outline" className="text-xs">All Day</Badge> : null}
                           </div>
                           <h3 className="font-semibold text-sm">{event.title}</h3>
+                          {event.departure && (
+                            <div className="flex items-center gap-2">
+                              <DepartureSeatsChip seats={event.departure.seats} />
+                              <button
+                                type="button"
+                                className="text-xs text-primary hover:underline"
+                                onClick={() => setDrawerDeparture(event.departure!.id)}
+                              >
+                                {t('departures.calendar.openDeparture')}
+                              </button>
+                            </div>
+                          )}
                           {!event.all_day && event.startTime && (
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
                               {event.endTime && ' — '}
-                              {event.endTime && new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {event.endTime && formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           )}
                           {event.location && (
@@ -1046,15 +1219,16 @@ export default function CalendarPage() {
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => handleEditOpen(event)}>
+                          <Button variant="ghost" size="icon-sm" aria-label="Edit event" onClick={() => handleEditOpen(event)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            aria-label="Delete event"
                             onClick={() => handleDeleteEvent(event.id)}
                           >
-                            <X className="h-3.5 w-3.5 text-red-500" />
+                            <X className="h-3.5 w-3.5 text-ds-danger" />
                           </Button>
                         </div>
                       </div>
@@ -1076,22 +1250,20 @@ export default function CalendarPage() {
         </SheetContent>
       </Sheet>
 
+      <DepartureQuickDrawer departureId={drawerDeparture} onClose={() => setDrawerDeparture(null)} />
+
       {/* Create Event Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Event</DialogTitle>
             <DialogDescription>
-              {selectedDate && new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {selectedDate && formatLocaleDate(selectedDate + 'T12:00:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </DialogDescription>
           </DialogHeader>
           <EventForm
             value={formData}
             onChange={setFormData}
-            selectedDate={selectedDate}
-            leadOptions={leadOptions}
-            userOptions={[]}
-            onLeadSearch={setLeadSearch}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -1113,10 +1285,6 @@ export default function CalendarPage() {
           <EventForm
             value={editFormData}
             onChange={setEditFormData}
-            selectedDate={selectedDate}
-            leadOptions={leadOptions}
-            userOptions={[]}
-            onLeadSearch={setLeadSearch}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -1127,6 +1295,6 @@ export default function CalendarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

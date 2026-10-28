@@ -1,0 +1,55 @@
+{
+  "slice": "follow-ups",
+  "title": "Follow-ups",
+  "status": "existing",
+  "showcaseOrder": 23,
+  "endpoints": [
+    "DELETE /api/v1/follow-ups/:id",
+    "GET /api/v1/follow-ups",
+    "POST /api/v1/follow-ups",
+    "PUT /api/v1/follow-ups/:id",
+    "PUT /api/v1/follow-ups/:id/complete"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/follow-ups.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/follow-ups/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/follow-ups.spec.ts",
+  "seedHelpers": [
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/follow-ups/**",
+    "desktop/src/lib/api/follow-ups.ts",
+    "desktop/e2e/follow-ups.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Rebuilt on ListPage: FilterBar+infinite scroll+skeleton come from the archetype, hover row actions (complete/reschedule/cancel), bulk cancel, full-dataset CSV export. PUT /follow-ups/:id (reschedule) and DELETE /follow-ups/:id (cancel) are now wired via dialogs. No detail drawer (no per-follow-up detail view in scope) and no urlPrefill/phoneInput/addressAutocomplete/sendMessageDialog — not applicable to this entity's fields.",
+  "showcaseScript": [
+    "Open Follow-ups and filter to overdue",
+    "Complete a follow-up and log the outcome",
+    "Reschedule another follow-up to next week"
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "id": "R115",
+  "tier": 1,
+  "title": "Driver app release: agency code login, release signing from an untracked keystore, iOS permission strings",
+  "lane": "driver",
+  "backend": true,
+  "goal": "One driver app build serves every agency: drivers type their agency code once, and the release build is signed properly.",
+  "why": "packages/driver_app/lib/core/constants/app_config.dart compiles TENANT_ID in (default is the demo tenant), so one build serves one agency; isProd compares with 'prod' while the rest uses 'production'; release builds are signed with the debug key (android/app/build.gradle.kts ~37); ios/Runner/Info.plist lacks location, camera and photo-library usage strings that geolocator and image_picker need.",
+  "featuresToWorks": [
+    "driver.login",
+    "driver.distribution"
+  ],
+  "dependsOn": [
+    "R101"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R104"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "packages/driver_app/lib/core/constants/app_config.dart",
+      "packages/driver_app/lib/features/auth/presentation/screens/phone_input_screen.dart",
+      "packages/driver_app/lib/features/auth/presentation/screens/otp_verification_screen.dart",
+      "packages/driver_app/android/app/build.gradle.kts",
+      "packages/driver_app/ios/Runner/Info.plist",
+      "packages/driver_app/.gitignore",
+      "packages/driver_app/integration_test/smoke_login_test.dart",
+      "backend/src/routes/driver.ts"
+    ],
+    "create": [
+      "packages/driver_app/lib/features/auth/presentation/screens/agency_code_screen.dart",
+      "packages/driver_app/integration_test/agency_login_test.dart",
+      "packages/driver_app/android/key.properties.example",
+      "backend/test/driver-agency.test.ts"
+    ],
+    "mustNotTouch": [
+      "packages/driver_app/integration_test/demo_flow_test.dart",
+      "backend/src/routes/admin*.ts",
+      "backend/src/services/tenancy/**",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Backend routes/driver.ts: GET /api/v1/driver/agency/:code (public, before driver auth) looks up tenants.subdomain = lower(code) with status active/trial, returns { tenantId, name, logoUrl } (logo from the tenant's company settings via resolveTenantDb, optional); 10 per minute per IP via middleware/rate-limiter.ts; unknown -> 404 with a generic message.",
+    "Flutter: remove AppConfig.tenantId; add a tenant store (secure storage if the app already uses flutter_secure_storage, else the existing Hive box) holding tenantId and agency name. First screen when no tenant is stored: AgencyCodeScreen (text field, Continue, shows name + logo to confirm, \"Not your agency?\" back). Phone and OTP screens send the stored tenantId (X-Tenant-Id / body) exactly as today. Profile gets \"Change agency\" (clears session and tenant). isProd compares with 'production'.",
+    "Android signing: build.gradle.kts loads android/key.properties when present (storeFile, storePassword, keyAlias, keyPassword) into a release signingConfig; otherwise uses debug signing and logs a warning during the build. key.properties.example documents the four keys. .gitignore adds android/key.properties, *.jks, *.keystore.",
+    "iOS Info.plist: NSLocationWhenInUseUsageDescription (\"Your location is recorded when you check in and out of a trip.\"), NSCameraUsageDescription (\"Take photos of odometer readings and receipts.\"), NSPhotoLibraryUsageDescription (\"Attach photos of receipts and documents.\"). Display name \"TravelCRM Driver\".",
+    "integration_test/agency_login_test.dart: enters the demo agency code (subdomain demo from seed-local), sees the agency name, enters the demo driver phone, uses the TEST_MODE fixed OTP, lands on My Trips. Update smoke_login_test.dart for the new first screen."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/driver-agency.test.ts: known code -> name; unknown -> 404; suspended tenant -> 404; 11th request in a minute -> 429.",
+    "Flutter widget test for AgencyCodeScreen (valid code continues, invalid shows the error).",
+    "integration_test/agency_login_test.dart on emulator-5554 against fix-stack slot 0 (single mode, demo agency)."
+  ],
+  "acceptance": [
+    "No TENANT_ID dart-define anywhere (grep packages/driver_app and scripts).",
+    "`flutter build apk --release` succeeds with a throwaway key.properties (generate with keytool into %TEMP%, never commit) and without one (debug-signed fallback).",
+    "flutter analyze clean; flutter test green; integration test passes on the emulator."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "tasklist | findstr /i \"java.exe dart.exe flutter\"   # must print nothing; if a build is running, wait and ask the orchestrator",
+    "\"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd C:/Users/Admin/Downloads/pro/CRM/packages/driver_app; flutter analyze; flutter test\"",
+    "\"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd C:/Users/Admin/Downloads/pro/CRM/packages/driver_app; flutter build apk --release\"",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db --no-build",
+    "\"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd C:/Users/Admin/Downloads/pro/CRM/packages/driver_app; flutter test integration_test/agency_login_test.dart -d emulator-5554 --dart-define=API_BASE_URL=http://10.0.2.2:8787\"",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": true,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Owner-held upload keystore and Play Console internal track; iOS build on a Mac with an Apple Developer account."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Somebody (probably the owner) may be building packages/driver_app on this machine. Before editing anything under packages/driver_app run `tasklist | findstr /i \"java.exe dart.exe flutter\"`; if Gradle or Flutter is running, stop and ask the orchestrator. Flutter commands only through x86 PowerShell.",
+    "scripts/record-driver.ps1 and integration_test/demo_flow_test.dart are used by the video studio; do not change demo_flow_test.dart. If the new first screen breaks it, add the agency-code step through a helper the demo test can call and report it as a request for the studio owner.",
+    "Copy generated *.g.dart / *.freezed.dart from the main checkout into a worktree before flutter test (FIX-PLAN 4.1)."
+  ]
+}

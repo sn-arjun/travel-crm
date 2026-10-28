@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { emitFromRequest } from '../services/automation/events';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, or, like, count, sql, inArray } from 'drizzle-orm';
@@ -18,6 +19,34 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { requirePermission } from '../middleware/rbac';
 import { substituteVariables, resolveVariables } from '../services/template-engine';
+import {
+  AllowanceExhausted,
+  allowanceExhaustedResponse,
+  type MeterChannel,
+} from '../services/metering/meter';
+import { whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
+import { HubError, meterOutboundMessage, sendHubMessage } from '../services/messaging/hub';
+import { resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
+
+/**
+ * Take one unit of the agency's allowance for an outbound message before it is queued (R110).
+ * Returns the metered channel (the queue refunds it if the provider rejects the send), or null when nothing was
+ * taken: a free-form WhatsApp reply inside the 24 hour window the contact opened is free.
+ * Throws AllowanceExhausted at the cap; callers answer 402 and queue nothing.
+ */
+async function meterOutbound(
+  c: any,
+  channel: 'whatsapp' | 'sms' | 'email',
+  opts: { contactId?: string; template?: boolean; templateCategory?: string | null } = {},
+): Promise<MeterChannel | null> {
+  return meterOutboundMessage(c.env, c.get('tenantId'), c.get('tenantDb'), channel, opts);
+}
+
+/** R128: where a customer's reply to a Communication Hub email goes: the agency's receiving address, else the sending user. */
+async function hubReplyTo(c: any, contactId?: string | null, leadId?: string | null): Promise<string | undefined> {
+  return resolveReplyTo(c.env, c.get('tenantDb'), c.get('tenantId'), c.get('userId'), { contactId, leadId });
+}
 
 const communicationRoutes = new Hono<AppContext>();
 
@@ -82,71 +111,26 @@ communicationRoutes.post(
   requirePermission('communications', 'create'),
   zValidator('json', sendMessageSchema),
   async (c) => {
-    const db = drizzle(c.get('tenantDb'));
     const userId = c.get('userId');
     const body = c.req.valid('json');
 
     try {
-      // Verify contact exists
-      const contact = await db
-        .select()
-        .from(contacts)
-        .where(eq(contacts.id, body.contact_id))
-        .limit(1)
-        .then(rows => rows[0]);
-
-      if (!contact) {
-        return notFound(c, 'Contact');
-      }
-
-      // Verify we have destination info
-      let destination = '';
-      if (body.channel === 'sms' || body.channel === 'whatsapp') {
-        destination = contact.phone || '';
-        if (!destination) {
-          return error(c, 'Contact has no phone number', 400);
-        }
-      } else if (body.channel === 'email') {
-        destination = contact.email || '';
-        if (!destination) {
-          return error(c, 'Contact has no email address', 400);
-        }
-      }
-
-      // Create message log entry
-      const messageId = generateId();
-      const now = new Date().toISOString();
-
-      await db.insert(messageLog).values({
-        id: messageId,
+      const sent = await sendHubMessage(c.env, c.get('tenantId'), c.get('tenantDb'), {
         contactId: body.contact_id,
-        leadId: body.lead_id || null,
+        leadId: body.lead_id,
         channel: body.channel,
-        templateId: null,
-        subject: null,
-        content: body.message,
-        status: 'queued',
-        externalId: null,
-        errorMessage: null,
-        sentBy: userId,
-        sentAt: null,
-        deliveredAt: null,
-        readAt: null,
-        createdAt: now,
+        body: body.message,
+        purpose: 'service',
+        actorId: userId,
+        mediaUrl: body.media_url,
       });
+      const messageId = sent.messageId;
 
-      // Queue message
-      await c.env.SMS_QUEUE.send({
-        type: body.channel === 'email' ? 'email' : 'sms',
-        data: {
-          to: destination,
-          ...(body.channel === 'email' && { subject: 'Message', html: body.message }),
-          ...(body.channel !== 'email' && { body: body.message }),
-          messageLogId: messageId,
-          contactId: body.contact_id,
-          channel: body.channel,
-          ...(body.media_url && { mediaUrl: body.media_url }),
-        },
+      await emitFromRequest(c, {
+        type: 'message.sent',
+        entityType: 'message',
+        entityId: messageId,
+        payload: { contactId: body.contact_id, leadId: body.lead_id || null, channel: body.channel },
       });
 
       return created(c, {
@@ -154,6 +138,8 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
+      if (err instanceof HubError) return err.status === 404 ? notFound(c, 'Contact') : error(c, err.message, err.status);
       console.error('Error sending message:', err);
       return error(c, 'Failed to send message', 500);
     }
@@ -220,6 +206,8 @@ communicationRoutes.post(
         }
       }
 
+      const templateMetered = await meterOutbound(c, template.channel as 'whatsapp' | 'sms' | 'email', { contactId: body.contact_id, template: true, templateCategory: template.category });
+
       // Create message log entry
       const messageId = generateId();
       const now = new Date().toISOString();
@@ -247,11 +235,17 @@ communicationRoutes.post(
         type: template.channel === 'email' ? 'email' : 'sms',
         data: {
           to: destination,
-          ...(template.channel === 'email' && { subject: subject || 'Message', html: content }),
+          ...(template.channel === 'email' && { subject: subject || 'Message', html: content, replyTo: await hubReplyTo(c, body.contact_id) }),
           ...(template.channel !== 'email' && { body: content }),
           messageLogId: messageId,
           contactId: body.contact_id,
+          tenantId: c.get('tenantId'),
           channel: template.channel,
+          metered: true,
+          refundOnFailure: true,
+          ...(templateMetered && { meterChannel: templateMetered }),
+          // R213: on Meta the approved template is sent by name; other providers ignore this.
+          ...(template.channel === 'whatsapp' && { whatsappTemplate: whatsappTemplateJob(template, mergedVariables) }),
         },
       });
 
@@ -260,6 +254,7 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error sending template:', err);
       return error(c, 'Failed to send template', 500);
     }
@@ -343,6 +338,8 @@ communicationRoutes.post(
         }
       }
 
+      const documentMetered = await meterOutbound(c, body.channel, { contactId: body.contact_id, template: true });
+
       // Create message log entry
       const messageId = generateId();
       const now = new Date().toISOString();
@@ -374,7 +371,11 @@ communicationRoutes.post(
           body: caption,
           messageLogId: messageId,
           contactId: body.contact_id,
+          tenantId: c.get('tenantId'),
           channel: body.channel,
+          metered: true,
+          refundOnFailure: true,
+          ...(documentMetered && { meterChannel: documentMetered }),
           mediaUrl: mediaUrl,
         },
       });
@@ -384,6 +385,7 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error sending document:', err);
       return error(c, 'Failed to send document', 500);
     }
@@ -407,6 +409,7 @@ communicationRoutes.post(
       // Determine message content
       let messageContent = '';
       let templateId: string | null = null;
+      let bulkTemplate: { name: string; content: string; category: string | null; language: string | null } | null = null;
 
       if (body.template_id) {
         const template = await db
@@ -422,6 +425,7 @@ communicationRoutes.post(
 
         messageContent = template.content;
         templateId = body.template_id;
+        bulkTemplate = template;
       } else if (body.message) {
         messageContent = body.message;
       } else {
@@ -444,6 +448,9 @@ communicationRoutes.post(
 
       // Create message log entries and queue messages
       const messageIds: string[] = [];
+      let skippedAllowance = 0;
+      let exhausted: AllowanceExhausted | null = null;
+      const bulkReplyTo = body.channel === 'email' ? await hubReplyTo(c) : undefined;
 
       for (const contact of bulkContacts) {
         // Determine destination
@@ -456,6 +463,21 @@ communicationRoutes.post(
 
         if (!destination) {
           continue; // Skip contacts without proper destination
+        }
+
+        // Metered per recipient before anything is queued; at the cap the rest are skipped, not failed.
+        let metered: MeterChannel | null = null;
+        if (!exhausted) {
+          try {
+            metered = await meterOutbound(c, body.channel, { contactId: contact.id, template: !!templateId, templateCategory: bulkTemplate?.category });
+          } catch (err) {
+            if (!(err instanceof AllowanceExhausted)) throw err;
+            exhausted = err;
+          }
+        }
+        if (exhausted) {
+          skippedAllowance++;
+          continue;
         }
 
         const messageId = generateId();
@@ -488,21 +510,34 @@ communicationRoutes.post(
           type: body.channel === 'email' ? 'email' : 'sms',
           data: {
             to: destination,
-            ...(body.channel === 'email' && { subject: 'Message', html: content }),
+            ...(body.channel === 'email' && { subject: 'Message', html: content, replyTo: inboundDomain(c.env) ? await hubReplyTo(c, contact.id) : bulkReplyTo }),
             ...(body.channel !== 'email' && { body: content }),
             messageLogId: messageId,
             contactId: contact.id,
+            tenantId: c.get('tenantId'),
             channel: body.channel,
+            metered: true,
+            refundOnFailure: metered !== null,
+            ...(metered && { meterChannel: metered }),
+            ...(body.channel === 'whatsapp' && bulkTemplate && { whatsappTemplate: whatsappTemplateJob(bulkTemplate, variables) }),
           },
         });
       }
+
+      // Nothing could be sent because the allowance is used up: refuse like a single send.
+      if (exhausted && messageIds.length === 0) return allowanceExhaustedResponse(c, exhausted);
 
       return created(c, {
         batch_id: batchId,
         total_messages: messageIds.length,
         status: 'queued',
+        ...(skippedAllowance > 0 && {
+          skipped_allowance: skippedAllowance,
+          allowance_exhausted: exhausted ? { channel: exhausted.channel, used: exhausted.used, allowance: exhausted.allowance, options: exhausted.body.options } : undefined,
+        }),
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error in bulk send:', err);
       return error(c, 'Failed to bulk send', 500);
     }

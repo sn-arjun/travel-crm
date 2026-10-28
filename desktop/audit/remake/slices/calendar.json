@@ -1,0 +1,57 @@
+{
+  "slice": "calendar",
+  "title": "Calendar & Events",
+  "status": "existing",
+  "showcaseOrder": 22,
+  "endpoints": [
+    "DELETE /api/v1/events/:id",
+    "GET /api/v1/events",
+    "GET /api/v1/events/:id",
+    "PATCH /api/v1/events/:id/reschedule",
+    "POST /api/v1/events",
+    "PUT /api/v1/events/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/events.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/calendar/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/11-tasks-calendar.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/calendar.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/calendar/**",
+    "desktop/src/lib/api/events.ts",
+    "desktop/e2e/calendar.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": true,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "listPage/infiniteScroll/urlPrefill intentionally not applicable: this is a spatial month/week/day grid, not a row list, so ListPage/DataTable/useInfiniteScroll archetypes don't fit; hoverActions likewise replaced by the detail-drawer edit/delete icons. reschedule already called via PATCH client.eventsApi.reschedule (was already correct, not POST as previously noted) but was unused by the UI — now wired to real drag-and-drop in month/week views (day view has a single column so drag is not meaningful there). Added FilterBar (search + event-type filter), EmptyState for zero-events-in-range and zero-events-on-selected-day, PageHeader with count, themed CSV export of the filtered/visible event set, and swapped the lead field from a bespoke Combobox to RelationCombobox (fetches/resolves via leadsApi). sendMessageDialog/phoneInput/addressAutocomplete/currencyInput are not applicable — events carry no contact email/phone/address/money fields. Editing already existed (edit dialog) so 'no editing' from the prior audit note no longer applies.",
+  "showcaseScript": [
+    "Open the Calendar in month view",
+    "Create an all-day event linked to a lead",
+    "Drag the event to a new date to reschedule",
+    "Switch to week view and confirm it moved"
+  ]
+}

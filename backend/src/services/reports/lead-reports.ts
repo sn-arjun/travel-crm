@@ -7,7 +7,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Pipeline Summary',
         category: 'leads',
         description: 'Current active leads grouped by stage/status.',
-        requiredRole: ['admin', 'manager', 'salesperson'],
+        requiredRole: ['admin', 'sales_manager', 'salesperson'],
         allowedFilters: ['assigned_to', 'source'],
         allowedGroupBy: ['assigned_to', 'source'],
         defaultSort: { column: 'lead_count', order: 'desc' },
@@ -34,7 +34,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Lead Ageing Report',
         category: 'leads',
         description: 'Individual leads with how long they have been in the pipeline.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['status', 'assigned_to'],
         allowedGroupBy: ['assigned_to', 'status'],
         defaultSort: { column: 'days_in_pipeline', order: 'desc' },
@@ -72,19 +72,19 @@ const leadReports: ReportDefinition[] = [
         name: 'Lead Velocity Rate',
         category: 'leads',
         description: 'Average days from lead creation to close (won).',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'month', order: 'desc' },
         baseQuery: `
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', created_at, '{TZ}') as month,
         COUNT(id) as new_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as qualified_won_leads,
         COALESCE(AVG(CASE WHEN status = 'won' THEN CAST(julianday(updated_at) - julianday(created_at) AS INTEGER) END), 0) as avg_days_to_close
       FROM leads
       WHERE is_deleted = 0 {DATE_FILTER}
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -99,7 +99,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Lead Source Analysis',
         category: 'leads',
         description: 'Lead volume, quality, and conversion by source channel.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'total_leads', order: 'desc' },
@@ -130,10 +130,11 @@ const leadReports: ReportDefinition[] = [
         name: 'Lead Response Time',
         category: 'leads',
         description: 'Average time to first activity/follow-up after lead creation.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: ['assigned_to'],
         defaultSort: { column: 'avg_response_hours', order: 'asc' },
+        dateColumn: 'l.created_at',
         baseQuery: `
       SELECT
         l.assigned_to,
@@ -157,17 +158,18 @@ const leadReports: ReportDefinition[] = [
         name: 'Follow-Up Compliance',
         category: 'leads',
         description: 'Percentage of leads that received timely follow-up actions.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: ['assigned_to'],
         defaultSort: { column: 'compliance_rate', order: 'desc' },
+        dateColumn: 'l.created_at',
         baseQuery: `
       SELECT
         l.assigned_to,
         COUNT(l.id) as total_leads,
         COUNT(DISTINCT f.lead_id) as leads_with_followup,
         COALESCE(COUNT(DISTINCT f.lead_id) * 100.0 / NULLIF(COUNT(l.id), 0), 0) as compliance_rate,
-        COUNT(CASE WHEN f.completed_at IS NULL AND f.scheduled_at < datetime('now') THEN 1 END) as overdue_followups
+        COUNT(CASE WHEN f.completed_at IS NULL AND f.scheduled_at < '{NOW}' THEN 1 END) as overdue_followups
       FROM leads l
       LEFT JOIN follow_ups f ON f.lead_id = l.id
       WHERE l.is_deleted = 0 AND l.status NOT IN ('won', 'lost') {DATE_FILTER}
@@ -187,7 +189,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Hot Leads Report',
         category: 'leads',
         description: 'High-priority leads requiring immediate attention.',
-        requiredRole: ['admin', 'manager', 'salesperson'],
+        requiredRole: ['admin', 'sales_manager', 'salesperson'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: [],
         defaultSort: { column: 'created_at', order: 'desc' },
@@ -221,7 +223,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Lost Leads Analysis',
         category: 'leads',
         description: 'Reasons and patterns for lost leads.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['assigned_to'],
         allowedGroupBy: [],
         defaultSort: { column: 'count', order: 'desc' },
@@ -250,7 +252,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Unassigned Leads',
         category: 'leads',
         description: 'Leads with no assigned owner.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: ['source'],
         allowedGroupBy: [],
         defaultSort: { column: 'created_at', order: 'asc' },
@@ -282,7 +284,7 @@ const leadReports: ReportDefinition[] = [
         name: 'Duplicate Leads',
         category: 'leads',
         description: 'Potential duplicate leads by contact.',
-        requiredRole: ['admin', 'manager'],
+        requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'lead_count', order: 'desc' },

@@ -2,14 +2,16 @@ import { z } from 'zod';
 
 // ── Auth Schemas ────────────────────────────────────────────
 
+// tenantId is optional in the body: the route falls back to the X-Tenant-Id header
+// and answers 400 "tenantId is required" when neither is supplied.
 export const loginSchema = z.object({
   phone: z.string().min(10, 'Phone number is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().min(1).optional(),
 });
 
 export const verifyOtpSchema = z.object({
   phone: z.string().min(10, 'Phone number is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().min(1).optional(),
   otp: z.string().length(6, 'OTP must be 6 digits'),
 });
 

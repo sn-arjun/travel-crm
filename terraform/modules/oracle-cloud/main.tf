@@ -46,9 +46,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: SSH (22)
   ingress_security_rules {
-    protocol    = "6" # TCP
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6" # TCP
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 22
       max = 22
@@ -57,9 +57,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: HTTP (80)
   ingress_security_rules {
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 80
       max = 80
@@ -68,9 +68,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: HTTPS (443)
   ingress_security_rules {
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 443
       max = 443
@@ -97,7 +97,7 @@ resource "oci_core_subnet" "public" {
   security_list_ids = [oci_core_security_list.main.id]
 }
 
-# --- Compute Instance (ARM Always Free) ---
+# --- Compute Instance (ARM; the defaults fit the Always Free allowance: 2 OCPUs, 12 GB, 100 GB boot) ---
 
 resource "oci_core_instance" "wordpress" {
   compartment_id      = var.compartment_ocid
@@ -106,14 +106,14 @@ resource "oci_core_instance" "wordpress" {
   shape               = "VM.Standard.A1.Flex"
 
   shape_config {
-    ocpus         = 4
-    memory_in_gbs = 24
+    ocpus         = var.instance_ocpus
+    memory_in_gbs = var.instance_memory_gb
   }
 
   source_details {
     source_type             = "image"
     source_id               = var.image_id
-    boot_volume_size_in_gbs = 200
+    boot_volume_size_in_gbs = var.boot_volume_gb
   }
 
   create_vnic_details {

@@ -1,228 +1,205 @@
 'use client';
 
-import * as React from 'react';
+import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, CreditCard } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { VEHICLE_TYPE_LABELS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
-import { useApiMutation } from '@/hooks/use-api';
+import { EntityForm, FormRow } from '@/components/domain';
+import { CurrencyInput, DatePicker, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SectionCard, Switch } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
+import { VEHICLE_TYPE_LABELS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
+
+const schema = z.object({
+  name: z.string().min(1, 'Rate card name is required'),
+  vehicleType: z.string().min(1, 'Vehicle type is required'),
+  tripType: z.string().min(1, 'Trip type is required'),
+  baseFare: z.number({ error: 'Base fare is required' }),
+  perKmRate: z.number({ error: 'Per km rate is required' }),
+  perHourRate: z.number().optional(),
+  minKm: z.number().optional(),
+  minHours: z.number().optional(),
+  extraKmRate: z.number().optional(),
+  extraHourRate: z.number().optional(),
+  nightCharge: z.number().optional(),
+  driverAllowance: z.number().optional(),
+  tollIncluded: z.boolean(),
+  parkingIncluded: z.boolean(),
+  isActive: z.boolean(),
+  validFrom: z.date().optional(),
+  validTo: z.date().optional(),
+});
+type RateCardForm = z.infer<typeof schema>;
+
+function toIso(d: Date | undefined) {
+  if (!d) return undefined;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export default function NewRateCardPage() {
   const router = useRouter();
 
-  const { mutate: createRateCard, loading: isSubmitting } = useApiMutation(
-    (data: any) => fleetApi.rateCards.create(data),
-  );
-
-  const [form, setForm] = React.useState({
-    name: '',
-    vehicleType: '',
-    tripType: '',
-    baseFare: '',
-    perKmRate: '',
-    perHourRate: '',
-    minimumKm: '',
-    minimumHours: '',
-    extraKmRate: '',
-    extraHourRate: '',
-    nightCharge: '',
-    driverAllowance: '',
-    tollIncluded: false,
-    parkingIncluded: false,
-    isActive: true,
-    validFrom: '',
-    validTo: '',
-  });
-
-  function updateField(field: string, value: string | number | boolean) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.name || !form.vehicleType) {
-      toast.error('Name and vehicle type are required');
-      return;
-    }
-    const result = await createRateCard({
-      name: form.name,
-      vehicleType: form.vehicleType,
-      tripType: form.tripType || undefined,
-      baseFare: parseFloat(form.baseFare) || 0,
-      perKmRate: parseFloat(form.perKmRate) || 0,
-      perHourRate: form.perHourRate ? parseFloat(form.perHourRate) : undefined,
-      minimumKm: form.minimumKm ? parseFloat(form.minimumKm) : undefined,
-      minimumHours: form.minimumHours ? parseFloat(form.minimumHours) : undefined,
-      extraKmRate: form.extraKmRate ? parseFloat(form.extraKmRate) : undefined,
-      extraHourRate: form.extraHourRate ? parseFloat(form.extraHourRate) : undefined,
-      nightCharge: form.nightCharge ? parseFloat(form.nightCharge) : undefined,
-      driverAllowance: form.driverAllowance ? parseFloat(form.driverAllowance) : undefined,
-      tollIncluded: form.tollIncluded,
-      parkingIncluded: form.parkingIncluded,
-      isActive: form.isActive,
-      validFrom: form.validFrom || undefined,
-      validTo: form.validTo || undefined,
-    });
-    if (result) {
-      toast.success('Rate card created successfully');
-      router.push('/fleet/rate-cards');
-    } else {
-      toast.error('Failed to create rate card');
-    }
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>New Rate Card</h1>
-            <p className="text-sm text-muted-foreground">Define pricing for a vehicle and trip type combination</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Create Rate Card
-          </Button>
-        </div>
-      </div>
+    <EntityForm<RateCardForm>
+      title="New rate card"
+      description="Define pricing for a vehicle and trip type combination."
+      schema={schema}
+      defaultValues={{
+        name: '',
+        vehicleType: '',
+        tripType: '',
+        baseFare: 0,
+        perKmRate: 0,
+        perHourRate: undefined,
+        minKm: undefined,
+        minHours: undefined,
+        extraKmRate: undefined,
+        extraHourRate: undefined,
+        nightCharge: undefined,
+        driverAllowance: undefined,
+        tollIncluded: false,
+        parkingIncluded: false,
+        isActive: true,
+        validFrom: undefined,
+        validTo: undefined,
+      }}
+      prefillFromParams={{ vehicleType: 'vehicleType' }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        try {
+          await fleetApi.rateCards.create({
+            name: v.name,
+            vehicleType: v.vehicleType,
+            tripType: v.tripType,
+            baseFare: v.baseFare,
+            perKmRate: v.perKmRate,
+            perHourRate: v.perHourRate,
+            minKm: v.minKm,
+            minHours: v.minHours,
+            extraKmRate: v.extraKmRate,
+            extraHourRate: v.extraHourRate,
+            nightCharge: v.nightCharge,
+            driverAllowance: v.driverAllowance,
+            tollIncluded: v.tollIncluded,
+            parkingIncluded: v.parkingIncluded,
+            isActive: v.isActive,
+            validFrom: toIso(v.validFrom),
+            validTo: toIso(v.validTo),
+          });
+          toast.success('Rate card created');
+          router.push('/fleet/rate-cards');
+        } catch {
+          toast.error('Failed to create rate card');
+        }
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Basic information" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="name" label="Rate card name" required wide>
+                <Input {...form.register('name')} id="name" placeholder="e.g., SUV Outstation" />
+              </FormRow>
+              <FormRow name="vehicleType" label="Vehicle type" required>
+                <Select value={form.watch('vehicleType')} onValueChange={(v) => form.setValue('vehicleType', v, { shouldDirty: true })}>
+                  <SelectTrigger id="vehicleType"><SelectValue placeholder="Select vehicle type" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(VEHICLE_TYPE_LABELS).map(([v, l]) => (
+                      <SelectItem key={v} value={v}>{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="tripType" label="Trip type" required>
+                <Select value={form.watch('tripType')} onValueChange={(v) => form.setValue('tripType', v, { shouldDirty: true })}>
+                  <SelectTrigger id="tripType"><SelectValue placeholder="Select trip type" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(FLEET_TRIP_TYPE_LABELS).map(([v, l]) => (
+                      <SelectItem key={v} value={v}>{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+            </div>
+          </SectionCard>
 
-      <div className="flex-1 overflow-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><CreditCard className="h-4 w-4" />Basic Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Rate Card Name <span className="text-destructive">*</span></Label>
-                <Input id="name" placeholder="e.g., SUV Outstation" value={form.name} onChange={(e) => updateField('name', e.target.value)} required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Vehicle Type <span className="text-destructive">*</span></Label>
-                  <Select value={form.vehicleType} onValueChange={(v) => updateField('vehicleType', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select vehicle type" /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(VEHICLE_TYPE_LABELS).map(([v, l]) => (
-                        <SelectItem key={v} value={v}>{l}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Trip Type</Label>
-                  <Select value={form.tripType} onValueChange={(v) => updateField('tripType', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select trip type" /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(FLEET_TRIP_TYPE_LABELS).map(([v, l]) => (
-                        <SelectItem key={v} value={v}>{l}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Base pricing" required>
+            <div className="grid gap-ds-4 sm:grid-cols-3">
+              <FormRow name="baseFare" label="Base fare" required>
+                <CurrencyInput id="baseFare" value={form.watch('baseFare')} onChange={(v) => form.setValue('baseFare', v ?? 0, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="perKmRate" label="Per km rate" required>
+                <CurrencyInput id="perKmRate" value={form.watch('perKmRate')} onChange={(v) => form.setValue('perKmRate', v ?? 0, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="perHourRate" label="Per hour rate">
+                <CurrencyInput id="perHourRate" value={form.watch('perHourRate')} onChange={(v) => form.setValue('perHourRate', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="minKm" label="Minimum km">
+                <Input
+                  id="minKm"
+                  type="number"
+                  min={0}
+                  value={form.watch('minKm') ?? ''}
+                  onChange={(e) => form.setValue('minKm', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="minHours" label="Minimum hours">
+                <Input
+                  id="minHours"
+                  type="number"
+                  min={0}
+                  value={form.watch('minHours') ?? ''}
+                  onChange={(e) => form.setValue('minHours', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Base Pricing</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="baseFare">Base Fare (₹) <span className="text-destructive">*</span></Label>
-                  <Input id="baseFare" type="number" min={0} placeholder="0" value={form.baseFare} onChange={(e) => updateField('baseFare', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="perKmRate">Per KM Rate (₹) <span className="text-destructive">*</span></Label>
-                  <Input id="perKmRate" type="number" min={0} placeholder="0" value={form.perKmRate} onChange={(e) => updateField('perKmRate', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="perHourRate">Per Hour Rate (₹)</Label>
-                  <Input id="perHourRate" type="number" min={0} placeholder="0" value={form.perHourRate} onChange={(e) => updateField('perHourRate', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="minimumKm">Minimum KM</Label>
-                  <Input id="minimumKm" type="number" min={0} placeholder="0" value={form.minimumKm} onChange={(e) => updateField('minimumKm', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="minimumHours">Minimum Hours</Label>
-                  <Input id="minimumHours" type="number" min={0} placeholder="0" value={form.minimumHours} onChange={(e) => updateField('minimumHours', e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Extra & additional charges">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="extraKmRate" label="Extra km rate" hint="Charged per km beyond minimum">
+                <CurrencyInput id="extraKmRate" value={form.watch('extraKmRate')} onChange={(v) => form.setValue('extraKmRate', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="extraHourRate" label="Extra hour rate" hint="Charged per hour beyond minimum">
+                <CurrencyInput id="extraHourRate" value={form.watch('extraHourRate')} onChange={(v) => form.setValue('extraHourRate', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="nightCharge" label="Night charge" hint="Applied for trips after 10 PM">
+                <CurrencyInput id="nightCharge" value={form.watch('nightCharge')} onChange={(v) => form.setValue('nightCharge', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="driverAllowance" label="Driver allowance" hint="Per-day driver allowance">
+                <CurrencyInput id="driverAllowance" value={form.watch('driverAllowance')} onChange={(v) => form.setValue('driverAllowance', v, { shouldDirty: true })} />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Extra & Additional Charges</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="extraKmRate">Extra KM Rate (₹)</Label>
-                  <Input id="extraKmRate" type="number" min={0} placeholder="0" value={form.extraKmRate} onChange={(e) => updateField('extraKmRate', e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Charged per km beyond minimum</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="extraHourRate">Extra Hour Rate (₹)</Label>
-                  <Input id="extraHourRate" type="number" min={0} placeholder="0" value={form.extraHourRate} onChange={(e) => updateField('extraHourRate', e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Charged per hour beyond minimum</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="nightCharge">Night Charge (₹)</Label>
-                  <Input id="nightCharge" type="number" min={0} placeholder="0" value={form.nightCharge} onChange={(e) => updateField('nightCharge', e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Applied for trips after 10 PM</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="driverAllowance">Driver Allowance (₹)</Label>
-                  <Input id="driverAllowance" type="number" min={0} placeholder="0" value={form.driverAllowance} onChange={(e) => updateField('driverAllowance', e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Per-day driver allowance</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Validity">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="validFrom" label="Valid from">
+                <DatePicker value={form.watch('validFrom')} onChange={(d) => form.setValue('validFrom', d, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="validTo" label="Valid to">
+                <DatePicker
+                  value={form.watch('validTo')}
+                  onChange={(d) => form.setValue('validTo', d, { shouldDirty: true })}
+                  minDate={form.watch('validFrom')}
+                />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Inclusions & Status</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Toll Included</p>
-                  <p className="text-xs text-muted-foreground">Include toll charges in the rate</p>
-                </div>
-                <Switch checked={form.tollIncluded} onCheckedChange={(v) => updateField('tollIncluded', v)} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Parking Included</p>
-                  <p className="text-xs text-muted-foreground">Include parking charges in the rate</p>
-                </div>
-                <Switch checked={form.parkingIncluded} onCheckedChange={(v) => updateField('parkingIncluded', v)} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Active</p>
-                  <p className="text-xs text-muted-foreground">Enable this rate card for use</p>
-                </div>
-                <Switch checked={form.isActive} onCheckedChange={(v) => updateField('isActive', v)} />
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    </div>
+          <SectionCard title="Inclusions & status">
+            <div className="space-y-ds-4">
+              <FormRow name="tollIncluded" label="Toll included" hint="Include toll charges in the rate">
+                <Switch id="tollIncluded" checked={form.watch('tollIncluded')} onCheckedChange={(v) => form.setValue('tollIncluded', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="parkingIncluded" label="Parking included" hint="Include parking charges in the rate">
+                <Switch id="parkingIncluded" checked={form.watch('parkingIncluded')} onCheckedChange={(v) => form.setValue('parkingIncluded', v, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="isActive" label="Active" hint="Enable this rate card for use">
+                <Switch id="isActive" checked={form.watch('isActive')} onCheckedChange={(v) => form.setValue('isActive', v, { shouldDirty: true })} />
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }

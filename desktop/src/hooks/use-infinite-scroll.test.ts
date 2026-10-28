@@ -279,4 +279,58 @@ describe('useInfiniteScroll', () => {
 
     expect(result.current.items).toEqual([{ id: '1' }]);
   });
+
+  it('with queryKey, a new fetcher identity does not refetch but a key change does', async () => {
+    const fetcher = vi.fn().mockResolvedValue(makePaginatedResponse([{ id: '1' }], 1));
+    const { result, rerender } = renderHook(
+      ({ key }: { key: string }) =>
+        useInfiniteScroll({ fetcher: (p: number, l: number) => fetcher(p, l), queryKey: key }),
+      { initialProps: { key: 'a' } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ key: 'a' });
+    rerender({ key: 'a' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ key: 'b' });
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  });
+
+  it('default extractors read the flat {data, pagination} envelope', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      success: true,
+      data: [{ id: '1' }, { id: '2' }],
+      pagination: { page: 1, limit: 2, total: 77, totalPages: 39 },
+    });
+    const { result } = renderHook(() => useInfiniteScroll({ fetcher, limit: 2 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.total).toBe(77);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it('keeps loaded rows and exposes loadMoreError + retryLoadMore when page 2 fails', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(makePaginatedResponse([{ id: '1' }], 2))
+      .mockRejectedValueOnce({ status: 500, message: 'later' })
+      .mockResolvedValue(makePaginatedResponse([{ id: '2' }], 2));
+    const { result } = renderHook(() => useInfiniteScroll({ fetcher, limit: 1 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Attach a sentinel and trigger the observer for page 2.
+    await act(async () => {
+      result.current.retryLoadMore();
+    });
+    await waitFor(() => expect(result.current.loadMoreError).not.toBeNull());
+    expect(result.current.items).toEqual([{ id: '1' }]);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      result.current.retryLoadMore();
+    });
+    await waitFor(() => expect(result.current.items).toEqual([{ id: '1' }, { id: '2' }]));
+    expect(result.current.loadMoreError).toBeNull();
+  });
 });

@@ -1,0 +1,18 @@
+{
+  "ui.languageSwitch.label": "भाषा चुनें",
+  "ui.breadcrumb": "ब्रेडक्रम्ब",
+  "ui.pagination.label": "पृष्ठ संख्या",
+  "ui.pagination.range": "{total} में से {first}–{last}",
+  "ui.pagination.rows": "पंक्तियां",
+  "ui.pagination.rowsPerPage": "प्रति पृष्ठ पंक्तियां",
+  "ui.pagination.pageOf": "पृष्ठ {page} / {total}",
+  "ui.pagination.first": "पहला पृष्ठ",
+  "ui.pagination.previous": "पिछला पृष्ठ",
+  "ui.pagination.next": "अगला पृष्ठ",
+  "ui.pagination.last": "अंतिम पृष्ठ",
+  "ui.filterBar.searchPlaceholder": "खोजें...",
+  "ui.filterBar.filters": "फ़िल्टर",
+  "ui.filterBar.activeLabel": "फ़िल्टर:",
+  "ui.filterBar.clearAll": "सभी साफ़ करें",
+  "ui.common.retry": "फिर कोशिश करें"
+}

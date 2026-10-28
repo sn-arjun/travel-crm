@@ -1,76 +1,47 @@
 'use client';
 
+
+import { formatLocaleTime, formatLocaleDateTime, formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Link from 'next/link';
 import {
-  ArrowLeft, Mail, MessageSquare, Send, Pause, XCircle, Loader2,
-  TrendingUp, Eye, MousePointerClick, AlertCircle, CheckCircle2,
-  Clock, BarChart3, Users,
+  Send, Pause, XCircle, Clock, Pencil, Users, Mail, MessageSquare,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DetailPage } from '@/components/domain';
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
+  Button, Tag, SectionCard, Skeleton, EmptyState, DataTable, Dialog, DialogContent,
+  DialogHeader, DialogTitle, DialogFooter, DatePicker, Input, Label, useConfirm,
+} from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
+import { formatDisplayDate } from '@/lib/dates';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { campaignsApi, type SendCampaignRequest, type ScheduleCampaignRequest, type CampaignRecipient } from '@/lib/api/campaigns';
+import {
+  campaignsApi, type SendCampaignRequest, type ScheduleCampaignRequest, type CampaignRecipient,
+} from '@/lib/api/campaigns';
 import type { Campaign } from '@travelcrm/shared';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { toast } from 'sonner';
 
-function getStatusColor(status: string) {
-  switch (status) {
-    case 'draft':
-      return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/30 dark:text-gray-400';
-    case 'running':
-    case 'active':
-      return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400';
-    case 'completed':
-      return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400';
-    case 'paused':
-    case 'scheduled':
-      return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400';
-    default:
-      return 'bg-gray-100 text-gray-700 border-gray-200';
-  }
+function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'running') return 'success';
+  if (status === 'completed') return 'info';
+  if (status === 'scheduled' || status === 'paused') return 'warning';
+  return 'neutral';
 }
 
-function getChannelIcon(type: string) {
-  switch (type) {
-    case 'email': return <Mail className="h-4 w-4" />;
-    case 'sms': return <MessageSquare className="h-4 w-4" />;
-    case 'whatsapp': return <MessageSquare className="h-4 w-4" />;
-    default: return <Mail className="h-4 w-4" />;
-  }
+function channelIcon(type: string) {
+  if (type === 'email') return <Mail className="size-3.5" aria-hidden="true" />;
+  if (type === 'sms' || type === 'whatsapp') return <MessageSquare className="size-3.5" aria-hidden="true" />;
+  return null;
 }
 
-
-function getRecipientStatusBadge(status: string) {
-  switch (status) {
-    case 'delivered':
-      return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px]">Delivered</Badge>;
-    case 'opened':
-      return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Opened</Badge>;
-    case 'clicked':
-      return <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-[10px]">Clicked</Badge>;
-    case 'bounced':
-      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">Bounced</Badge>;
-    case 'failed':
-      return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px]">Failed</Badge>;
-    default:
-      return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
-  }
+function recipientStatusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'opened' || status === 'clicked') return 'success';
+  if (status === 'bounced') return 'warning';
+  if (status === 'failed') return 'danger';
+  if (status === 'delivered') return 'info';
+  return 'neutral';
 }
 
 export default function CampaignDetailPage() {
@@ -78,8 +49,9 @@ export default function CampaignDetailPage() {
   const params = useParams();
   const campaignId = params.id as string;
 
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [showScheduleDialog, setShowScheduleDialog] = React.useState(false);
-  const [scheduleDate, setScheduleDate] = React.useState('');
+  const [scheduleDate, setScheduleDate] = React.useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = React.useState('');
 
   const { data: campaignResponse, loading, error, refetch } = useApiQuery(
@@ -87,29 +59,19 @@ export default function CampaignDetailPage() {
     [campaignId],
   );
 
-  const campaign = (campaignResponse?.data ?? null) as (Campaign & {
-    description?: string;
-    sent?: number;
-    delivered?: number;
-    opened?: number;
-    clicked?: number;
-    bounced?: number;
-    failed?: number;
-  }) | null;
+  const campaign = (campaignResponse?.data ?? null) as Campaign | null;
 
   const { mutate: sendCampaign, loading: isSending } = useApiMutation(
     (data: SendCampaignRequest) => campaignsApi.send(campaignId, data),
   );
-
   const { mutate: scheduleCampaign, loading: isScheduling } = useApiMutation(
     (data: ScheduleCampaignRequest) => campaignsApi.schedule(campaignId, data),
   );
-
   const { mutate: cancelCampaign, loading: isCancelling } = useApiMutation(
     (data: { reason?: string }) => campaignsApi.cancel(campaignId, data),
   );
+  const { mutate: deleteCampaign } = useApiMutation(() => campaignsApi.delete(campaignId));
 
-  // Infinite scroll for recipients
   const recipientFetcher = React.useCallback(
     (page: number, limit: number) => campaignsApi.getRecipients(campaignId, { page, limit }),
     [campaignId],
@@ -117,34 +79,29 @@ export default function CampaignDetailPage() {
   const {
     items: recipients,
     loading: recipientsLoading,
-    loadingMore: recipientsLoadingMore,
     total: recipientTotal,
-    sentinelRef: recipientSentinelRef,
-  } = useInfiniteScroll<CampaignRecipient>({
-    fetcher: recipientFetcher,
-    limit: 25,
-  });
+  } = useInfiniteScroll<CampaignRecipient>({ fetcher: recipientFetcher, limit: 25 });
 
-  // Real-time updates via WebSocket
-  const campaignStatus = (campaign?.status ?? '') as string;
+  const campaignStatus = campaign?.status ?? '';
   useRealtimeEvent(['campaign:progress', 'campaign:completed', 'campaign:failed'], (data) => {
-    if (data?.campaignId === campaignId) {
-      refetch();
-    }
+    if (data?.campaignId === campaignId) refetch();
   });
 
-  // Fallback: poll every 30s only if WS disconnected and campaign is active
   const wsConnected = useRealtimeConnected();
   React.useEffect(() => {
     if (wsConnected) return;
-    if (campaignStatus !== 'sending' && campaignStatus !== 'running') return;
+    if (campaignStatus !== 'running') return;
     const interval = setInterval(() => { refetch(); }, 30_000);
     return () => clearInterval(interval);
   }, [wsConnected, campaignStatus, refetch]);
 
-  const handleSendNow = async () => {
-    if (!confirm('Are you sure you want to send this campaign now?')) return;
-
+  async function handleSendNow() {
+    const ok = await confirm({
+      title: 'Send this campaign now?',
+      description: 'Messages go out to every recipient straight away and cannot be recalled.',
+      confirmLabel: 'Send now',
+    });
+    if (!ok) return;
     const result = await sendCampaign({ sendImmediately: true });
     if (result) {
       toast.success('Campaign sent!');
@@ -152,17 +109,17 @@ export default function CampaignDetailPage() {
     } else {
       toast.error('Failed to send campaign');
     }
-  };
+  }
 
-  const handleSchedule = async () => {
+  async function handleSchedule() {
     if (!scheduleDate || !scheduleTime) {
-      toast.error('Please select date and time');
+      toast.error('Please select a date and time');
       return;
     }
-
-    const result = await scheduleCampaign({
-      scheduledFor: `${scheduleDate}T${scheduleTime}:00`,
-    });
+    const [hours, minutes] = scheduleTime.split(':').map(Number);
+    const scheduledAt = new Date(scheduleDate);
+    scheduledAt.setHours(hours ?? 0, minutes ?? 0, 0, 0);
+    const result = await scheduleCampaign({ scheduledAt: scheduledAt.toISOString() });
     if (result) {
       toast.success('Campaign scheduled!');
       setShowScheduleDialog(false);
@@ -170,11 +127,17 @@ export default function CampaignDetailPage() {
     } else {
       toast.error('Failed to schedule campaign');
     }
-  };
+  }
 
-  const handleCancel = async () => {
-    if (!confirm('Are you sure you want to cancel this campaign?')) return;
-
+  async function handleCancel() {
+    const ok = await confirm({
+      title: 'Cancel this campaign?',
+      description: 'Pending messages will not be sent. Messages already delivered are not affected.',
+      confirmLabel: 'Cancel campaign',
+      cancelLabel: 'Keep campaign',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     const result = await cancelCampaign({ reason: 'Cancelled by user' });
     if (result) {
       toast.success('Campaign cancelled');
@@ -182,340 +145,225 @@ export default function CampaignDetailPage() {
     } else {
       toast.error('Failed to cancel campaign');
     }
-  };
+  }
+
+  async function handleDelete() {
+    const ok = await confirm({
+      title: 'Delete this campaign?',
+      description: 'The campaign and its recipient history will be removed permanently.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    const result = await deleteCampaign(undefined);
+    if (result !== undefined) {
+      toast.success('Campaign deleted');
+      router.push('/campaigns');
+    } else {
+      toast.error('Failed to delete campaign');
+    }
+  }
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="px-6 py-4 border-b flex items-center gap-3">
-          <Skeleton className="h-8 w-8 rounded" />
-          <Skeleton className="h-6 w-64" />
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-6 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-20" />
-            ))}
-          </div>
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </div>
+      <PageContainer>
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </PageContainer>
     );
   }
 
   if (error || !campaign) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="h-8 w-8 text-destructive" />
-        <p className="text-muted-foreground">Failed to load campaign</p>
-        <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
-      </div>
+      <EmptyState
+        title="Campaign not found"
+        description="This campaign could not be loaded."
+        action={<Button variant="outline" onClick={() => router.back()}>Go back</Button>}
+      />
     );
   }
 
-  const sent = campaign.sent ?? 0;
-  const delivered = campaign.delivered ?? 0;
-  const opened = campaign.opened ?? 0;
-  const clicked = campaign.clicked ?? 0;
-  const bounced = campaign.bounced ?? 0;
-  const failed = campaign.failed ?? 0;
+  const sent = campaign.sentCount ?? 0;
+  const delivered = campaign.deliveredCount ?? 0;
+  const opened = campaign.openedCount ?? 0;
+  const clicked = campaign.clickedCount ?? 0;
 
   const deliveryRate = sent > 0 ? ((delivered / sent) * 100).toFixed(1) : '0';
   const openRate = sent > 0 ? ((opened / sent) * 100).toFixed(1) : '0';
   const clickRate = sent > 0 ? ((clicked / sent) * 100).toFixed(1) : '0';
-  const bounceRate = sent > 0 ? ((bounced / sent) * 100).toFixed(1) : '0';
+
+  const canEdit = campaign.status === 'draft' || campaign.status === 'scheduled';
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                {campaign.name}
-              </h1>
-              <Badge variant="outline" className={cn('capitalize', getStatusColor(campaign.status ?? ''))}>
-                {campaign.status}
-              </Badge>
-              <Badge variant="outline" className="text-xs flex items-center gap-1">
-                {getChannelIcon(campaign.type)}
-                {campaign.type?.toUpperCase()}
-              </Badge>
-            </div>
-            {campaign.description && (
-              <p className="text-sm text-muted-foreground mt-0.5">{campaign.description}</p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {(campaign.status === 'draft' || campaign.status === 'scheduled') && (
+    <>
+      <DetailPage<Campaign>
+        entity={campaign}
+        title={campaign.name}
+        status={<Tag tone={statusTone(campaign.status ?? '')}>{campaign.status}</Tag>}
+        onBack={() => router.back()}
+        primaryActions={
+          canEdit ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => setShowScheduleDialog(true)}>
-                <Clock className="h-4 w-4 mr-1.5" />
-                Schedule
+              <Button variant="outline" size="sm" onClick={() => setShowScheduleDialog(true)} className="gap-ds-2">
+                <Clock aria-hidden="true" /> Schedule
               </Button>
-              <Button size="sm" onClick={handleSendNow} disabled={isSending}>
-                {isSending ? (
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4 mr-1.5" />
-                )}
-                Send Now
+              <Button size="sm" onClick={handleSendNow} disabled={isSending} className="gap-ds-2">
+                <Send aria-hidden="true" /> Send now
               </Button>
             </>
-          )}
-          {campaign.status === 'running' && (
-            <Button variant="outline" size="sm" onClick={handleCancel} disabled={isCancelling}>
-              {isCancelling ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Pause className="h-4 w-4 mr-1.5" />
-              )}
-              Pause
+          ) : campaign.status === 'running' ? (
+            <Button variant="outline" size="sm" onClick={handleCancel} disabled={isCancelling} className="gap-ds-2">
+              <Pause aria-hidden="true" /> Pause
             </Button>
-          )}
-          {campaign.status === 'scheduled' && (
-            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={handleCancel} disabled={isCancelling}>
-              <XCircle className="h-4 w-4 mr-1.5" />
-              Cancel
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {[
-            { label: 'Sent', value: sent, icon: Send, color: 'text-blue-500', bgColor: 'bg-blue-50 dark:bg-blue-900/20' },
-            { label: 'Delivered', value: delivered, icon: CheckCircle2, color: 'text-green-500', bgColor: 'bg-green-50 dark:bg-green-900/20', rate: deliveryRate },
-            { label: 'Opened', value: opened, icon: Eye, color: 'text-purple-500', bgColor: 'bg-purple-50 dark:bg-purple-900/20', rate: openRate },
-            { label: 'Clicked', value: clicked, icon: MousePointerClick, color: 'text-indigo-500', bgColor: 'bg-indigo-50 dark:bg-indigo-900/20', rate: clickRate },
-            { label: 'Bounced', value: bounced, icon: AlertCircle, color: 'text-amber-500', bgColor: 'bg-amber-50 dark:bg-amber-900/20', rate: bounceRate },
-            { label: 'Failed', value: failed, icon: XCircle, color: 'text-red-500', bgColor: 'bg-red-50 dark:bg-red-900/20' },
-          ].map((stat) => (
-            <Card key={stat.label}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</p>
-                    <p className="text-2xl font-bold">{stat.value.toLocaleString('en-IN')}</p>
-                    {stat.rate && (
-                      <p className="text-xs text-muted-foreground">{stat.rate}%</p>
-                    )}
-                  </div>
-                  <div className={cn('p-2 rounded-lg', stat.bgColor)}>
-                    <stat.icon className={cn('h-4 w-4', stat.color)} />
-                  </div>
+          ) : undefined
+        }
+        actions={[
+          ...(canEdit
+            ? [{ label: 'Edit', icon: <Pencil />, onSelect: () => router.push(`/campaigns/${campaign.id}/edit`) }]
+            : []),
+          ...(campaign.status === 'scheduled'
+            ? [{ label: 'Cancel schedule', icon: <XCircle />, onSelect: handleCancel, destructive: true }]
+            : []),
+          { label: 'Delete', icon: <XCircle />, onSelect: handleDelete, destructive: true, separatorBefore: true },
+        ]}
+        overview={
+          <div className="grid gap-ds-4 sm:grid-cols-2">
+            <SectionCard title="Performance">
+              <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-4">
+                <div>
+                  <p className="mb-ds-1 text-xs text-ds-foreground-muted">Sent</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(sent)}</p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <div>
+                  <p className="mb-ds-1 text-xs text-ds-foreground-muted">Delivered</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(delivered)}</p>
+                  <p className="text-xs text-ds-foreground-muted">{deliveryRate}%</p>
+                </div>
+                <div>
+                  <p className="mb-ds-1 text-xs text-ds-foreground-muted">Opened</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(opened)}</p>
+                  <p className="text-xs text-ds-foreground-muted">{openRate}%</p>
+                </div>
+                <div>
+                  <p className="mb-ds-1 text-xs text-ds-foreground-muted">Clicked</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(clicked)}</p>
+                  <p className="text-xs text-ds-foreground-muted">{clickRate}%</p>
+                </div>
+              </div>
+            </SectionCard>
 
-        {/* Progress Bar */}
-        {sent > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Delivery Funnel
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[
-                  { label: 'Delivered', value: delivered, total: sent, color: 'bg-green-500' },
-                  { label: 'Opened', value: opened, total: sent, color: 'bg-purple-500' },
-                  { label: 'Clicked', value: clicked, total: sent, color: 'bg-indigo-500' },
-                ].map((bar) => {
-                  const pct = bar.total > 0 ? (bar.value / bar.total) * 100 : 0;
-                  return (
-                    <div key={bar.label} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{bar.label}</span>
-                        <span className="font-medium">{bar.value.toLocaleString('en-IN')} ({pct.toFixed(1)}%)</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn('h-full rounded-full transition-all', bar.color)}
-                          style={{ width: `${Math.min(pct, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Campaign Details */}
-        <div className="grid grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Campaign Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Channel</span>
-                <span className="flex items-center gap-1.5 font-medium">
-                  {getChannelIcon(campaign.type)} {campaign.type?.toUpperCase()}
-                </span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant="outline" className={cn('capitalize', getStatusColor(campaign.status ?? ''))}>
-                  {campaign.status}
-                </Badge>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Created</span>
-                <span className="font-medium">
-                  {campaign.createdAt
-                    ? new Date(campaign.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                    : '-'}
-                </span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Target Segment</span>
-                <span className="font-medium">{(campaign as any).targetSegment || 'All Contacts'}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {((campaign as any).body || (campaign as any).subject) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Content Preview</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(campaign as any).subject && (
-                  <div className="mb-3">
-                    <p className="text-xs text-muted-foreground mb-1">Subject</p>
-                    <p className="text-sm font-medium">{(campaign as any).subject}</p>
+            <SectionCard title="Campaign info">
+              <div className="flex flex-col gap-ds-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-ds-foreground-muted">Channel</span>
+                  <span className="flex items-center gap-ds-1 font-medium">
+                    {channelIcon(campaign.type)} {campaign.type?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-ds-foreground-muted">Status</span>
+                  <Tag tone={statusTone(campaign.status ?? '')}>{campaign.status}</Tag>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-ds-foreground-muted">Created</span>
+                  <span className="font-medium">
+                    {campaign.createdAt ? formatDisplayDate(new Date(campaign.createdAt)) : '—'}
+                  </span>
+                </div>
+                {campaign.scheduledAt && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-ds-foreground-muted">Scheduled for</span>
+                    <span className="font-medium">
+                      {formatLocaleDateTime(campaign.scheduledAt)}
+                    </span>
                   </div>
                 )}
-                {(campaign as any).body && (
-                  <div className="rounded-lg border p-3 bg-muted/30 max-h-40 overflow-auto">
-                    <pre className="text-xs whitespace-pre-wrap font-sans">{(campaign as any).body}</pre>
+              </div>
+            </SectionCard>
+
+            {(campaign.subject || campaign.body) && (
+              <SectionCard title="Content preview" className="sm:col-span-2">
+                {campaign.subject && (
+                  <div className="mb-ds-3">
+                    <p className="mb-ds-1 text-xs text-ds-foreground-muted">Subject</p>
+                    <p className="text-sm font-medium">{campaign.subject}</p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Recipients Table — with infinite scroll */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Recipients ({recipientTotal})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {recipientsLoading ? (
-              <div className="p-4 space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
+                {campaign.body && (
+                  <div className="max-h-40 overflow-auto rounded-ds-md border border-ds-border bg-ds-surface-sunken p-ds-3">
+                    <pre className="whitespace-pre-wrap font-sans text-xs">{campaign.body}</pre>
+                  </div>
+                )}
+              </SectionCard>
+            )}
+          </div>
+        }
+        related={[
+          {
+            title: `Recipients (${recipientTotal})`,
+            content: recipientsLoading ? (
+              <div className="flex flex-col gap-ds-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
               </div>
             ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Opened</TableHead>
-                      <TableHead>Clicked</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recipients.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">
-                          No recipient data available yet
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      recipients.map((recipient) => (
-                        <TableRow key={recipient.id}>
-                          <TableCell className="text-sm font-medium">{(recipient as any).name}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{recipient.email}</TableCell>
-                          <TableCell>{getRecipientStatusBadge(recipient.status)}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {(recipient as any).openedAt
-                              ? new Date((recipient as any).openedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                              : '-'}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {(recipient as any).clickedAt
-                              ? new Date((recipient as any).clickedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                              : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-                <div ref={recipientSentinelRef} className="flex items-center justify-center py-3">
-                  {recipientsLoadingMore && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <DataTable<CampaignRecipient>
+                columns={[
+                  { key: 'name', header: 'Name', cell: (r) => r.name || '—' },
+                  { key: 'email', header: 'Email', cell: (r) => r.email || '—' },
+                  {
+                    key: 'status', header: 'Status',
+                    cell: (r) => <Tag tone={recipientStatusTone(r.status)}>{r.status}</Tag>,
+                  },
+                  {
+                    key: 'openedAt', header: 'Opened',
+                    cell: (r) => (r.openedAt ? formatLocaleTime(r.openedAt, { hour: '2-digit', minute: '2-digit' }) : '—'),
+                  },
+                  {
+                    key: 'clickedAt', header: 'Clicked',
+                    cell: (r) => (r.clickedAt ? formatLocaleTime(r.clickedAt, { hour: '2-digit', minute: '2-digit' }) : '—'),
+                  },
+                ]}
+                data={recipients}
+                getRowId={(r) => r.id}
+                emptyState={
+                  <EmptyState icon={<Users className="size-8" />} title="No recipients yet" description="Recipients will appear once this campaign is sent." />
+                }
+              />
+            ),
+          },
+        ]}
+      />
 
-      {/* Schedule Dialog */}
       <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Schedule Campaign</DialogTitle>
+            <DialogTitle>Schedule campaign</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-ds-4">
             <div>
-              <Label className="text-sm mb-1.5 block">Date</Label>
-              <Input
-                type="date"
+              <Label className="mb-ds-1 block text-sm">Date</Label>
+              <DatePicker
                 value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
+                onChange={setScheduleDate}
+                minDate={new Date()}
+                placeholder="Pick a date"
               />
             </div>
             <div>
-              <Label className="text-sm mb-1.5 block">Time</Label>
-              <Input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-              />
+              <Label className="mb-ds-1 block text-sm">Time</Label>
+              <Input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>Cancel</Button>
-            <Button onClick={handleSchedule} disabled={isScheduling}>
-              {isScheduling ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Clock className="h-4 w-4 mr-1.5" />
-              )}
-              Schedule
+            <Button onClick={handleSchedule} disabled={isScheduling} className="gap-ds-2">
+              <Clock aria-hidden="true" /> Schedule
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      {confirmDialog}
+    </>
   );
 }

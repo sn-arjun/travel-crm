@@ -1,0 +1,21 @@
+{
+  "id": "role-view-only",
+  "title": "Read-only access",
+  "voice": "af_heart",
+  "recording": "role-view-only",
+  "scenes": [
+    { "type": "logo", "dur": 2.6 },
+    { "type": "title", "kicker": "Roles", "title": "Read-only access", "subtitle": "For partners, auditors and new joiners", "chapter": "Introduction", "short": false,
+      "narration": "Some people need to see the business but not change it: a partner, an auditor, or someone in their first week. That is the view-only role." },
+    { "type": "screen", "step": "vo-browse", "chapter": "Seeing everything",
+      "narration": "Leela can open leads, contacts and itineraries, but there is no New button and nothing to edit.",
+      "lowerThird": { "feature": "View-only role", "role": "View only", "plan": "All plans" },
+      "features": ["team.roles"] },
+    { "type": "screen", "step": "vo-invoice",
+      "narration": "She can read invoices and payments too. And it is not just hidden buttons: the server refuses any change from a read-only account.",
+      "lowerThird": { "feature": "Enforced on the server", "role": "View only", "plan": "All plans" },
+      "features": ["platform.permissions", "invoices.detail"] },
+    { "type": "end", "headline": "The right access for everyone.", "cta": "Invite your partners", "chapter": "Thank you", "short": false,
+      "narration": "TravelCRM Pro. The right access for everyone." }
+  ]
+}

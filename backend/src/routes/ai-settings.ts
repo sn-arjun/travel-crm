@@ -7,13 +7,18 @@
  * GET  /ai/settings/provider  — Get active AI provider info
  */
 
+import { callingAvailability } from '../services/voip/country-gate';
+import { getAccount } from '../services/voip/subaccounts';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, forbidden } from '../utils/response';
-import { getTenantFeatures, PLAN_DEFAULTS } from '../middleware/feature-gate';
+import { getTenantFeatures } from '../middleware/feature-gate';
+import { getCatalogue, planFeaturesFrom } from '../services/plans/catalogue';
 import { AIRouter } from '../services/ai-router';
+import { tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
+import { getCreditBalance } from '../services/ai-credits';
 
 const aiSettingsRoutes = new Hono<AppContext>();
 
@@ -28,16 +33,25 @@ const AI_FEATURE_KEYS = [
   'ai_visa_intelligence', 'ai_campaign_content', 'ai_campaign_optimize',
   'ai_follow_up_suggest', 'ai_churn_prediction', 'ai_daily_briefing',
   'ai_supplier_negotiate', 'ai_coaching',
+  // Gated surfaces checked via useFeatureGate() on the desktop app —
+  // must stay listed here or the gate always reports "not_in_plan".
+  'ai_assistant', 'ai_extraction', 'ai_intelligence', 'ai_chatbot', 'whatsapp_campaigns',
+  'voip_calling',
+  // Tour operator wave (R139): read by the desktop gate the same way (the list's AI name is historical).
+  'group_departures', 'public_booking', 'coach_trips', 'age_band_pricing', 'margin_scheme', 'quote_acceptance',
 ] as const;
 
 // Usage cap keys for AI features
 const AI_USAGE_CAP_KEYS = [
+  'ai_credits_per_month',
   'ai_actions_per_day',
   'ai_tokens_per_month',
-  'whatsapp_messages_per_month',
-  'email_sends_per_month',
+  'whatsapp_per_month',
+  'whatsapp_marketing_per_month',
+  'email_per_month',
+  'otp_per_month',
   'sms_per_month',
-  'voip_minutes_per_month',
+  'call_minutes_per_month',
 ] as const;
 
 // ── GET /ai/settings ─────────────────────────────────────
@@ -49,9 +63,10 @@ aiSettingsRoutes.get('/', async (c) => {
   const env = c.env;
 
   // Get tenant features
-  const tenantFeatures = await getTenantFeatures(masterDb, tenantId);
+  const tenantFeatures = await getTenantFeatures(c.env, tenantId);
 
-  // Get usage caps
+  // Get usage caps (the monthly AI credit allowance is created from the plan on first read)
+  await getCreditBalance(c.env, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();
@@ -84,24 +99,36 @@ aiSettingsRoutes.get('/', async (c) => {
   const router = new AIRouter(env);
   const providerStatus = router.getProviderStatus();
 
-  // Build AI feature map with enabled/disabled + tier info
+  const voipCalling = await callingAvailability(c.env, db);
+  // R135-5: the softphone asks for a token only where calling is on (an active sub-account), so a 403 is never provoked.
+  const callingAccount = await getAccount(c.env, tenantId).catch(() => null);
+  const accountActive = !!callingAccount && callingAccount.status === 'active' && !!callingAccount.sub_account_id;
+
+  // Build AI feature map with enabled/disabled + tier info (tier = the Pro plan's features in the catalogue)
+  const proFeatures = planFeaturesFrom(await getCatalogue(c.env), 'pro');
   const aiFeatures = AI_FEATURE_KEYS.map((key) => {
-    const isEnabled = tenantFeatures.features.includes(key);
+    // Calling is also off where the platform does not resell it (country allow-list), whatever the plan says.
+    const isEnabled = tenantFeatures.features.includes(key) && (key !== 'voip_calling' || voipCalling.available);
     const isOverridden = key in tenantFeatures.overrides;
-    const proFeatures = PLAN_DEFAULTS.pro || [];
     const tier = proFeatures.includes(key) ? 'pro' : 'enterprise';
+    const source = tenantFeatures.sources[key] ?? 'plan';
 
     return {
       key,
       enabled: isEnabled,
       tier,
       overridden: isOverridden,
+      // Where the value comes from (R127); 'platform' means switched off for every agency, so there is nothing to upgrade to.
+      source,
+      platformDisabled: source === 'platform',
     };
   });
 
   return success(c, {
     plan: tenantFeatures.plan,
     aiFeatures,
+    // Where calling is offered (R301): the desktop hides calling UI when available is false.
+    voipCalling: { available: voipCalling.available, country: voipCalling.country, reason: voipCalling.reason, accountActive },
     usageCaps,
     usageSummary: {
       totalRequests: usageSummary?.total_requests ?? 0,
@@ -135,7 +162,7 @@ aiSettingsRoutes.put('/features', zValidator('json', updateFeaturesSchema), asyn
     'SELECT plan FROM tenants WHERE id = ?',
   ).bind(tenantId).first<{ plan: string }>();
   const plan = tenant?.plan || 'trial';
-  const planDefaults = PLAN_DEFAULTS[plan] || PLAN_DEFAULTS.trial;
+  const planDefaults = planFeaturesFrom(await getCatalogue(c.env), plan);
 
   const updated: Record<string, boolean> = {};
   const denied: string[] = [];
@@ -179,7 +206,8 @@ aiSettingsRoutes.get('/usage', async (c) => {
   const masterDb = c.env.MASTER_DB;
   const db = c.get('tenantDb');
 
-  // Get all usage caps
+  // Get all usage caps (the monthly AI credit allowance is created from the plan on first read)
+  await getCreditBalance(c.env, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();
@@ -208,14 +236,15 @@ aiSettingsRoutes.get('/usage', async (c) => {
     ORDER BY request_count DESC
   `).all();
 
-  // Get daily trend (last 7 days)
+  // Get daily trend (last 7 days), bucketed by the tenant's local day
+  const trendMod = sqlOffsetModifier(await tenantTimeZone(c));
   const dailyTrend = await db.prepare(`
-    SELECT date(created_at) as day,
+    SELECT date(created_at, '${trendMod}') as day,
       COUNT(*) as requests,
       COALESCE(SUM(cost_estimate), 0) as cost
     FROM ai_usage_log
     WHERE created_at >= date('now', '-7 days')
-    GROUP BY date(created_at)
+    GROUP BY date(created_at, '${trendMod}')
     ORDER BY day
   `).all();
 
@@ -268,13 +297,16 @@ aiSettingsRoutes.get('/features/check/:featureKey', async (c) => {
   const masterDb = c.env.MASTER_DB;
   const featureKey = c.req.param('featureKey');
 
-  const tenantFeatures = await getTenantFeatures(masterDb, tenantId);
-  const isEnabled = tenantFeatures.features.includes(featureKey);
+  const tenantFeatures = await getTenantFeatures(c.env, tenantId);
+  const isEnabled = tenantFeatures.features.includes(featureKey)
+    && (featureKey !== 'voip_calling' || (await callingAvailability(c.env, c.get('tenantDb'))).available);
 
   return success(c, {
     featureKey,
     enabled: isEnabled,
     plan: tenantFeatures.plan,
+    source: tenantFeatures.sources[featureKey] ?? 'plan',
+    platformDisabled: tenantFeatures.platformOff.includes(featureKey),
   });
 });
 

@@ -1,0 +1,22 @@
+{
+  "tasks.title": "Titel",
+  "tasks.description": "Omschrijving",
+  "tasks.priority": "Prioriteit",
+  "tasks.status": "Status",
+  "tasks.dueDate": "Vervaldatum",
+  "tasks.assignedTo": "Toegewezen aan",
+  "tasks.createTask": "Taak aanmaken",
+  "tasks.editTask": "Taak bewerken",
+  "tasks.deleteTask": "Taak verwijderen",
+  "tasks.markComplete": "Markeren als voltooid",
+  "tasks.noTasks": "Geen taken",
+  "tasks.overdue": "Achterstallig",
+  "tasks.today": "Vandaag",
+  "tasks.upcoming": "Gepland",
+  "tasks.completed": "Voltooid",
+  "tasks.filterByStatus": "Filteren op status",
+  "tasks.filterByPriority": "Filteren op prioriteit",
+  "tasks.high": "Hoog",
+  "tasks.medium": "Gemiddeld",
+  "tasks.low": "Laag"
+}

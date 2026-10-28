@@ -1,0 +1,74 @@
+{
+  "slice": "notifications",
+  "title": "Notifications",
+  "status": "existing",
+  "showcaseOrder": 44,
+  "endpoints": [
+    "DELETE /api/v1/notifications/:id",
+    "DELETE /api/v1/push-tokens/:token",
+    "DELETE /api/v1/push-tokens/token/:fcmToken",
+    "GET /api/v1/notification-preferences/me",
+    "GET /api/v1/notification-preferences/me/quiet-hours",
+    "GET /api/v1/notifications",
+    "GET /api/v1/notifications/unread-count",
+    "GET /api/v1/push-tokens",
+    "POST /api/v1/notifications/:id/read",
+    "POST /api/v1/notifications/announce",
+    "POST /api/v1/notifications/read-all",
+    "POST /api/v1/push-tokens",
+    "PUT /api/v1/notification-preferences/me",
+    "PUT /api/v1/notification-preferences/me/quiet-hours"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/notifications.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/notifications/page.tsx",
+    "desktop/src/app/(app)/settings/notifications/page.tsx",
+    "desktop/src/app/(app)/settings/announcements/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/notification-store.ts",
+    "desktop/src/stores/realtime-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/10-m10-notifications.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/notifications.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/notifications/**",
+    "desktop/src/app/(app)/settings/notifications/**",
+    "desktop/src/app/(app)/settings/announcements/**",
+    "desktop/src/lib/api/notifications.ts",
+    "desktop/src/stores/notification-store.ts",
+    "desktop/src/stores/realtime-store.ts",
+    "desktop/e2e/notifications.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Notifications list migrated onto ListPage archetype (PageHeader+count, FilterBar, DataTable hover actions Eye/Trash2, useInfiniteScroll via archetype, EmptyState, bulk select + bulk delete/mark-read, themed CSV export that paginates the full filtered dataset). Row click marks read and deep-links via actionUrl/referenceType+referenceId (#65 fixed at this layer). detailDrawer intentionally false — a notification's 'detail' is the target entity it deep-links to, not a standalone record; sendMessageDialog/relationCombobox/phoneInput/addressAutocomplete/currencyInput not applicable to this entity. datePicker set to false — the quiet-hours inputs are hour-of-day pickers (type=\"time\"), not calendar dates, so DatePicker doesn't apply; left as plain Input. Settings→Notifications and Announcements pages left functionally as-is (already token-based forms) except two raw Tailwind color patches replaced with ds- tokens on the announcement preview card. Could not fix: prefs channel/type format mismatch (#23), quiet-hours enable/disable semantics (#24), sidebar badge (#27, file outside allowlist) — these need backend/sidebar changes outside this slice's fileAllowlist.",
+  "showcaseScript": [
+    "Open Notifications and filter to unread",
+    "Click a notification and deep-link to the record",
+    "Mark all as read and watch the sidebar badge clear",
+    "Open Settings → Notifications and set quiet hours"
+  ]
+}

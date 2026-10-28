@@ -1,0 +1,101 @@
+{
+  "id": "R307",
+  "tier": 3,
+  "title": "Softphone in the desktop app for resell countries (G1)",
+  "lane": "desktop",
+  "backend": true,
+  "goal": "Let agents in the UK, US, Australia and Singapore make and take calls from the desktop app with their computer's microphone.",
+  "why": "No softphone or WebRTC SDK exists in any client (audit 03 finding 1); the token endpoint issues an identity that the ring markup does not use (fixed by R301's identity rule); ADR-001 section 6 item 7.",
+  "featuresToWorks": [
+    "calls.dial",
+    "calls.click-to-call"
+  ],
+  "dependsOn": [
+    "R303",
+    "R304"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [
+    "the browser SDK of the provider named in the ADR-001 addendum (likely @twilio/voice-sdk), exact version pinned"
+  ],
+  "files": {
+    "edit": [
+      "desktop/src/components/domain/call-controls-panel.tsx",
+      "desktop/src/components/domain/click-to-call-button.tsx",
+      "desktop/src/components/domain/call-screen-pop.tsx",
+      "desktop/src/app/(app)/communication/calls/dial/page.tsx",
+      "desktop/src/lib/api/voip.ts",
+      "desktop/electron/main.ts",
+      "desktop/package.json",
+      "backend/src/routes/voip.ts"
+    ],
+    "create": [
+      "desktop/src/lib/softphone/index.ts",
+      "desktop/src/lib/softphone/provider-sdk.ts",
+      "desktop/src/lib/softphone/mock-sdk.ts",
+      "desktop/src/components/domain/mic-check.tsx",
+      "desktop/e2e/softphone.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/services/voip/metering.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "lib/softphone: a Softphone interface (register(token), call(to, params), answer, reject, mute, hold, hangup, events) with the G1 provider SDK implementation and a mock implementation used when VOIP_PROVIDER is mock (e2e).",
+    "Electron: grant microphone permission for the app origin only (session.setPermissionRequestHandler allowing \"media\" for the loopback origin).",
+    "Token: backend GET /voip/token issues a short-lived provider token for clientIdentity(userId) (R301 rule) when the agency has calling and the user is an agent role.",
+    "UI: register on login when calling is enabled; screen pop Answer works; in-call panel with timer, mute, hold, note box, link to lead; mic check component on first setup (call-quality test, ADR risk table)."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/e2e/softphone.spec.ts with the mock SDK and the simulator: inbound ring -> Answer -> panel timer -> hang up -> timeline entry; outbound from a lead -> panel opens with the lead.",
+    "Unit tests for the softphone state machine."
+  ],
+  "acceptance": [
+    "Calls work end to end with the mock SDK; the real SDK is wired behind the same interface."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && npm run build",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/softphone.spec.ts e2e/calls-simulator.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "e2e/softphone.spec.ts",
+      "e2e/calls-simulator.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "One real call per resell country with the G1 provider; audio quality on office networks; emergency-calling disclaimer in terms."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
+    "Blocked on G1: the ADR-001 addendum decides the provider and therefore the SDK."
+  ],
+  "ownerDecisionNote": "G1 decided 2026-10-15: Twilio only (sub-account per agency) outside India; no calling for agencies in India, the Gulf, Thailand, Sri Lanka, Nepal, Bangladesh at launch."
+}

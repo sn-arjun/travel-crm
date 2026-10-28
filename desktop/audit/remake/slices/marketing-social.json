@@ -1,0 +1,63 @@
+{
+  "slice": "marketing-social",
+  "title": "Social Content & Suggestions",
+  "status": "existing",
+  "showcaseOrder": 34,
+  "endpoints": [
+    "DELETE /api/v1/marketing/social-content/:id",
+    "GET /api/v1/marketing/social-content",
+    "GET /api/v1/marketing/social-content/:id",
+    "GET /api/v1/marketing/suggestions",
+    "POST /api/v1/marketing/social-content/generate",
+    "POST /api/v1/marketing/social-content/generate-batch",
+    "POST /api/v1/marketing/suggestions/generate",
+    "PUT /api/v1/marketing/social-content/:id",
+    "PUT /api/v1/marketing/suggestions/:id/accept",
+    "PUT /api/v1/marketing/suggestions/:id/dismiss"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/social/page.tsx",
+    "desktop/src/app/(app)/marketing/festivals/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/marketing-social.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/social/**",
+    "desktop/src/app/(app)/marketing/festivals/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-social.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "social/page.tsx rebuilt on ListPage: PageHeader+count, FilterBar, hover row actions (Copy/Eye/Trash2), infinite scroll, detail drawer with inline edit+copy, skeleton, bulk delete, full-dataset CSV export. Wired generate/generate-batch via a Generate dialog gated by useFeatureGate('ai_assistant') (disabled/upgrade state, no 403 toast). Added a Suggestions panel (list/generate/accept/dismiss) also gated by ai_assistant, degrading to an upgrade message when disabled or the AI provider errors. festivals/page.tsx already met the contract (FilterBar, infinite scroll, skeleton, empty state) as a card-grid gallery; left as-is since it is not a tabular list. relationCombobox/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog N/A — no relation fields, contact fields, money fields, or outbound messaging in this slice. No RelationCombobox or contact-field types apply here.",
+  "showcaseScript": [
+    "Open Marketing → Social Content",
+    "Generate a batch of Instagram captions for a destination",
+    "Edit one and mark it approved",
+    "Review AI festival-offer suggestions and accept one"
+  ]
+}

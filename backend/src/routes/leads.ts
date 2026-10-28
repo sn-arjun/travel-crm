@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, sql, inArray, isNull } from 'drizzle-orm';
@@ -15,16 +15,32 @@ import {
   itineraries,
   pushTokens,
   notifications,
+  settings,
 } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { rbac } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { logLeadActivity } from '../utils/lead-activity-logger';
-import { resolveAssignee } from '../services/lead-assignment';
+import { createLead } from '../services/domain/leads';
+import { loadLocaleContext } from '../utils/money';
+import { resolveFeature } from '../services/features/resolve';
+import { emitFromRequest, requestDepth } from '../services/automation/events';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const leadRoutes = new Hono<AppContext>();
+
+/** Lead response; a legacy row without a currency shows the agency currency (read only when needed). */
+async function parseLeadFor(c: Context<AppContext>, row: Record<string, unknown>) {
+  const agencyCurrency = row.currency ? null : (await loadLocaleContext(c.get('tenantDb'))).currency;
+  return parseLead(row, agencyCurrency);
+}
+
+/** Same for a page of rows: one settings read at most. */
+async function parseLeadsFor(c: Context<AppContext>, rows: Record<string, unknown>[]) {
+  const agencyCurrency = rows.some((r) => !r.currency) ? (await loadLocaleContext(c.get('tenantDb'))).currency : null;
+  return rows.map((r) => parseLead(r, agencyCurrency));
+}
 
 // ── Zod Schemas ───────────────────────────────────────────────
 
@@ -38,7 +54,8 @@ const createLeadSchema = z.object({
   paxChildren: z.number().int().min(0).default(0),
   paxInfants: z.number().int().min(0).default(0),
   budget: z.number().positive().optional().nullable(),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency (filled in by createLead), never a fixed one.
+  currency: z.string().optional(),
   tripType: z.enum(['domestic', 'international', 'honeymoon', 'family', 'group', 'corporate', 'adventure', 'pilgrimage']),
   source: z.enum(['manual', 'website', 'facebook', 'google', 'referral', 'walkin']),
   priority: z.enum(['hot', 'warm', 'cold']).optional().nullable(),
@@ -96,7 +113,7 @@ const noteSchema = z.object({
 // ── Helper: build lead response object ───────────────────────
 // Raw D1 SQL returns snake_case columns; Flutter models expect camelCase.
 
-function parseLead(row: Record<string, unknown>) {
+function parseLead(row: Record<string, unknown>, agencyCurrency: string | null = null) {
   let destinations: string[] = [];
   try {
     const raw = (row.destination ?? row.destinations) as string | null;
@@ -123,7 +140,7 @@ function parseLead(row: Record<string, unknown>) {
     paxChildren: row.pax_children ?? row.paxChildren ?? 0,
     paxInfants: row.pax_infants ?? row.paxInfants ?? 0,
     budget: row.budget ?? null,
-    currency: row.currency ?? 'INR',
+    currency: row.currency ?? agencyCurrency,
     tripType: row.trip_type ?? row.tripType,
     source: row.source,
     status: row.status ?? 'new',
@@ -141,6 +158,7 @@ function parseLead(row: Record<string, unknown>) {
     probability: row.probability ?? null,
     expectedCloseDate: row.expected_close_date ?? row.expectedCloseDate ?? null,
     notes: row.notes ?? null,
+    departureId: row.departure_id ?? row.departureId ?? null,
     createdBy: row.created_by ?? row.createdBy ?? null,
     createdByName: row.created_by_name ?? row.createdByName ?? null,
     createdAt: row.created_at ?? row.createdAt ?? null,
@@ -225,6 +243,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
     status: statusFilter,
     priority: priorityFilter,
     assignedTo: assigned_to,
+    contactId: contactIdFilter,
     source: sourceFilter,
     tripType: trip_type,
     travelDateFrom: travel_from,
@@ -252,8 +271,12 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   }
 
   if (search) {
+    // Escape the term for FTS5 MATCH: wrap as a quoted phrase-prefix so
+    // characters with special meaning in FTS5 query syntax (-, ", :, (, ))
+    // are treated as literal text instead of being parsed as operators.
+    const ftsQuery = `"${search.replace(/"/g, '""')}"*`;
     conditions.push('(l.rowid IN (SELECT rowid FROM leads_fts WHERE leads_fts MATCH ?) OR c.name LIKE ?)');
-    bindings.push(search + '*', `%${search}%`);
+    bindings.push(ftsQuery, `%${search}%`);
   }
 
   if (statusFilter) {
@@ -269,6 +292,11 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   if (assigned_to) {
     conditions.push('l.assigned_to = ?');
     bindings.push(assigned_to);
+  }
+
+  if (contactIdFilter) {
+    conditions.push('l.contact_id = ?');
+    bindings.push(contactIdFilter);
   }
 
   if (sourceFilter) {
@@ -344,7 +372,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
         .all<{ status: string; count: number; total_value: number }>(),
     ]);
 
-    const allLeads = rows.results.map(parseLead);
+    const allLeads = await parseLeadsFor(c, rows.results);
     const stageLabels: Record<string, string> = {
       new: 'New', contacted: 'Contacted', requirement_gathered: 'Requirement Gathered',
       proposal_sent: 'Proposal Sent', negotiation: 'Negotiation',
@@ -397,7 +425,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const total = countRow?.total ?? 0;
   const totalPages = Math.ceil(total / limitNum);
 
-  return paginated(c, rows.results.map(parseLead), total, pageNum, limitNum);
+  return paginated(c, await parseLeadsFor(c, rows.results), total, pageNum, limitNum);
 });
 
 // ============================================================
@@ -456,7 +484,196 @@ leadRoutes.get('/unassigned', requirePermission('leads', 'view'), async (c) => {
     `)
     .all<Record<string, unknown>>();
 
-  return success(c, rows.results.map(parseLead));
+  return success(c, await parseLeadsFor(c, rows.results));
+});
+
+// ============================================================
+// Pipeline board (R153, design 4.7 and 13.2)
+// ============================================================
+
+/** Every status a lead can be in, in pipeline order. */
+const BOARD_STATUSES = ['new', 'contacted', 'qualified', 'requirement_gathered', 'proposal_sent', 'negotiation', 'won', 'booking_confirmed', 'completed', 'lost', 'on_hold'] as const;
+/** The columns a new agency sees: the statuses staff can pick today, without on_hold. */
+const DEFAULT_BOARD_COLUMNS = ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost'];
+const BOARD_SETTING_KEY = 'leads.board';
+const BOARD_PAGE_SIZE = 20;
+
+interface BoardSettings { columns: string[]; showValue: boolean }
+
+function normalizeBoardSettings(raw: unknown): BoardSettings {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const wanted = Array.isArray(obj.columns) ? obj.columns : [];
+  const columns = [...new Set(wanted.filter((s): s is string => typeof s === 'string' && (BOARD_STATUSES as readonly string[]).includes(s)))];
+  return { columns: columns.length ? columns : [...DEFAULT_BOARD_COLUMNS], showValue: obj.showValue !== false };
+}
+
+async function loadBoardSettings(db: D1Database): Promise<BoardSettings> {
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(BOARD_SETTING_KEY).first<{ value: string | null }>();
+  let parsed: unknown = null;
+  try { parsed = row?.value ? JSON.parse(row.value) : null; } catch { parsed = null; }
+  return normalizeBoardSettings(parsed);
+}
+
+const boardSettingsSchema = z.object({
+  columns: z.array(z.enum(BOARD_STATUSES)).min(1).max(BOARD_STATUSES.length),
+  showValue: z.boolean().optional(),
+});
+
+async function boardSettingsPayload(db: D1Database) {
+  return { ...(await loadBoardSettings(db)), available: BOARD_STATUSES, defaults: { columns: DEFAULT_BOARD_COLUMNS, showValue: true } };
+}
+
+leadRoutes.get('/board-settings', requirePermission('leads', 'view'), async (c) => success(c, await boardSettingsPayload(c.get('tenantDb'))));
+
+leadRoutes.put('/board-settings', rbac(['admin', 'sales_manager']), zValidator('json', boardSettingsSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const db = drizzle(tenantDb);
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const value = JSON.stringify(normalizeBoardSettings({ columns: body.columns, showValue: body.showValue ?? true }));
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(settings).where(eq(settings.key, BOARD_SETTING_KEY)).limit(1);
+  if (existing) await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, BOARD_SETTING_KEY));
+  else await db.insert(settings).values({ key: BOARD_SETTING_KEY, value, updatedBy: userId, updatedAt: now });
+  await logActivity(db, { userId, action: 'update_settings', entityType: 'settings', details: JSON.stringify({ key: BOARD_SETTING_KEY }), ipAddress: c.get('clientIp') });
+  return success(c, await boardSettingsPayload(tenantDb));
+});
+
+/** The pipeline board: a column per configured status, each with its count, value and first page of leads. */
+leadRoutes.get('/board', requirePermission('leads', 'view'), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const role = c.get('role');
+  const q = c.req.query();
+  const csv = (v: string | undefined) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []);
+
+  // The same filters as the list (and the same visibility rules), minus the status, which the columns carry.
+  const conditions: string[] = ['l.is_deleted = 0'];
+  const bindings: unknown[] = [];
+  if (role === 'salesperson') {
+    conditions.push('l.assigned_to = ?');
+    bindings.push(userId);
+  }
+  const search = q.search || q.q;
+  if (search) {
+    conditions.push('(l.rowid IN (SELECT rowid FROM leads_fts WHERE leads_fts MATCH ?) OR c.name LIKE ?)');
+    bindings.push(`"${search.replace(/"/g, '""')}"*`, `%${search}%`);
+  }
+  const priorities = csv(q.priority).slice(0, 10);
+  if (priorities.length) {
+    conditions.push(`l.priority IN (${priorities.map(() => '?').join(',')})`);
+    bindings.push(...priorities);
+  }
+  if (q.unassigned === '1' || q.unassigned === 'true') conditions.push('l.assigned_to IS NULL');
+  else if (q.assignedTo) {
+    conditions.push('l.assigned_to = ?');
+    bindings.push(q.assignedTo);
+  }
+  if (q.source) {
+    conditions.push('l.source = ?');
+    bindings.push(q.source);
+  }
+  if (q.tripType) {
+    conditions.push('l.trip_type = ?');
+    bindings.push(q.tripType);
+  }
+  if (q.destination) {
+    // destination holds a JSON array of names.
+    conditions.push("l.destination LIKE ? ESCAPE '\\'");
+    bindings.push(`%"${q.destination.replace(/[\\%_]/g, '\\$&').replace(/"/g, '')}"%`);
+  }
+  if (q.travelDateFrom) {
+    conditions.push('l.travel_date >= ?');
+    bindings.push(q.travelDateFrom);
+  }
+  if (q.travelDateTo) {
+    conditions.push('l.travel_date <= ?');
+    bindings.push(q.travelDateTo);
+  }
+  const where = conditions.join(' AND ');
+
+  // Columns: the configured ones, or exactly the statuses asked for (also how "load more" asks for one column).
+  const settingsNow = await loadBoardSettings(tenantDb);
+  const asked = csv(q.status).filter((s) => (BOARD_STATUSES as readonly string[]).includes(s));
+  const statuses = asked.length
+    ? [...settingsNow.columns.filter((s) => asked.includes(s)), ...BOARD_STATUSES.filter((s) => asked.includes(s) && !settingsNow.columns.includes(s))]
+    : settingsNow.columns;
+
+  const pageNum = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(q.limit ?? String(BOARD_PAGE_SIZE), 10) || BOARD_PAGE_SIZE));
+  const from = (pageNum - 1) * limitNum;
+  const marks = statuses.map(() => '?').join(',');
+
+  const locale = await loadLocaleContext(tenantDb);
+  const agencyCurrency = locale.currency;
+  const seatsOn = (await resolveFeature(c.env, c.get('tenantId'), 'group_departures')).enabled;
+
+  const [sums, rows] = await Promise.all([
+    tenantDb
+      .prepare(`
+        SELECT l.status AS status, COALESCE(NULLIF(l.currency, ''), ?) AS cur, COUNT(*) AS n,
+               COALESCE(SUM(COALESCE(NULLIF(l.estimated_value, 0), l.budget, 0)), 0) AS total
+        FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id
+        WHERE ${where} AND l.status IN (${marks})
+        GROUP BY l.status, cur
+      `)
+      .bind(agencyCurrency, ...bindings, ...statuses)
+      .all<{ status: string; cur: string; n: number; total: number }>(),
+    tenantDb
+      .prepare(`
+        SELECT t.*${seatsOn ? `,
+          (SELECT SUM(sb.seats) FROM seat_bookings sb WHERE sb.lead_id = t.id AND sb.status IN ('held', 'confirmed')) AS seats_total,
+          (SELECT MIN(CASE sb.status WHEN 'confirmed' THEN 1 ELSE 2 END) FROM seat_bookings sb WHERE sb.lead_id = t.id AND sb.status IN ('held', 'confirmed')) AS seats_rank` : ''}
+        FROM (
+          SELECT l.*, c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, u.name AS assigned_to_name,
+                 ROW_NUMBER() OVER (PARTITION BY l.status ORDER BY l.created_at DESC, l.id DESC) AS board_rn
+          FROM leads l
+          LEFT JOIN contacts c ON l.contact_id = c.id
+          LEFT JOIN users u ON l.assigned_to = u.id
+          WHERE ${where} AND l.status IN (${marks})
+        ) t
+        WHERE t.board_rn > ? AND t.board_rn <= ?
+        ORDER BY t.board_rn
+      `)
+      .bind(...bindings, ...statuses, from, from + limitNum)
+      .all<Record<string, unknown>>(),
+  ]);
+
+  const parsed = await parseLeadsFor(c, rows.results);
+  const byStatus = new Map<string, Array<ReturnType<typeof parseLead> & { seats?: number; seatStatus?: string }>>();
+  rows.results.forEach((raw, i) => {
+    const lead: ReturnType<typeof parseLead> & { seats?: number; seatStatus?: string } = parsed[i];
+    if (seatsOn && Number(raw.seats_total) > 0) {
+      lead.seats = Number(raw.seats_total);
+      lead.seatStatus = Number(raw.seats_rank) === 1 ? 'confirmed' : 'held';
+    }
+    const list = byStatus.get(String(raw.status)) ?? [];
+    list.push(lead);
+    byStatus.set(String(raw.status), list);
+  });
+
+  const columns = statuses.map((status) => {
+    let count = 0;
+    let value = 0;
+    let otherCurrencyCount = 0;
+    for (const s of sums.results) {
+      if (s.status !== status) continue;
+      count += s.n;
+      if (s.cur === agencyCurrency) value += s.total;
+      else otherCurrencyCount += s.n;
+    }
+    return {
+      status,
+      count,
+      value: Math.round(value * 100) / 100,
+      currency: agencyCurrency,
+      mixedCurrencies: otherCurrencyCount > 0,
+      otherCurrencyCount,
+      leads: byStatus.get(status) ?? [],
+    };
+  });
+
+  return success(c, { columns, showValue: settingsNow.showValue, currency: agencyCurrency, page: pageNum, limit: limitNum });
 });
 
 // ============================================================
@@ -565,61 +782,25 @@ leadRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const tenantDb = c.get('tenantDb');
-    const db = drizzle(tenantDb);
-    const userId = c.get('userId');
-    const tenantId = c.get('tenantId');
 
-    // Resolve assignee: explicit → source rule → round-robin
-    const assignedTo = await resolveAssignee(tenantDb, c.env.CACHE, tenantId, body.source, body.assignedTo);
-
-    const id = generateId();
-    const now = new Date().toISOString();
-
-    await db.insert(leads).values({
-      id,
-      contactId: body.contactId,
-      title: body.title,
-      destination: JSON.stringify(body.destinations),
-      travelDate: body.travelDate,
-      returnDate: body.returnDate ?? null,
-      paxAdults: body.paxAdults,
-      paxChildren: body.paxChildren,
-      paxInfants: body.paxInfants,
-      budget: body.budget ?? null,
-      currency: body.currency,
-      tripType: body.tripType,
-      source: body.source,
-      status: 'new',
-      priority: body.priority ?? null,
-      assignedTo: assignedTo ?? null,
-      notes: body.notes ?? null,
-      passportAvailable: body.passportAvailable ? 1 : (body.passportAvailable === false ? 0 : null),
-      travelClass: body.travelClass ?? null,
-      hotelPreference: body.hotelPreference ?? null,
-      mealPreference: body.mealPreference ?? null,
-      specialRequirements: body.specialRequirements ?? null,
-      estimatedValue: body.estimatedValue ?? null,
-      probability: body.probability ?? null,
-      expectedCloseDate: body.expectedCloseDate ?? null,
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await logLeadActivity(db, { leadId: id, type: 'note', content: 'Lead created', userId });
-    await logActivity(db, { userId, action: 'create', entityType: 'lead', entityId: id, ipAddress: c.get('clientIp') });
-
-    // Notify assignee if auto-assigned
-    if (assignedTo && assignedTo !== userId) {
-      await notifyUser(c, db, tenantDb, assignedTo, 'New lead assigned', body.title, 'lead', id);
+    // An explicit `assignedTo: null` means "leave unassigned" (no routing rule, no round-robin).
+    // Omitting the field keeps auto-assignment: explicit → source rule → round-robin.
+    let waiter: { waitUntil(promise: Promise<unknown>): void } | undefined;
+    try {
+      waiter = c.executionCtx;
+    } catch {
+      waiter = undefined;
     }
-
-    // Broadcast real-time event
-    await broadcastLeadEvent(c, 'lead_created', { id, title: body.title, status: 'new' });
+    const { id } = await createLead(c.env, c.get('tenantId'), tenantDb, body, {
+      userId: c.get('userId'),
+      clientIp: c.get('clientIp'),
+      depth: requestDepth(c),
+      waiter,
+    });
 
     const lead = await tenantDb.prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?').bind(id).first<Record<string, unknown>>();
 
-    return created(c, parseLead(lead ?? { id }));
+    return created(c, await parseLeadFor(c, lead ?? { id }));
   }
 );
 
@@ -646,7 +827,7 @@ leadRoutes.get('/:id', requirePermission('leads', 'view'), async (c) => {
 
   if (!lead) return notFound(c, 'Lead');
 
-  return success(c, parseLead(lead));
+  return success(c, await parseLeadFor(c, lead));
 });
 
 // ============================================================
@@ -710,7 +891,7 @@ leadRoutes.put(
       .prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?')
       .bind(id).first<Record<string, unknown>>();
 
-    return success(c, parseLead(updated ?? { id }));
+    return success(c, await parseLeadFor(c, updated ?? { id }));
   }
 );
 
@@ -813,11 +994,15 @@ leadRoutes.put(
 
     await logActivity(db, { userId, action: 'update', entityType: 'lead', entityId: id, details: JSON.stringify({ old_status: oldStatus, new_status: newStatus }), ipAddress: c.get('clientIp') });
 
+    if (oldStatus !== newStatus) {
+      await emitFromRequest(c, { type: 'lead.status_changed', entityType: 'lead', entityId: id, payload: { from: oldStatus, to: newStatus } });
+    }
+
     const updated = await tenantDb
       .prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?')
       .bind(id).first<Record<string, unknown>>();
 
-    return success(c, parseLead(updated ?? { id }));
+    return success(c, await parseLeadFor(c, updated ?? { id }));
   }
 );
 
@@ -929,8 +1114,25 @@ leadRoutes.get('/:id/activities', requirePermission('leads', 'view'), async (c) 
     .prepare('SELECT COUNT(*) as count FROM lead_activities WHERE lead_id = ?')
     .bind(id).first<{ count: number }>();
 
-  return paginated(c, rows.results, total?.count ?? 0, pageNum, limitNum);
+  // additive: `metadata` stays the stored JSON string; `meta` is the same data parsed, with camelCase keys
+  const items = rows.results.map((row) => ({ ...row, meta: parseActivityMeta(row.metadata) }));
+
+  return paginated(c, items, total?.count ?? 0, pageNum, limitNum);
 });
+
+function parseActivityMeta(raw: unknown): Record<string, unknown> | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw); } catch { return null; }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    out[k.replace(/_([a-z0-9])/g, (_m, ch: string) => ch.toUpperCase())] = v;
+  }
+  return out;
+}
 
 // ============================================================
 // POST /:id/activities — Log manual activity (TICKET-067)
@@ -1099,5 +1301,51 @@ leadRoutes.get('/:id/follow-ups', requirePermission('leads', 'view'), async (c) 
 
   return success(c, rows.results);
 });
+
+// ============================================================
+// Seat bookings of a lead (R143): the lead page's seats list and its "Hold seats" action
+// ============================================================
+
+import { guarded as departureGuarded } from '../services/departures/common';
+import { seatCtxFromRequest } from '../services/departures/seat-support';
+import { listLeadBookings, requestSeats } from '../services/departures/seats';
+import { holdSeatsBodySchema } from '../validators/seat-bookings';
+import { requireFeature } from '../middleware/feature-gate';
+import { getDepartureSummary } from '../services/departures/capacity';
+
+leadRoutes.get('/:id/seat-bookings', requireFeature('group_departures'), requirePermission('departures', 'view'), async (c) => {
+  return success(c, await listLeadBookings(c.get('tenantDb'), c.req.param('id')));
+});
+
+leadRoutes.post(
+  '/:id/hold-seats',
+  requireFeature('group_departures'),
+  requirePermission('departures', 'create'),
+  zValidator('json', holdSeatsBodySchema),
+  (c) =>
+    departureGuarded(c, async () => {
+      const { departureId, seats, notes } = c.req.valid('json');
+      const booking = await requestSeats(seatCtxFromRequest(c), { departureId, seats, leadId: c.req.param('id'), notes, source: 'staff' });
+      return created(c, booking);
+    }),
+);
+
+// Links the enquiry to a group departure (or clears the link) without holding seats (R146).
+leadRoutes.put(
+  '/:id/departure',
+  requireFeature('group_departures'),
+  requirePermission('leads', 'edit'),
+  zValidator('json', z.object({ departureId: z.string().min(1).max(64).nullable() })),
+  async (c) => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const { departureId } = c.req.valid('json');
+    const lead = await db.prepare('SELECT id FROM leads WHERE id = ? AND is_deleted = 0').bind(id).first();
+    if (!lead) return notFound(c, 'Lead');
+    if (departureId && !(await getDepartureSummary(db, departureId))) return error(c, 'Departure not found', 404, { code: 'DEPARTURE_NOT_FOUND' });
+    await db.prepare('UPDATE leads SET departure_id = ?, updated_at = ? WHERE id = ?').bind(departureId, new Date().toISOString(), id).run();
+    return success(c, { id, departureId });
+  },
+);
 
 export default leadRoutes;

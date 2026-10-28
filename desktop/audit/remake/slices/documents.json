@@ -1,0 +1,56 @@
+{
+  "slice": "documents",
+  "title": "Documents",
+  "status": "existing",
+  "showcaseOrder": 24,
+  "endpoints": [
+    "DELETE /api/v1/documents/:id",
+    "GET /api/v1/documents",
+    "GET /api/v1/documents/:id",
+    "GET /api/v1/documents/:id/download",
+    "POST /api/v1/documents/upload",
+    "PUT /api/v1/documents/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/documents.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/documents/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/16-documents.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/documents.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/documents/**",
+    "desktop/src/lib/api/documents.ts",
+    "desktop/e2e/documents.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog N/A — documents has no phone, address, money, date-picker, or messaging fields (upload date is server-set). PUT and DELETE are now wired via rename and delete row/detail actions.",
+  "showcaseScript": [
+    "Open Documents and filter by entity type",
+    "Upload a document against a lead",
+    "Rename it and download it back"
+  ]
+}

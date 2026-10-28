@@ -3,12 +3,15 @@ main = "src/index.ts"
 compatibility_date = "2026-02-20"
 compatibility_flags = ["nodejs_compat"]
 
+# Developer config for plain `wrangler dev` (single-tenant mode). Deploys and the multi-agency local
+# stack use files generated from wrangler.base.toml by scripts/gen-wrangler.mjs.
+
 # --- D1 Databases ---
 [[d1_databases]]
 binding = "MASTER_DB"
 database_name = "travelcrm-master"
 database_id = "a0000000-0000-0000-0000-000000000001" # Replace with real Terraform ID before deploying
-migrations_dir = "drizzle/tenant"
+migrations_dir = "drizzle/master"
 
 # --- R2 Buckets ---
 [[r2_buckets]]
@@ -113,7 +116,7 @@ queue = "travelcrm-campaign-dlq"
 
 # --- Cron Triggers ---
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 * * * *", "30 0 * * *"]
 
 # --- Workers AI ---
 [ai]
@@ -129,18 +132,10 @@ bindings = [
 tag = "v1"
 new_classes = ["RealtimeRoom"]
 
-# --- Environment Variables (set via wrangler secret) ---
-# JWT_SECRET, JWT_REFRESH_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
-# SENDGRID_API_KEY, FCM_SERVER_KEY
-
-# --- Dev Environment ---
-[env.dev]
-name = "travelcrm-api-dev"
-
-# --- Staging Environment ---
-[env.staging]
-name = "travelcrm-api-staging"
-
-# --- Production Environment ---
-[env.production]
-name = "travelcrm-api"
+# --- Plain variables (secrets live in .dev.vars locally, wrangler secret in production) ---
+# .dev.vars overrides these. Plain `wrangler dev` needs TENANCY_MODE=single (or unset here) with all data in
+# travelcrm-master. The local stack (desktop/scripts/fix-stack.mjs) passes `--var TENANCY_MODE:single|multi`,
+# which beats .dev.vars, so one .dev.vars (JWT secrets, provider keys, TEST_MODE, APP_URL) serves both modes.
+[vars]
+ENVIRONMENT = "development"
+TENANCY_MODE = "single"

@@ -1,0 +1,66 @@
+{
+  "slice": "whatsapp-campaigns",
+  "title": "WhatsApp Campaigns",
+  "status": "new",
+  "showcaseOrder": 36,
+  "endpoints": [
+    "DELETE /api/v1/whatsapp-campaigns/:id",
+    "GET /api/v1/whatsapp-campaigns",
+    "GET /api/v1/whatsapp-campaigns/:id",
+    "GET /api/v1/whatsapp-campaigns/:id/analytics",
+    "GET /api/v1/whatsapp-campaigns/:id/recipients",
+    "POST /api/v1/whatsapp-campaigns",
+    "POST /api/v1/whatsapp-campaigns/:id/cancel",
+    "POST /api/v1/whatsapp-campaigns/:id/pause",
+    "POST /api/v1/whatsapp-campaigns/:id/send",
+    "PUT /api/v1/whatsapp-campaigns/:id"
+  ],
+  "gates": [
+    "whatsapp_campaigns"
+  ],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/marketing/whatsapp/page.tsx",
+    "desktop/src/app/(app)/marketing/whatsapp/new/page.tsx",
+    "desktop/src/app/(app)/marketing/whatsapp/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/whatsapp-campaigns.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/whatsapp/**",
+    "desktop/src/lib/api/whatsapp-campaigns.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/components/layout/sidebar.tsx",
+    "desktop/e2e/whatsapp-campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": true
+  },
+  "notes": "Detail drawer intentionally replaced by a dedicated detail route (list rows navigate to /marketing/whatsapp/[id] via onRowClick, matching the campaigns feature pattern) since campaign detail needs full-page analytics + recipients tabs. sendMessageDialog/phoneInput/addressAutocomplete not applicable: outbound sends are template-driven bulk campaign sends via POST /send, not one-off per-contact messages, and there is no phone/address entry field in this slice. currencyInput not applicable: no monetary field on a campaign. Backend contract for WhatsappCampaign/analytics/recipient shapes was inferred from the campaigns.ts sibling feature since no shared type exists yet — worth confirming against actual backend response shape when available.",
+  "showcaseScript": [
+    "Open Marketing → WhatsApp Campaigns",
+    "Create a campaign from an approved WhatsApp template",
+    "Select the recipient segment and send",
+    "Pause the campaign mid-flight",
+    "Open analytics and show delivered, read and replied counts"
+  ]
+}

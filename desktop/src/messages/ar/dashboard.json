@@ -1,0 +1,18 @@
+{
+  "dashboard.revenueThisMonth": "إيرادات هذا الشهر",
+  "dashboard.leadsThisMonth": "العملاء المحتملون هذا الشهر",
+  "dashboard.conversionRate": "معدل التحويل",
+  "dashboard.pendingFollowUps": "المتابعات المعلقة",
+  "dashboard.pipeline": "قيمة مسار المبيعات",
+  "dashboard.recentActivity": "النشاط الأخير",
+  "dashboard.topPerformers": "الأفضل أداءً",
+  "dashboard.monthlyTrend": "الاتجاه الشهري",
+  "dashboard.leadsBy Source": "العملاء المحتملون حسب المصدر",
+  "dashboard.invoiceStatus": "حالة الفواتير",
+  "dashboard.upcomingTrips": "الرحلات القادمة",
+  "dashboard.tasksDueToday": "مهام اليوم",
+  "dashboard.newLeads": "عملاء محتملون جدد",
+  "dashboard.closedDeals": "الصفقات المغلقة",
+  "dashboard.totalRevenue": "إجمالي الإيرادات",
+  "dashboard.averageDealSize": "متوسط قيمة الصفقة"
+}

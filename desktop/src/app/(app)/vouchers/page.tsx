@@ -1,646 +1,266 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, Pencil, Trash2, Send, FileText, CheckSquare, Square, Loader2 as Spinner } from 'lucide-react';
+import { Eye, Pencil, Send, Trash2, Plus, FileText } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from '@/components/ui/sheet';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from '@/components/ui/dialog';
-import { FilterBar } from '@/components/domain/filter-bar';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { cn } from '@/lib/utils';
-import { useApiMutation } from '@/hooks/use-api';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { vouchersApi, type Voucher, type BulkSendVoucherRequest } from '@/lib/api/vouchers';
+import { ListPage } from '@/components/domain';
+import { Button, ConfirmDialog, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
+import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
+import { toLocalDateString } from '@/lib/dates';
+import { unwrapList } from '@/lib/api/envelope';
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-    sent: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    confirmed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  };
-  const label = status.charAt(0).toUpperCase() + status.slice(1);
-  return (
-    <Badge className={cn('border-transparent text-[11px]', styles[status] ?? 'bg-slate-100 text-slate-700')}>
-      {label}
-    </Badge>
-  );
+function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'confirmed') return 'success';
+  if (status === 'sent') return 'info';
+  return 'neutral';
 }
 
-// ── Type badge ────────────────────────────────────────────────────────────────
-function TypeBadge({ type }: { type?: string }) {
-  const colors: Record<string, string> = {
-    hotel: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    transport: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    flight: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
-    activity: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  };
-  const t = type ?? 'other';
-  return (
-    <Badge variant="outline" className={cn('border-transparent text-[11px]', colors[t] ?? 'bg-slate-100 text-slate-700')}>
-      {t.charAt(0).toUpperCase() + t.slice(1)}
-    </Badge>
-  );
+function typeTone(type: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (type === 'hotel') return 'info';
+  if (type === 'transport') return 'warning';
+  if (type === 'flight') return 'neutral';
+  return 'success';
 }
 
-// ── Skeleton rows ─────────────────────────────────────────────────────────────
-function SkeletonRows() {
-  return (
-    <>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <TableRow key={i}>
-          <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-          <TableCell />
-        </TableRow>
-      ))}
-    </>
-  );
+function csvEscape(value: unknown): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// ── Detail Drawer ─────────────────────────────────────────────────────────────
-function VoucherDrawer({
-  voucher,
-  open,
-  onClose,
-  onEdit,
-  onDelete,
-}: {
-  voucher: Voucher | null;
-  open: boolean;
-  onClose: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  if (!voucher) return null;
-
-  const details = voucher.details ?? {};
-
-  return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent className="w-[420px] sm:w-[480px] overflow-y-auto">
-        <SheetHeader className="mb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <TypeBadge type={voucher.type} />
-            <span className="truncate">{voucher.title}</span>
-          </SheetTitle>
-          <SheetDescription asChild>
-            <div className="flex items-center gap-2 mt-1">
-              <StatusBadge status={voucher.status} />
-              {voucher.leadName && (
-                <span className="text-sm text-muted-foreground">Lead: {voucher.leadName}</span>
-              )}
-            </div>
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="space-y-4">
-          {/* Common info */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {voucher.supplierName && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Supplier</p>
-                <p className="font-medium">{voucher.supplierName}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Language</p>
-              <p className="font-medium">{voucher.language?.toUpperCase() ?? 'EN'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Created</p>
-              <p className="font-medium">
-                {new Date(voucher.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </p>
-            </div>
-            {voucher.sentAt && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Sent</p>
-                <p className="font-medium">
-                  {new Date(voucher.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Type-specific summary */}
-          {voucher.type === 'hotel' && (
-            <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-semibold text-blue-800 dark:text-blue-300">{details.hotelName}</p>
-              {details.checkIn && <p className="text-muted-foreground">Check-in: {details.checkIn}</p>}
-              {details.checkOut && <p className="text-muted-foreground">Check-out: {details.checkOut}</p>}
-              {details.roomType && <p className="text-muted-foreground">Room: {details.roomType}</p>}
-              {details.guestNames?.length > 0 && (
-                <p className="text-muted-foreground">Guests: {details.guestNames.join(', ')}</p>
-              )}
-            </div>
-          )}
-
-          {voucher.type === 'transport' && (
-            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-semibold text-amber-800 dark:text-amber-300">{details.vehicleType}</p>
-              {details.pickupLocation && <p className="text-muted-foreground">From: {details.pickupLocation}</p>}
-              {details.dropLocation && <p className="text-muted-foreground">To: {details.dropLocation}</p>}
-              {details.pickupTime && <p className="text-muted-foreground">Pickup: {details.pickupTime}</p>}
-              {details.driverName && <p className="text-muted-foreground">Driver: {details.driverName}</p>}
-            </div>
-          )}
-
-          {voucher.type === 'flight' && (
-            <div className="bg-violet-50 dark:bg-violet-900/10 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-semibold text-violet-800 dark:text-violet-300">{details.airline} {details.flightNumber}</p>
-              {details.departureAirport && <p className="text-muted-foreground">{details.departureAirport} → {details.arrivalAirport}</p>}
-              {details.departureTime && <p className="text-muted-foreground">Dep: {details.departureTime}</p>}
-              {details.arrivalTime && <p className="text-muted-foreground">Arr: {details.arrivalTime}</p>}
-              {details.pnr && <p className="text-muted-foreground">PNR: {details.pnr}</p>}
-            </div>
-          )}
-
-          {voucher.type === 'activity' && (
-            <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-3 text-sm space-y-1">
-              <p className="font-semibold text-green-800 dark:text-green-300">{details.activityName}</p>
-              {details.meetingPoint && <p className="text-muted-foreground">Meeting: {details.meetingPoint}</p>}
-              {details.dateTime && <p className="text-muted-foreground">Date/Time: {details.dateTime}</p>}
-              {details.duration && <p className="text-muted-foreground">Duration: {details.duration}</p>}
-            </div>
-          )}
-
-          {voucher.notes && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Notes</p>
-              <p className="text-sm">{voucher.notes}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2 mt-6">
-          <Button asChild className="flex-1">
-            <Link href={`/vouchers/${voucher.id}`}><Eye className="h-4 w-4 mr-1.5" /> View Full</Link>
-          </Button>
-          {voucher.status === 'draft' && (
-            <Button variant="outline" onClick={onEdit}>
-              <Pencil className="h-4 w-4 mr-1.5" /> Edit
-            </Button>
-          )}
-          <Button variant="outline" onClick={onDelete} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+async function exportVouchersCsv(rows: Voucher[]) {
+  const header = ['Title', 'Type', 'Lead', 'Supplier', 'Status', 'Language', 'Created'];
+  const lines = rows.map((v) =>
+    [
+      v.title,
+      v.type,
+      v.leadName ?? '',
+      v.supplierName ?? '',
+      v.status,
+      v.language,
+      toLocalDateString(new Date(v.createdAt)),
+    ]
+      .map(csvEscape)
+      .join(','),
   );
+  const csv = [header.join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `vouchers_export_${toLocalDateString(new Date())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function VouchersPage() {
   const router = useRouter();
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState('all');
-  const [statusFilter, setStatusFilter] = React.useState('all');
-  const [debouncedSearch, setDebouncedSearch] = React.useState('');
-  const [selectedVoucher, setSelectedVoucher] = React.useState<Voucher | null>(null);
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] = React.useState<Voucher | null>(null);
+  const [typeFilter, setTypeFilter] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [pendingDelete, setPendingDelete] = React.useState<Voucher | null>(null);
+  // Bumping this re-renders the page, which hands ListPage a fresh fetcher and refetches page 1.
+  const [refreshTick, setRefreshTick] = React.useState(0);
 
-  // Bulk selection state
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
-  const [bulkSendDialogOpen, setBulkSendDialogOpen] = React.useState(false);
-  const [bulkSendChannel, setBulkSendChannel] = React.useState<'email' | 'whatsapp' | 'both'>('email');
-  const [bulkSendTo, setBulkSendTo] = React.useState('');
-  const [isBulkSending, setIsBulkSending] = React.useState(false);
+  const activeFilters = [
+    typeFilter && { id: 'type', label: 'Type', value: typeFilter },
+    statusFilter && { id: 'status', label: 'Status', value: statusFilter },
+  ].filter(Boolean) as { id: string; label: string; value: string }[];
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  function removeFilter(id: string) {
+    if (id === 'type') setTypeFilter('');
+    if (id === 'status') setStatusFilter('');
+  }
 
-  // Debounce search
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  const fetchVouchers = React.useCallback(
-    (page: number, limit: number) =>
-      vouchersApi.list({
+  async function fetchAllFiltered(): Promise<Voucher[]> {
+    const all: Voucher[] = [];
+    let page = 1;
+    const limit = 100;
+    for (;;) {
+      const res = await vouchersApi.list({
         page,
         limit,
-        search: debouncedSearch || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        type: typeFilter !== 'all' ? typeFilter : undefined,
-      }),
-    [debouncedSearch, statusFilter, typeFilter],
-  );
-
-  const { items: vouchers, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } =
-    useInfiniteScroll<Voucher>({ fetcher: fetchVouchers, limit: 25 });
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === vouchers.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(vouchers.map((v) => v.id)));
+        type: typeFilter || undefined,
+        status: statusFilter || undefined,
+      });
+      const { data: items, pagination } = unwrapList<Voucher>(res, { page, limit });
+      all.push(...items);
+      const total = pagination.total || all.length;
+      if (all.length >= total || items.length === 0) break;
+      page += 1;
     }
-  };
-
-  const selectedVouchers = vouchers.filter((v) => selectedIds.has(v.id));
-  const selectedLeadIds = [...new Set(selectedVouchers.map((v) => v.leadId).filter(Boolean))];
-
-  const handleBulkSend = async () => {
-    if (selectedIds.size === 0) return;
-    if (!bulkSendTo.trim()) {
-      toast.error('Please enter a recipient email or phone number');
-      return;
-    }
-    setIsBulkSending(true);
-    try {
-      for (const leadId of selectedLeadIds) {
-        const voucherIds = selectedVouchers
-          .filter((v) => v.leadId === leadId)
-          .map((v) => v.id);
-        if (voucherIds.length === 0) continue;
-        await vouchersApi.bulkSend({
-          leadId,
-          voucherIds,
-          channel: bulkSendChannel,
-          to: bulkSendTo.trim(),
-        });
-      }
-      toast.success(`${selectedIds.size} voucher(s) sent successfully`);
-      setBulkSendDialogOpen(false);
-      setSelectedIds(new Set());
-      setBulkSendTo('');
-      refetch();
-    } catch {
-      toast.error('Failed to send vouchers');
-    } finally {
-      setIsBulkSending(false);
-    }
-  };
-
-  // Stat counts
-  const stats = React.useMemo(() => {
-    const counts = { total, draft: 0, sent: 0, confirmed: 0 };
-    vouchers.forEach((v) => {
-      if (v.status === 'draft') counts.draft++;
-      else if (v.status === 'sent') counts.sent++;
-      else if (v.status === 'confirmed') counts.confirmed++;
-    });
-    return counts;
-  }, [vouchers, total]);
-
-  const deleteMutation = useApiMutation<string, any>((id) => vouchersApi.delete(id));
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const result = await deleteMutation.mutate(deleteTarget.id);
-    if (result !== undefined) {
-      toast.success('Voucher deleted');
-      setDeleteTarget(null);
-      setDrawerOpen(false);
-      refetch();
-    } else {
-      toast.error(deleteMutation.error?.message ?? 'Failed to delete');
-    }
-  };
-
-  const openDrawer = (v: Voucher) => {
-    setSelectedVoucher(v);
-    setDrawerOpen(true);
-  };
-
-  // Active filter tags
-  const activeFilters = [
-    ...(typeFilter !== 'all' ? [{ id: 'type', label: `Type: ${typeFilter}`, value: typeFilter }] : []),
-    ...(statusFilter !== 'all' ? [{ id: 'status', label: `Status: ${statusFilter}`, value: statusFilter }] : []),
-  ];
+    return all;
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Vouchers
-            {total > 0 && (
-              <span className="ml-2 text-base font-normal text-muted-foreground">({total})</span>
-            )}
-          </h1>
-          <p className="text-sm text-muted-foreground">Manage hotel, transport, flight & activity vouchers</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => setBulkSendDialogOpen(true)}
-              className="gap-1.5"
-            >
-              <Send className="h-4 w-4" />
-              Bulk Send ({selectedIds.size})
+    <>
+    <ListPage<Voucher>
+      title="Vouchers"
+      description="Hotel, transport, flight & activity vouchers for your leads."
+      getRowId={(v) => v.id}
+      refreshKey={refreshTick}
+      fetcher={({ page, limit, search }) =>
+        vouchersApi.list({
+          page,
+          limit,
+          search: search || undefined,
+          type: typeFilter || undefined,
+          status: statusFilter || undefined,
+        })
+      }
+      searchPlaceholder="Search vouchers..."
+      columns={[
+        {
+          key: 'title',
+          header: 'Voucher',
+          sortable: true,
+          cell: (v) => (
+            <div>
+              <p className="font-medium text-sm">{v.title}</p>
+              {v.leadName && <p className="text-xs text-ds-foreground-muted">{v.leadName}</p>}
+            </div>
+          ),
+        },
+        {
+          key: 'type',
+          header: 'Type',
+          sortable: true,
+          cell: (v) => <Tag tone={typeTone(v.type)}>{v.type}</Tag>,
+        },
+        {
+          key: 'supplier',
+          header: 'Supplier',
+          cell: (v) => v.supplierName ?? '—',
+        },
+        {
+          key: 'status',
+          header: 'Status',
+          sortable: true,
+          cell: (v) => <Tag tone={statusTone(v.status)}>{v.status}</Tag>,
+        },
+        {
+          key: 'language',
+          header: 'Language',
+          cell: (v) => v.language?.toUpperCase() ?? 'EN',
+        },
+        {
+          key: 'createdAt',
+          header: 'Created',
+          sortable: true,
+          cell: (v) =>
+            formatLocaleDate(v.createdAt, {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            }),
+        },
+      ]}
+      primaryAction={
+        <Button size="sm" onClick={() => router.push('/vouchers/new')}>
+          <Plus aria-hidden="true" /> New voucher
+        </Button>
+      }
+      headerActions={
+        <>
+          <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All types" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="hotel">Hotel</SelectItem>
+              <SelectItem value="transport">Transport</SelectItem>
+              <SelectItem value="flight">Flight</SelectItem>
+              <SelectItem value="activity">Activity</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
+            </SelectContent>
+          </Select>
+        </>
+      }
+      filters={activeFilters}
+      onRemoveFilter={removeFilter}
+      onClearFilters={() => { setTypeFilter(''); setStatusFilter(''); }}
+      rowActions={(v) => (
+        <>
+          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/vouchers/${v.id}`)}>
+            <Eye />
+          </Button>
+          {v.status === 'draft' && (
+            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/vouchers/${v.id}/edit`)}>
+              <Pencil />
             </Button>
           )}
-          {selectedIds.size > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedIds(new Set())}
-            >
-              Clear Selection
-            </Button>
-          )}
-          <Link href="/vouchers/new">
-            <Button><Plus className="h-4 w-4 mr-1.5" /> New Voucher</Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Stat Cards */}
-      <div className="flex items-center gap-4 px-6 py-3 border-b bg-muted/30">
-        {[
-          { label: 'Total', value: stats.total, color: 'text-foreground' },
-          { label: 'Draft', value: stats.draft, color: 'text-slate-600 dark:text-slate-400' },
-          { label: 'Sent', value: stats.sent, color: 'text-blue-600 dark:text-blue-400' },
-          { label: 'Confirmed', value: stats.confirmed, color: 'text-green-600 dark:text-green-400' },
-        ].map((s) => (
-          <div key={s.label} className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">{s.label}:</span>
-            <span className={cn('font-semibold', s.color)}>{s.value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="px-6 py-3 border-b flex items-center gap-3">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search vouchers..."
-          activeFilters={activeFilters}
-          onRemoveFilter={(id) => {
-            if (id === 'type') setTypeFilter('all');
-            if (id === 'status') setStatusFilter('all');
-          }}
-          onClearFilters={() => { setTypeFilter('all'); setStatusFilter('all'); }}
-          className="flex-1"
-        />
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All types" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="hotel">Hotel</SelectItem>
-            <SelectItem value="transport">Transport</SelectItem>
-            <SelectItem value="flight">Flight</SelectItem>
-            <SelectItem value="activity">Activity</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="confirmed">Confirmed</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {error && (
-        <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <p className="text-sm text-amber-800 dark:text-amber-200">Could not load vouchers — check your connection</p>
-        </div>
+          <Button variant="ghost" size="icon-sm" aria-label="Send" onClick={() => router.push(`/vouchers/${v.id}`)}>
+            <Send />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Delete"
+            onClick={() => setPendingDelete(v)}
+          >
+            <Trash2 />
+          </Button>
+        </>
       )}
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={vouchers.length > 0 && selectedIds.size === vouchers.length}
-                  onCheckedChange={toggleSelectAll}
-                  aria-label="Select all"
-                />
-              </TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Lead</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="w-28 text-right pr-4">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && <SkeletonRows />}
-
-            {!loading && vouchers.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={8} className="py-20 text-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <FileText className="h-10 w-10 text-muted-foreground/40" />
-                    <p className="text-muted-foreground font-medium">No vouchers found</p>
-                    <p className="text-sm text-muted-foreground">Create your first voucher to get started</p>
-                    <Link href="/vouchers/new" className="mt-2">
-                      <Button size="sm"><Plus className="h-3.5 w-3.5 mr-1" /> New Voucher</Button>
-                    </Link>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {vouchers.map((voucher) => (
-              <TableRow
-                key={voucher.id}
-                className={cn('cursor-pointer group', selectedIds.has(voucher.id) && 'bg-primary/5')}
-                onClick={() => openDrawer(voucher)}
-              >
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={selectedIds.has(voucher.id)}
-                    onCheckedChange={() => toggleSelection(voucher.id)}
-                    aria-label={`Select ${voucher.title}`}
-                  />
-                </TableCell>
-                <TableCell className="font-medium text-sm max-w-[200px] truncate">{voucher.title}</TableCell>
-                <TableCell><TypeBadge type={voucher.type} /></TableCell>
-                <TableCell className="text-sm text-muted-foreground">{voucher.leadName ?? '—'}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{voucher.supplierName ?? '—'}</TableCell>
-                <TableCell><StatusBadge status={voucher.status} /></TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {new Date(voucher.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </TableCell>
-                <TableCell className="text-right pr-4">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost" size="icon-sm"
-                      onClick={(e) => { e.stopPropagation(); router.push(`/vouchers/${voucher.id}`); }}
-                      title="View"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                    {voucher.status === 'draft' && (
-                      <Button
-                        variant="ghost" size="icon-sm"
-                        onClick={(e) => { e.stopPropagation(); router.push(`/vouchers/${voucher.id}/edit`); }}
-                        title="Edit"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost" size="icon-sm"
-                      onClick={(e) => { e.stopPropagation(); router.push(`/vouchers/${voucher.id}`); }}
-                      title="Send"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost" size="icon-sm"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(voucher); }}
-                      title="Delete"
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {loadingMore && (
-              <TableRow>
-                <TableCell colSpan={8} className="py-4 text-center text-sm text-muted-foreground">
-                  Loading more vouchers…
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Infinite scroll sentinel */}
-        <div ref={sentinelRef} className="h-4" />
-      </div>
-
-      {/* Detail Drawer */}
-      <VoucherDrawer
-        voucher={selectedVoucher}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        onEdit={() => {
-          setDrawerOpen(false);
-          if (selectedVoucher) router.push(`/vouchers/${selectedVoucher.id}/edit`);
-        }}
-        onDelete={() => {
-          setDrawerOpen(false);
-          if (selectedVoucher) setDeleteTarget(selectedVoucher);
-        }}
-      />
-
-      {/* Delete Confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Voucher?</DialogTitle>
-            <DialogDescription>
-              This will permanently delete &quot;{deleteTarget?.title}&quot;. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Send Dialog */}
-      <Dialog open={bulkSendDialogOpen} onOpenChange={setBulkSendDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Bulk Send Vouchers</DialogTitle>
-            <DialogDescription>
-              Send {selectedIds.size} selected voucher{selectedIds.size !== 1 ? 's' : ''} to the recipient.
-              {selectedLeadIds.length > 1 && (
-                <span className="block mt-1 text-amber-600">
-                  Note: Selected vouchers span {selectedLeadIds.length} different leads.
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Channel</Label>
-              <Select value={bulkSendChannel} onValueChange={(v) => setBulkSendChannel(v as 'email' | 'whatsapp' | 'both')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="both">Both (Email + WhatsApp)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>
-                {bulkSendChannel === 'whatsapp' ? 'Phone Number' : bulkSendChannel === 'both' ? 'Email / Phone' : 'Email Address'}
-              </Label>
-              <Input
-                value={bulkSendTo}
-                onChange={(e) => setBulkSendTo(e.target.value)}
-                placeholder={bulkSendChannel === 'whatsapp' ? '+91 98765 43210' : 'client@example.com'}
-              />
-            </div>
-            <div className="bg-muted/50 rounded-lg p-3">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Selected Vouchers:</p>
-              <div className="space-y-1 max-h-32 overflow-auto">
-                {selectedVouchers.map((v) => (
-                  <div key={v.id} className="flex items-center gap-2 text-xs">
-                    <TypeBadge type={v.type} />
-                    <span className="truncate">{v.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkSendDialogOpen(false)} disabled={isBulkSending}>
-              Cancel
-            </Button>
-            <Button onClick={handleBulkSend} disabled={isBulkSending || selectedIds.size === 0}>
-              {isBulkSending && <Spinner className="h-4 w-4 animate-spin mr-1.5" />}
-              Send {selectedIds.size} Voucher{selectedIds.size !== 1 ? 's' : ''}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      onRowClick={(v) => router.push(`/vouchers/${v.id}`)}
+      bulkActions={[
+        {
+          label: 'Delete',
+          icon: <Trash2 aria-hidden="true" />,
+          destructive: true,
+          onSelect: async (rows) => {
+            await Promise.all(rows.map((r) => vouchersApi.delete(r.id)));
+            toast.success(`${rows.length} voucher(s) deleted`);
+            setRefreshTick((n) => n + 1);
+          },
+        },
+      ]}
+      onExport={async () => {
+        try {
+          const rows = await fetchAllFiltered();
+          await exportVouchersCsv(rows);
+          toast.success('Vouchers exported successfully');
+        } catch {
+          toast.error('Failed to export vouchers');
+        }
+      }}
+      emptyTitle="No vouchers yet"
+      emptyDescription="Create your first voucher to send confirmations to travellers and suppliers."
+      emptyIcon={<FileText aria-hidden="true" />}
+      emptyAction={
+        <Button size="sm" onClick={() => router.push('/vouchers/new')}>
+          <Plus aria-hidden="true" /> New voucher
+        </Button>
+      }
+    />
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      onOpenChange={(open) => !open && setPendingDelete(null)}
+      title="Delete voucher?"
+      description={`"${pendingDelete?.title ?? ''}" will be permanently deleted. This cannot be undone.`}
+      confirmLabel="Delete"
+      tone="destructive"
+      onConfirm={async () => {
+        if (!pendingDelete) return;
+        try {
+          await vouchersApi.delete(pendingDelete.id);
+          toast.success('Voucher deleted');
+          setRefreshTick((n) => n + 1);
+        } catch {
+          toast.error('Failed to delete voucher');
+        }
+      }}
+    />
+    </>
   );
 }

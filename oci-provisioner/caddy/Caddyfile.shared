@@ -1,0 +1,33 @@
+# Shared WordPress hosting. Certificates are issued on demand, one per agency site, the first time its
+# address is opened. Caddy first asks the provisioner (/tls-check) whether the host is a real site, so
+# nobody can make the server request certificates for arbitrary names.
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://provisioner:9090/tls-check
+	}
+}
+
+# The provisioner API the CRM backend calls (signed requests). /tls-check stays internal: only /sites and /health are exposed.
+{$PROVISIONER_HOST} {
+	@public path /sites /sites/* /health
+	handle @public {
+		reverse_proxy provisioner:9090
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
+
+# Every agency site (<slug>.<WP_SITES_DOMAIN>) and the network's main host.
+https:// {
+	tls {
+		on_demand
+	}
+	encode gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	reverse_proxy wordpress:80
+}

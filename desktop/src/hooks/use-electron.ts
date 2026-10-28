@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback, useSyncExternalStore } from 'react';
 
 /**
  * Hook to detect if running inside Electron and access its APIs.
  */
 export function useElectron() {
-  const [isElectron, setIsElectron] = useState(false);
-
-  useEffect(() => {
-    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
-  }, []);
+  const isElectron = useSyncExternalStore(
+    () => () => {},
+    () => !!window.electronAPI,
+    () => false,
+  );
 
   const minimize = useCallback(() => window.electronAPI?.minimize(), []);
   const maximize = useCallback(() => window.electronAPI?.maximize(), []);

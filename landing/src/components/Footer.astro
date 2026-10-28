@@ -1,0 +1,30 @@
+---
+import { MARKETS } from '../data/markets';
+---
+<footer class="foot">
+  <div class="wrap cols">
+    <div>
+      <div class="mono brand">TRAVELCRM <span>PRO</span></div>
+      <p>CRM for travel agencies and tour operators.</p>
+      <p class="todo-free"><span data-config="legalEntity"></span> <span data-config="city"></span></p>
+      <p><a data-config-mailto="contactEmail" href="/#enquire"><span data-config="contactEmail">Contact us</span></a></p>
+      <a id="whatsapp-btn" class="wa" href="/#enquire" hidden>WhatsApp us</a>
+    </div>
+    <div class="col"><strong>Product</strong><a href="/features/">Features</a><a href="/#agency">For your agency</a><a href="/pricing/">Pricing</a><a href="/pricing/#compare">Compare plans</a><a href="/#faq">FAQ</a></div>
+    <div class="col"><strong>Markets</strong>{MARKETS.map((m) => <a href={m.path}>{m.name}</a>)}</div>
+    <div class="col"><strong>Learn</strong><a href="/compare/">Compare</a><a href="/blog/">Blog</a><a href="/rss.xml">RSS</a></div>
+    <div class="col"><strong>Legal</strong><a href="/legal/privacy.html">Privacy</a><a href="/legal/terms.html">Terms</a><a href="/legal/dpa.html">Data processing</a><a href="/legal/subprocessors.html">Sub-processors</a></div>
+  </div>
+</footer>
+<style>
+  .foot { background: #0B0D0F; color: var(--boardmute); font-size: 14px; }
+  .cols { padding-top: 48px; padding-bottom: 48px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 28px; }
+  .brand { font-weight: 600; color: var(--boardtext); }
+  .brand span { color: var(--amber); }
+  p { margin: 8px 0 0; line-height: 1.6; }
+  .col { display: grid; gap: 4px; align-content: start; }
+  .col strong { color: var(--boardtext); margin-bottom: 4px; }
+  a { color: inherit; min-height: 32px; display: inline-flex; align-items: center; }
+  a:hover { color: var(--amber); }
+  .wa { margin-top: 10px; color: var(--amber); font-weight: 700; }
+</style>

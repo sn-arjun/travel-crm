@@ -1,0 +1,178 @@
+/**
+ * Call simulator (R301, test mode only): plays a whole call as the provider would, by posting the same signed
+ * form callbacks to the real callback routes in the order a provider sends them. Backend tests and the local
+ * stack drive full flows (missed call to call-back task, answered call to metering) without any provider.
+ *
+ * The caller supplies `send`, which delivers a Request to the app (the worker's own fetch), so nothing here
+ * opens a network connection.
+ */
+
+import { twilioSignature } from '../../middleware/provider-signature';
+import { MockVoipProvider } from './mock-provider';
+
+export const VOIP_SCENARIOS = [
+  'inbound_answered',
+  'inbound_missed',
+  'inbound_voicemail',
+  'outbound_answered',
+  'outbound_no_answer',
+] as const;
+/**
+ * Two halves of an answered inbound call (R307), so a test can click Answer between them: inbound_ring rings the
+ * agent and stops; inbound_finish (with the callSid inbound_ring returned) connects and completes the same call.
+ * Not in VOIP_SCENARIOS: those are whole calls, each replayed to prove callbacks are applied once.
+ */
+export const VOIP_PARTIAL_SCENARIOS = ['inbound_ring', 'inbound_finish'] as const;
+export type VoipScenario = (typeof VOIP_SCENARIOS)[number] | (typeof VOIP_PARTIAL_SCENARIOS)[number];
+export const ALL_VOIP_SCENARIOS: readonly VoipScenario[] = [...VOIP_SCENARIOS, ...VOIP_PARTIAL_SCENARIOS];
+
+export interface SimulateOptions {
+  scenario: VoipScenario;
+  /** Inbound: the agency's number. Outbound: the customer. */
+  to: string;
+  /** Inbound: the caller. Outbound: the agency's number. */
+  from: string;
+  durationSeconds?: number;
+  /** Answered scenarios also deliver the provider's "recording ready" callback (as it comes after the call), with audio behind it in the mock provider. */
+  withRecording?: boolean;
+  /** Provider call id. Outbound scenarios should pass the id placeCall returned; otherwise one is made up. */
+  callSid?: string;
+  /** Origin the provider would call, no trailing slash, e.g. API_PUBLIC_URL or http://localhost. */
+  baseUrl: string;
+  /** The token the callbacks are signed with: the workspace's provider token, else the platform's. */
+  authToken: string;
+  send: (request: Request) => Promise<Response>;
+}
+
+export interface SimulatedStep {
+  path: string;
+  fields: Record<string, string>;
+  status: number;
+}
+
+export interface SimulationResult {
+  scenario: VoipScenario;
+  callSid: string;
+  steps: SimulatedStep[];
+}
+
+let simCounter = 0;
+
+/** About one second of silent MPEG audio per 38 frames (128 kbit/s, 44.1 kHz), so a local stack has something real to store and play. */
+export function silentMp3(seconds: number): Uint8Array {
+  const frame = new Uint8Array(417);
+  frame.set([0xff, 0xfb, 0x90, 0x00]);
+  const frames = Math.max(1, Math.min(Math.ceil(seconds), 5)) * 38;
+  const out = new Uint8Array(frames * frame.length);
+  for (let i = 0; i < frames; i++) out.set(frame, i * frame.length);
+  return out;
+}
+
+/** The ordered callbacks of one scenario (paths are relative to /api/v1/voip). */
+export function scenarioSteps(
+  scenario: VoipScenario,
+  p: { callSid: string; to: string; from: string; durationSeconds: number },
+): Array<{ path: string; fields: Record<string, string> }> {
+  const { callSid, to, from } = p;
+  const base = { CallSid: callSid, To: to, From: from };
+  const status = (CallStatus: string, extra: Record<string, string> = {}) => ({
+    path: '/status-callback',
+    fields: { ...base, CallStatus, ...extra },
+  });
+  const duration = String(Math.max(0, Math.floor(p.durationSeconds)));
+
+  switch (scenario) {
+    case 'inbound_ring':
+      return [
+        { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
+        status('ringing', { Direction: 'inbound' }),
+      ];
+    case 'inbound_finish':
+      return [
+        status('in-progress', { Direction: 'inbound' }),
+        status('completed', { Direction: 'inbound', CallDuration: duration }),
+      ];
+    case 'inbound_answered':
+      return [
+        { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
+        status('ringing', { Direction: 'inbound' }),
+        status('in-progress', { Direction: 'inbound' }),
+        status('completed', { Direction: 'inbound', CallDuration: duration }),
+      ];
+    case 'inbound_missed':
+      return [
+        { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
+        status('ringing', { Direction: 'inbound' }),
+        status('no-answer', { Direction: 'inbound', CallDuration: '0' }),
+      ];
+    case 'inbound_voicemail':
+      return [
+        { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
+        status('ringing', { Direction: 'inbound' }),
+        {
+          path: '/recording-callback',
+          fields: {
+            ...base,
+            RecordingSid: `RE${callSid.slice(2)}`,
+            RecordingUrl: `https://api.twilio.com/2010-04-01/Accounts/ACsim/Recordings/RE${callSid.slice(2)}`,
+            RecordingDuration: duration,
+          },
+        },
+        status('completed', { Direction: 'inbound', CallDuration: duration }),
+      ];
+    case 'outbound_answered':
+      return [
+        status('queued', { Direction: 'outbound-api' }),
+        status('ringing', { Direction: 'outbound-api' }),
+        status('in-progress', { Direction: 'outbound-api' }),
+        status('completed', { Direction: 'outbound-api', CallDuration: duration }),
+      ];
+    case 'outbound_no_answer':
+      return [
+        status('queued', { Direction: 'outbound-api' }),
+        status('ringing', { Direction: 'outbound-api' }),
+        status('no-answer', { Direction: 'outbound-api', CallDuration: '0' }),
+      ];
+  }
+}
+
+/** Play a scenario against the callback routes, signing every callback, and report what each answered. */
+export async function simulateVoipScenario(opts: SimulateOptions): Promise<SimulationResult> {
+  const callSid = opts.callSid || `CAsim${String(++simCounter).padStart(8, '0')}${'0'.repeat(20)}`;
+  const base = opts.baseUrl.replace(/\/+$/, '');
+  const defaultDuration = opts.scenario.endsWith('answered') || opts.scenario === 'inbound_finish' ? 45 : opts.scenario === 'inbound_voicemail' ? 20 : 0;
+  const steps: SimulatedStep[] = [];
+  const durationSeconds = opts.durationSeconds ?? defaultDuration;
+  const planned = scenarioSteps(opts.scenario, { callSid, to: opts.to, from: opts.from, durationSeconds });
+  if (opts.withRecording && (opts.scenario.endsWith('answered') || opts.scenario === 'inbound_finish')) {
+    planned.push({
+      path: '/recording-callback',
+      fields: {
+        CallSid: callSid,
+        To: opts.to,
+        From: opts.from,
+        RecordingSid: `RE${callSid.slice(2)}`,
+        RecordingUrl: `https://api.twilio.com/2010-04-01/Accounts/ACsim/Recordings/RE${callSid.slice(2)}`,
+        RecordingDuration: String(Math.max(0, Math.floor(durationSeconds))),
+        RecordingChannels: '2',
+      },
+    });
+  }
+
+  for (const step of planned) {
+    if (step.path === '/recording-callback') {
+      // The provider has the audio by the time it says so.
+      MockVoipProvider.addRecording(step.fields.RecordingSid, silentMp3(1), Number(step.fields.RecordingDuration) || 0);
+    }
+    const signature = await twilioSignature(`${base}/api/v1/voip${step.path}`, step.fields, opts.authToken);
+    const res = await opts.send(
+      new Request(`${base}/api/v1/voip${step.path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signature },
+        body: new URLSearchParams(step.fields).toString(),
+      }),
+    );
+    steps.push({ path: step.path, fields: step.fields, status: res.status });
+  }
+  return { scenario: opts.scenario, callSid, steps };
+}

@@ -1,0 +1,23 @@
+{
+  "contacts.name": "Name",
+  "contacts.email": "Email",
+  "contacts.phone": "Phone",
+  "contacts.type": "Type",
+  "contacts.tags": "Tags",
+  "contacts.company": "Company",
+  "contacts.city": "City",
+  "contacts.country": "Country",
+  "contacts.notes": "Notes",
+  "contacts.customer": "Customer",
+  "contacts.supplier": "Supplier",
+  "contacts.agent": "Agent",
+  "contacts.partner": "Partner",
+  "contacts.createContact": "Create Contact",
+  "contacts.editContact": "Edit Contact",
+  "contacts.deleteContact": "Delete Contact",
+  "contacts.viewDetails": "View Details",
+  "contacts.noContacts": "No contacts found",
+  "contacts.filterByType": "Filter by Type",
+  "contacts.exportContacts": "Export Contacts",
+  "contacts.importContacts": "Import Contacts"
+}

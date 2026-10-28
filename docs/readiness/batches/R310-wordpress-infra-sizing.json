@@ -1,0 +1,87 @@
+{
+  "id": "R310",
+  "tier": 3,
+  "title": "WordPress hosting sized to Oracle's free allowance with a shared database container",
+  "lane": "infra",
+  "backend": false,
+  "goal": "Run as many agency websites as possible on Oracle's free machine, and write down what it costs beyond that.",
+  "why": "terraform/modules/oracle-cloud/main.tf asks for 4 OCPU / 24 GB while the Always Free A1 allowance may be 2 OCPU / 12 GB (coordinator note from COST-MODEL); each site runs WordPress 512 MB + its own MariaDB 256 MB (oci-provisioner/src/server.ts); cost model item 6 recommends sharing.",
+  "featuresToWorks": [
+    "wp.server-infra",
+    "wp.template"
+  ],
+  "dependsOn": [
+    "R118"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R302"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "terraform/modules/oracle-cloud/main.tf",
+      "terraform/modules/oracle-cloud/variables.tf",
+      "terraform/modules/oracle-cloud/cloud-init.yaml",
+      "terraform/variables.tf",
+      "terraform/environments/prod.tfvars",
+      "oci-provisioner/Dockerfile",
+      "oci-provisioner/caddy/Caddyfile"
+    ],
+    "create": [
+      "oci-provisioner/docker-compose.shared-db.yml",
+      "docs/ops/WORDPRESS-HOSTING.md"
+    ],
+    "mustNotTouch": [
+      "oci-provisioner/src/server.ts",
+      "oci-provisioner/src/wp-setup.ts",
+      "backend/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "terraform: instance_ocpus and instance_memory_gb variables defaulting to the free allowance (2 and 12 unless Oracle's current page says 4 and 24; check https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm with WebFetch and cite the date in WORDPRESS-HOSTING.md); boot volume within the free 200 GB total.",
+    "cloud-init: start one shared MariaDB container (docker-compose.shared-db.yml) with a database and user per site created by the provisioner (the provisioner change itself is a follow-up in a later batch if R309 kept per-site MariaDB; document the switch steps here and keep per-site mode working).",
+    "docs/ops/WORDPRESS-HOSTING.md: capacity per VM (sites = (RAM - 2 GB) / per-site budget: about 13 with today's 768 MB, about 20 with the shared DB), what happens at the limit (second VM or paid shape and its monthly cost from COST-MODEL 1.10), backups of WordPress volumes, update policy.",
+    "terraform fmt and validate (init -backend=false) if terraform is installed."
+  ],
+  "migrations": [],
+  "tests": [
+    "terraform validate (if installed).",
+    "docker compose -f oci-provisioner/docker-compose.shared-db.yml config (if Docker is installed)."
+  ],
+  "acceptance": [
+    "Terraform defaults fit the free allowance as documented with a citation.",
+    "Capacity and cost beyond it are written down."
+  ],
+  "gate": [
+    "terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate   # skip with a note if terraform is not installed"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Oracle free-tier capacity availability in ap-mumbai-1 (often out of capacity); real VM boot; site density under load."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Infra only; no backend or provisioner code here.",
+    "Owner decision 2026-10-21 (Q9): ONE SHARED WordPress installation (multisite) for now; container-per-agency later if revenue allows. Implement PROVISIONER_MODE=shared in oci-provisioner behind the same POST /sites state document (R309)."
+  ]
+}

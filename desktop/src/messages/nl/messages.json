@@ -1,0 +1,12 @@
+{
+  "messages.confirmDelete": "Weet u zeker dat u dit wilt verwijderen?",
+  "messages.deleteSuccess": "Succesvol verwijderd",
+  "messages.saveSuccess": "Succesvol opgeslagen",
+  "messages.updateSuccess": "Succesvol bijgewerkt",
+  "messages.createSuccess": "Succesvol aangemaakt",
+  "messages.error": "Er is iets misgegaan",
+  "messages.errorMessage": "Er is een fout opgetreden. Probeer het opnieuw.",
+  "messages.noResults": "Geen resultaten gevonden",
+  "messages.loading": "Laden...",
+  "messages.retry": "Opnieuw proberen"
+}

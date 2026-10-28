@@ -1,0 +1,129 @@
+{
+  "id": "R150",
+  "tier": 4,
+  "step": 8,
+  "title": "Extras and the traveller self-service page: a configurable catalogue of paid extras per tour, departure and day; a link per booking (or per traveller) to enter traveller details, pick extras and pay",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Before departure each party opens its own link, enters names as on the travel document, document expiry dates and meals for every traveller, picks extras per person per day, and pays; staff see the choices on the manifest and an extras invoice is ready.",
+  "why": "Gap 2, second half: extras are chosen and paid by separate email about a week before, the most manual step after seat confirmation; traveller details are retyped. Design: TOUR-OPERATOR-DESIGN.md sections 3.1 (tour_extras, passenger_extras), 5.4, 7, 8.4.",
+  "featuresToWorks": ["departures.extras", "departures.self-service", "reports.extras-sales"],
+  "featureKeys": ["public_booking", "group_departures"],
+  "dependsOn": ["R148", "R149"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R151"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/public-booking.ts",
+      "backend/src/routes/tours.ts (extras rules only)",
+      "backend/src/routes/departures.ts (extras routes only)",
+      "backend/src/routes/seat-bookings.ts (self-service link and staff extras only)",
+      "backend/src/services/departures/manifest.ts (extras columns only)",
+      "backend/src/services/automation/recipes.ts (departures.collect_details link only)",
+      "backend/src/services/template-engine.ts (the variables details_link and extras_link only; R154 adds the rest later)",
+      "desktop/src/app/(app)/tours/[id]/** (extras tab behaviour)",
+      "desktop/src/app/(app)/departures/[id]/page.tsx (Extras tab)",
+      "desktop/src/app/(app)/departures/_components/**",
+      "desktop/src/lib/api/departures.ts",
+      "desktop/src/messages/en/extras.json",
+      "desktop/src/messages/nl/extras.json",
+      "desktop/src/messages/en/trip.json",
+      "desktop/src/messages/nl/trip.json"
+    ],
+    "create": [
+      "backend/src/services/departures/extras.ts",
+      "backend/src/services/departures/self-service.ts",
+      "backend/test/extras.test.ts",
+      "backend/test/self-service-page.test.ts",
+      "desktop/src/app/(public)/trip/[token]/page.tsx",
+      "desktop/src/app/(public)/trip/[token]/_components/*.tsx",
+      "desktop/src/lib/extras.ts",
+      "desktop/src/lib/extras.test.ts",
+      "desktop/scripts/i18n-scope/self-service.json",
+      "desktop/e2e/self-service-extras.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/chatbot.ts",
+      "backend/src/routes/public-chatbot.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "desktop/src/app/(app)/settings/chatbot/**",
+      "desktop/src/app/(app)/chatbot/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R150-1",
+      "what": "Extras catalogue",
+      "steps": [
+        "extras.ts: effective extras of a departure = tour-wide rows + tour rows + departure rows (a departure row with the same title and day overrides), with price from band_prices for the passenger's band, else price, else the linked rate card's current selling price; capacity counted over selected/invoiced/paid; cut-off = cutoff_hours_before or the departure extras_cutoff_date.",
+        "Staff: tour Extras tab (rows by day with price, per-band prices, rate card link via RelationCombobox, supplier, capacity, cut-off, refundable until); departure Extras tab (overrides, sales per extra, per-passenger choices editable by staff after the cut-off).",
+        "invoiceExtras(seatBookingId): one Extras invoice per seat booking through createInvoice (R142), lines per passenger per extra; updated while unpaid; once paid, new choices create a further invoice; passenger_extras.status follows (invoiced, paid on payment.recorded, cancelled with refund suggestion within refundable_until)."
+      ]
+    },
+    {
+      "id": "R150-2",
+      "what": "Self-service links and API",
+      "steps": [
+        "POST /seat-bookings/:id/self-service-link {scope: booking|passenger, passengerId?} creates public_links rows (kinds booking_self_service, passenger_self_service) and returns tripUrl; the staff UI sends it through SendMessageDialog with a template that uses {{details_link}} / {{extras_link}}.",
+        "Public routes in public-booking.ts under /public/booking/:token: GET (booking summary, passengers in scope with the fields to collect on self_service and current values, document numbers masked, extras per passenger per day with prices and cut-off, invoice and balance); PUT /passengers (validated against the effective passenger fields; creates or updates the linked travellers so the visa and passport-expiry alerts pick them up); PUT /extras (only before the cut-off; capacity enforced; recomputes); POST /pay {what: extras|balance|deposit} creates or reuses a payment link (R142) for the right invoice and returns its URL, else bank details. Same gates, rate limits (30/min per token for writes, pay 5/min), uniform 404 and projection rules as R148.",
+        "departures.collect_details recipe now builds the link and drafts the message (R143 left it inert); extras_link and details_link resolve in templates."
+      ]
+    },
+    {
+      "id": "R150-3",
+      "what": "The page (desktop/src/app/(public)/trip/[token])",
+      "steps": [
+        "Steps: Travellers (per passenger: names as on the travel document, DOB, gender, nationality, document type, number and expiry, a second document expiry when the agency collects it, meal, any custom fields), Extras (per day, per passenger checkboxes or quantities with prices; locked after the cut-off with a message), Review and pay (totals, what is paid, Pay now or bank details).",
+        "Mobile-first, agency branding and language (en, nl via t('trip.*')), PhoneInput for phones, dates through the agency locale, saved progress per step, clear errors; a passenger-scoped link shows only that passenger."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/extras.test.ts: effective catalogue merge and override; band prices; rate-card-linked price; capacity; cut-off; invoice lines and totals; paid status from payment.recorded; refund suggestion within the window.",
+    "backend/test/self-service-page.test.ts: token kinds and scope (a passenger link cannot read or write another passenger); masked document numbers; validation of required fields; travellers created and linked; extras after the cut-off rejected; pay creates a test-gateway link for the extras invoice; uniform 404s; rate limits.",
+    "desktop vitest: lib/extras.ts totals and per-day grouping.",
+    "e2e/self-service-extras.spec.ts: staff adds extras to a tour, sends the self-service link through the hub (outbox or simulator), the customer opens it, enters two travellers, picks extras on two days, pays on the test gateway; staff sees travellers, extras on the manifest and the paid extras invoice; the extras_sales report shows the sales."
+  ],
+  "acceptance": [
+    "Extras are chosen and paid by the customer through one link; staff retype nothing.",
+    "Traveller details entered by the customer appear as travellers with expiry alerts."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/self-service-extras.spec.ts e2e/public-booking.spec.ts e2e/departure-manifest.spec.ts e2e/travellers.spec.ts e2e/visa.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/self-service-extras.spec.ts", "e2e/public-booking.spec.ts", "e2e/departure-manifest.spec.ts", "e2e/travellers.spec.ts", "e2e/visa.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere; code says 'extras', never 'addon'.",
+    "Feature switch: public_booking and group_departures (plus the agency switch) on every public and staff route.",
+    "Public routes: tenant from the master token first; uniform 404; per-token scope; masked document numbers; rate limits; noindex.",
+    "Links reach customers only through the Communication Hub (SendMessageDialog or the recipe's draft).",
+    "Backend: no migration (tables from 0057); personal data registered; money through utils/money.ts.",
+    "Desktop: CONTRACT.md; RelationCombobox; PhoneInput; t() with en and nl keys in extras.json and trip.json; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 3.1, 5.4, 7, 8, routes/public-booking.ts (R148), services/domain/invoices.ts (R142), services/departures/booking-invoice.ts (R148).",
+    "R151 runs in parallel and owns the chatbot files and migration 0061."
+  ],
+  "goLiveVerify": []
+}

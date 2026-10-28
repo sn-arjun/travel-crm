@@ -6,13 +6,16 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const socialContentRoutes = new Hono<AppContext>();
+socialContentRoutes.onError(aiAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 
@@ -33,7 +36,7 @@ const generateBatchSchema = z.object({
 });
 
 const updateContentSchema = z.object({
-  generatedText: z.string().optional(),
+  content: z.string().optional(),
   hashtags: z.array(z.string()).optional(),
   cta: z.string().optional(),
   status: z.enum(['draft', 'approved', 'published', 'archived']).optional(),
@@ -48,7 +51,8 @@ function parseContent(row: Record<string, any>) {
     platform: row.platform,
     topic: row.topic,
     prompt: row.prompt,
-    generatedText: row.generated_text,
+    content: row.generated_text,
+    generatedText: row.generated_text,  // packages/shared SocialContentModel reads generatedText
     hashtags: row.hashtags ? JSON.parse(row.hashtags) : [],
     mediaSuggestions: row.media_suggestions ? JSON.parse(row.media_suggestions) : [],
     cta: row.cta,
@@ -76,12 +80,17 @@ socialContentRoutes.get('/', async (c) => {
   const offset = (page - 1) * limit;
   const platform = url.searchParams.get('platform');
   const status = url.searchParams.get('status');
+  const search = url.searchParams.get('search');
 
   const conditions: string[] = [];
   const values: (string | number)[] = [];
 
   if (platform) { conditions.push('sc.platform = ?'); values.push(platform); }
   if (status) { conditions.push('sc.status = ?'); values.push(status); }
+  if (search) {
+    conditions.push('(sc.generated_text LIKE ? OR sc.topic LIKE ?)');
+    values.push(`%${search}%`, `%${search}%`);
+  }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -135,7 +144,7 @@ For Blog: outline with headings, key points, SEO-friendly.`;
 
   const userPrompt = `Topic: ${data.topic}${data.additionalContext ? `\nAdditional context: ${data.additionalContext}` : ''}`;
 
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
   const startTime = Date.now();
   const aiResult = await aiRouter.route('social_content_instagram' as any, userPrompt, systemPrompt);
   const durationMs = Date.now() - startTime;
@@ -200,7 +209,7 @@ socialContentRoutes.post('/generate-batch', zValidator('json', generateBatchSche
   const data = c.req.valid('json');
 
   const results: any[] = [];
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
 
   for (const platform of data.platforms) {
     const contentType = `${platform}_post`;
@@ -276,7 +285,7 @@ socialContentRoutes.put('/:id', zValidator('json', updateContentSchema), async (
   const updates: string[] = [];
   const values: (string | number | null)[] = [];
 
-  if (data.generatedText !== undefined) { updates.push('generated_text = ?'); values.push(data.generatedText); }
+  if (data.content !== undefined) { updates.push('generated_text = ?'); values.push(data.content); }
   if (data.hashtags !== undefined) { updates.push('hashtags = ?'); values.push(JSON.stringify(data.hashtags)); }
   if (data.cta !== undefined) { updates.push('cta = ?'); values.push(data.cta); }
   if (data.status !== undefined) { updates.push('status = ?'); values.push(data.status); }

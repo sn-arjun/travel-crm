@@ -10,16 +10,19 @@ export interface CreateFollowUpRequest {
 }
 
 export interface UpdateFollowUpRequest {
+  scheduledAt?: string;
+  notes?: string;
   title?: string;
   description?: string;
   dueDate?: string;
-  type?: 'email' | 'call' | 'meeting' | 'task';
+  type?: 'email' | 'call' | 'meeting' | 'task' | 'whatsapp' | 'visit' | 'sms';
   priority?: 'low' | 'medium' | 'high';
   assignedTo?: string;
   customFields?: Record<string, unknown>;
 }
 
 export interface CompleteFollowUpRequest {
+  outcomeNotes?: string;
   completedAt?: string;
   notes?: string;
   outcome?: string;

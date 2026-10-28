@@ -1,9 +1,9 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Loader2, MessageSquare, Copy, Send, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,21 +16,37 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { aiApi, type ComposedMessage } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type ComposedMessage } from '@/lib/api/ai';
 import { communicationsApi } from '@/lib/api/communications';
+import { contactsApi } from '@/lib/api/contacts';
+import type { Contact } from '@travelcrm/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
+
+const TONE_OPTIONS = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'enthusiastic', label: 'Enthusiastic' },
+] as const;
 
 export default function ComposePage() {
+  const [channel, setChannel] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
   const [context, setContext] = React.useState('');
-  const [tone, setTone] = React.useState('professional');
-  const [language, setLanguage] = React.useState('english');
-  const [maxLength, setMaxLength] = React.useState('');
+  const [tone, setTone] = React.useState<'formal' | 'casual' | 'enthusiastic' | 'professional'>('professional');
+  const [language, setLanguage] = React.useState('en');
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<ComposedMessage | null>(null);
+  const [aiError, setAiError] = React.useState<AiUnavailableError | null>(null);
+  const [contentId, setContentId] = React.useState<string | undefined>();
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
-  const [sendTo, setSendTo] = React.useState('');
-  const [sendContactId, setSendContactId] = React.useState('');
   const [sendType, setSendType] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
+  const [sendContactId, setSendContactId] = React.useState<string | null>(null);
   const [isSending, setIsSending] = React.useState(false);
 
   const handleGenerate = async () => {
@@ -41,17 +57,26 @@ export default function ComposePage() {
 
     setLoading(true);
     setMessage(null);
+    setContentId(undefined);
+    setAiError(null);
 
     try {
       const response = await aiApi.composeMessage({
-        context: context.trim(),
+        channel,
+        purpose: context.trim(),
         tone,
         language,
-        maxLength: maxLength ? parseInt(maxLength, 10) : undefined,
+        context: { additionalContext: context.trim() },
       });
-      setMessage(response.data);
+      setMessage(response.data.message);
+      setContentId(response.data.contentId);
+      setSendType(channel);
       toast.success('Message composed successfully');
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setAiError(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to compose message';
       toast.error(msg);
     } finally {
@@ -74,21 +99,20 @@ export default function ComposePage() {
   };
 
   const handleSendConfirm = async () => {
-    if (!message || (!sendContactId.trim() && !sendTo.trim())) {
-      toast.error('Please enter a Contact ID or recipient');
+    if (!message || !sendContactId) {
+      toast.error('Please pick a contact to send to');
       return;
     }
     setIsSending(true);
     try {
       await communicationsApi.send({
-        contact_id: sendContactId.trim() || sendTo.trim(),
+        contact_id: sendContactId,
         channel: sendType,
         message: sendType === 'email' && message.subject ? `[Subject: ${message.subject}]\n${message.body}` : message.body,
       });
       toast.success(`Message sent via ${sendType} successfully!`);
       setSendDialogOpen(false);
-      setSendTo('');
-      setSendContactId('');
+      setSendContactId(null);
     } catch {
       toast.error('Failed to send message');
     } finally {
@@ -97,14 +121,14 @@ export default function ComposePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Message Composer</h1>
-        <p className="text-muted-foreground mt-1">
-          Generate professional messages for email, SMS, and WhatsApp with AI
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="AI Message Composer"
+        description="Generate professional messages for email, SMS, and WhatsApp with AI"
+        actions={<AiQuotaBadge capKey="ai_requests" />}
+      />
 
+      <AiGate>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input Form */}
         <Card>
@@ -116,6 +140,20 @@ export default function ComposePage() {
             <CardDescription>Describe what you want to communicate</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="channel">Channel</Label>
+              <Select value={channel} onValueChange={(v) => setChannel(v as 'email' | 'sms' | 'whatsapp')}>
+                <SelectTrigger id="channel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="context">Context / Purpose *</Label>
               <Textarea
@@ -131,16 +169,14 @@ export default function ComposePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="tone">Tone</Label>
-                <Select value={tone} onValueChange={setTone}>
+                <Select value={tone} onValueChange={(v) => setTone(v as typeof tone)}>
                   <SelectTrigger id="tone">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="friendly">Friendly</SelectItem>
-                    <SelectItem value="formal">Formal</SelectItem>
-                    <SelectItem value="casual">Casual</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
+                    {TONE_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -152,25 +188,14 @@ export default function ComposePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="english">English</SelectItem>
-                    <SelectItem value="hindi">Hindi</SelectItem>
-                    <SelectItem value="spanish">Spanish</SelectItem>
-                    <SelectItem value="french">French</SelectItem>
-                    <SelectItem value="arabic">Arabic</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="hi">Hindi</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="ar">Arabic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxLength">Max Length (characters, optional)</Label>
-              <Input
-                id="maxLength"
-                type="number"
-                placeholder="e.g., 500"
-                value={maxLength}
-                onChange={(e) => setMaxLength(e.target.value)}
-              />
             </div>
 
             <Button
@@ -202,7 +227,9 @@ export default function ComposePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!message && !loading && (
+            {aiError && !loading && <AiUnavailableNotice error={aiError} onRetry={handleGenerate} />}
+
+            {!message && !loading && !aiError && (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <MessageSquare className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm">No message composed yet</p>
@@ -250,6 +277,8 @@ export default function ComposePage() {
                     Send
                   </Button>
                 </div>
+
+                <GeneratedContentActions contentId={contentId} />
               </div>
             )}
           </CardContent>
@@ -276,26 +305,37 @@ export default function ComposePage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Contact ID</Label>
-              <Input
+              <Label>Contact</Label>
+              <RelationCombobox<Contact>
                 value={sendContactId}
-                onChange={(e) => setSendContactId(e.target.value)}
-                placeholder="Enter contact ID (from Contacts page)"
+                onChange={(id) => setSendContactId(id)}
+                fetcher={async (query, page) => {
+                  const res = await contactsApi.list({ search: query, page, limit: 20 });
+                  const payload = res as unknown as { data: Contact[]; pagination?: { total: number } };
+                  const items = payload.data ?? [];
+                  const total = payload.pagination?.total ?? items.length;
+                  return { items, total };
+                }}
+                getOptionId={(c) => c.id}
+                getOptionLabel={(c) => c.name}
+                getOptionDescription={(c) => c.email ?? c.phone ?? undefined}
+                resolveSelected={async (id) => (await contactsApi.getById(id)).data}
+                placeholder="Search contacts…"
+                searchPlaceholder="Search by name, email, phone…"
+                required
               />
-              <p className="text-xs text-muted-foreground">
-                The contact must exist in CRM. Find their ID on the Contacts page.
-              </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={isSending}>Cancel</Button>
-            <Button onClick={handleSendConfirm} disabled={isSending} className="gap-2">
+            <Button onClick={handleSendConfirm} disabled={isSending || !sendContactId} className="gap-2">
               {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
               Send
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </AiGate>
+    </PageContainer>
   );
 }

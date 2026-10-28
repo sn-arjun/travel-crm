@@ -1,457 +1,430 @@
 'use client';
 
 import * as React from 'react';
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
-} from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from 'sonner';
-import { useApiQuery } from '@/hooks/use-api';
-import { reportsApi } from '@/lib/api/reports';
-import {
-  ReportPageTemplate,
-  SummaryCard,
-  KPISkeleton,
-  ReportErrorState,
-  ReportEmptyState,
-  PRESET_MAP,
-} from '@/components/domain/report-page-template';
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+import { Tabs, TabsContent, TabsList, TabsTrigger, AreaChart, BarChart, LineChart, PieChart } from '@/components/ui';
+import { ReportPageTemplate } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  ReportPanel,
+  ReportPanelGrid,
+  ReportSection,
+  ReportTable,
+  deltaOf,
+  formatCount,
+  formatDestinations,
+  formatMonthKey,
+  formatPercent,
+  formatReportCurrency,
+  formatReportMoney,
+  humanize,
+  sumBy,
+  useUserNames,
+} from '@/components/domain/reports/shared';
+
+interface SalesSummaryRow {
+  assigned_to: string | null;
+  total_leads: number;
+  won_leads: number;
+  lost_leads: number;
+  total_revenue: number;
+  avg_deal_size: number;
+  conversion_rate: number;
+}
+
+interface DestinationRow {
+  destination: string | null;
+  lead_count: number;
+  total_revenue: number;
+}
+
+interface SalespersonRow {
+  salesperson: string | null;
+  total_leads: number;
+  won_deals: number;
+  lost_deals: number;
+  total_revenue: number;
+  avg_deal_size: number;
+  conversion_rate: number;
+}
+
+interface TripTypeRow {
+  trip_type: string | null;
+  bookings: number;
+  total_revenue: number;
+  conversion_rate: number;
+}
+
+interface SourceRow {
+  source: string | null;
+  total_leads: number;
+  won_leads: number;
+  total_revenue: number;
+  conversion_rate: number;
+}
+
+interface DealSizeRow {
+  month: string;
+  won_deals: number;
+  avg_deal_size: number;
+  total_revenue: number;
+}
+
+interface ForecastRow {
+  expected_close_month: string | null;
+  active_leads: number;
+  pipeline_value: number;
+  projected_revenue: number;
+}
+
+interface WinLossRow {
+  status: string;
+  lost_reason: string | null;
+  count: number;
+  total_value: number;
+}
+
+function SummaryTab() {
+  const nameOf = useUserNames();
+  return (
+    <ReportSection<SalesSummaryRow>
+      reportId="sales_summary"
+      comparable
+      kpis={(rows, prev) => {
+        const revenue = sumBy(rows, (r) => r.total_revenue);
+        const leads = sumBy(rows, (r) => r.total_leads);
+        const won = sumBy(rows, (r) => r.won_leads);
+        return [
+          {
+            label: 'Total Revenue',
+            value: formatReportCurrency(revenue),
+            hint: 'From won deals',
+            delta: deltaOf(rows, prev, (r) => r.total_revenue),
+          },
+          { label: 'Total Leads', value: formatCount(leads), hint: 'Created in period', delta: deltaOf(rows, prev, (r) => r.total_leads) },
+          { label: 'Deals Won', value: formatCount(won), hint: `${formatCount(sumBy(rows, (r) => r.lost_leads))} lost`, delta: deltaOf(rows, prev, (r) => r.won_leads) },
+          { label: 'Conversion Rate', value: formatPercent(leads > 0 ? (won / leads) * 100 : 0), hint: 'Won / total leads' },
+        ];
+      }}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: nameOf(r.assigned_to) }));
+        return (
+          <>
+            <ReportPanel title="Revenue by salesperson" description="Won-deal revenue for the selected period">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[{ dataKey: 'total_revenue', label: 'Revenue' }]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+                showLegend={false}
+              />
+            </ReportPanel>
+            <ReportPanel title="Sales summary">
+              <ReportTable
+                caption="Sales summary by salesperson"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Salesperson' },
+                  { key: 'total_leads', header: 'Leads', align: 'right', cell: (r) => formatCount(r.total_leads) },
+                  { key: 'won_leads', header: 'Won', align: 'right', cell: (r) => formatCount(r.won_leads) },
+                  { key: 'lost_leads', header: 'Lost', align: 'right', cell: (r) => formatCount(r.lost_leads) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                  { key: 'avg_deal_size', header: 'Avg deal size', align: 'right', cell: (r) => formatReportMoney(r.avg_deal_size) },
+                  { key: 'conversion_rate', header: 'Conversion', align: 'right', cell: (r) => formatPercent(r.conversion_rate) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function DestinationTab() {
+  return (
+    <ReportSection<DestinationRow> reportId="sales_by_destination">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: formatDestinations(r.destination) }));
+        return (
+          <>
+            <ReportPanel title="Top destinations by revenue">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[{ dataKey: 'total_revenue', label: 'Revenue' }]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+                showLegend={false}
+              />
+            </ReportPanel>
+            <ReportPanel title="Destination details">
+              <ReportTable
+                caption="Sales by destination"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Destination' },
+                  { key: 'lead_count', header: 'Leads', align: 'right', cell: (r) => formatCount(r.lead_count) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function SalespersonTab() {
+  const nameOf = useUserNames();
+  return (
+    <ReportSection<SalespersonRow> reportId="sales_by_salesperson">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: nameOf(r.salesperson) }));
+        return (
+          <>
+            <ReportPanel title="Won and lost deals by salesperson">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[
+                  { dataKey: 'won_deals', label: 'Won' },
+                  { dataKey: 'lost_deals', label: 'Lost' },
+                ]}
+              />
+            </ReportPanel>
+            <ReportPanel title="Salesperson details">
+              <ReportTable
+                caption="Sales by salesperson"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Salesperson' },
+                  { key: 'total_leads', header: 'Leads', align: 'right', cell: (r) => formatCount(r.total_leads) },
+                  { key: 'won_deals', header: 'Won', align: 'right', cell: (r) => formatCount(r.won_deals) },
+                  { key: 'lost_deals', header: 'Lost', align: 'right', cell: (r) => formatCount(r.lost_deals) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                  { key: 'avg_deal_size', header: 'Avg deal size', align: 'right', cell: (r) => formatReportMoney(r.avg_deal_size) },
+                  { key: 'conversion_rate', header: 'Conversion', align: 'right', cell: (r) => formatPercent(r.conversion_rate) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function TripTypeTab() {
+  return (
+    <ReportSection<TripTypeRow> reportId="sales_by_trip_type">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.trip_type) }));
+        return (
+          <ReportPanelGrid>
+            <ReportPanel title="Revenue by trip type">
+              <PieChart
+                data={data.filter((r) => r.total_revenue > 0)}
+                dataKey="total_revenue"
+                nameKey="label"
+                donut
+                valueFormatter={(v) => formatReportCurrency(v)}
+                emptyMessage="No revenue booked yet"
+              />
+            </ReportPanel>
+            <ReportPanel title="Trip type details">
+              <ReportTable
+                caption="Sales by trip type"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Trip type' },
+                  { key: 'bookings', header: 'Leads', align: 'right', cell: (r) => formatCount(r.bookings) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                  { key: 'conversion_rate', header: 'Conversion', align: 'right', cell: (r) => formatPercent(r.conversion_rate) },
+                ]}
+              />
+            </ReportPanel>
+          </ReportPanelGrid>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function SourceTab() {
+  return (
+    <ReportSection<SourceRow> reportId="sales_by_source">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.source) }));
+        return (
+          <ReportPanelGrid>
+            <ReportPanel title="Leads by source">
+              <PieChart data={data} dataKey="total_leads" nameKey="label" donut />
+            </ReportPanel>
+            <ReportPanel title="Source details">
+              <ReportTable
+                caption="Sales by source"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Source' },
+                  { key: 'total_leads', header: 'Leads', align: 'right', cell: (r) => formatCount(r.total_leads) },
+                  { key: 'won_leads', header: 'Won', align: 'right', cell: (r) => formatCount(r.won_leads) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                  { key: 'conversion_rate', header: 'Conversion', align: 'right', cell: (r) => formatPercent(r.conversion_rate) },
+                ]}
+              />
+            </ReportPanel>
+          </ReportPanelGrid>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function DealSizeTab() {
+  return (
+    <ReportSection<DealSizeRow> reportId="avg_deal_size" emptyMessage="No deals were won in this period.">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: formatMonthKey(r.month) }));
+        return (
+          <>
+            <ReportPanel title="Average deal size by month">
+              <LineChart
+                data={data}
+                categoryKey="label"
+                series={[{ dataKey: 'avg_deal_size', label: 'Average deal size' }]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+                showLegend={false}
+              />
+            </ReportPanel>
+            <ReportPanel title="Deal size details">
+              <ReportTable
+                caption="Average deal size by month"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Month' },
+                  { key: 'won_deals', header: 'Won deals', align: 'right', cell: (r) => formatCount(r.won_deals) },
+                  { key: 'avg_deal_size', header: 'Avg deal size', align: 'right', cell: (r) => formatReportMoney(r.avg_deal_size) },
+                  { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function ForecastTab() {
+  return (
+    <ReportSection<ForecastRow> reportId="revenue_forecast" emptyMessage="No open leads with an expected close date.">
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: r.expected_close_month ? formatMonthKey(r.expected_close_month) : 'No date' }));
+        return (
+          <>
+            <ReportPanel title="Pipeline value and projected revenue by expected close month">
+              <AreaChart
+                data={data}
+                categoryKey="label"
+                series={[
+                  { dataKey: 'pipeline_value', label: 'Pipeline value' },
+                  { dataKey: 'projected_revenue', label: 'Projected revenue' },
+                ]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+              />
+            </ReportPanel>
+            <ReportPanel title="Forecast details">
+              <ReportTable
+                caption="Revenue forecast"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Expected close' },
+                  { key: 'active_leads', header: 'Open leads', align: 'right', cell: (r) => formatCount(r.active_leads) },
+                  { key: 'pipeline_value', header: 'Pipeline value', align: 'right', cell: (r) => formatReportMoney(r.pipeline_value) },
+                  { key: 'projected_revenue', header: 'Projected revenue', align: 'right', cell: (r) => formatReportMoney(r.projected_revenue) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function WinLossTab() {
+  return (
+    <ReportSection<WinLossRow> reportId="win_loss_analysis" emptyMessage="No won or lost deals in this period.">
+      {(rows) => {
+        const data = rows.map((r) => ({
+          ...r,
+          label: r.status === 'lost' ? `Lost: ${r.lost_reason ?? 'No reason recorded'}` : humanize(r.status),
+        }));
+        return (
+          <>
+            <ReportPanel title="Deals by outcome">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[{ dataKey: 'count', label: 'Deals' }]}
+                showLegend={false}
+              />
+            </ReportPanel>
+            <ReportPanel title="Win / loss details">
+              <ReportTable
+                caption="Win and loss analysis"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Outcome' },
+                  { key: 'count', header: 'Deals', align: 'right', cell: (r) => formatCount(r.count) },
+                  { key: 'total_value', header: 'Value', align: 'right', cell: (r) => formatReportMoney(r.total_value) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
 
 export default function SalesReportsPage() {
-  const [dateRange, setDateRange] = React.useState('30days');
-  const [compareEnabled, setCompareEnabled] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState('summary');
-  const [retryKey, setRetryKey] = React.useState(0);
-
-  const currentPreset = PRESET_MAP[dateRange] ?? 'this_month';
-  const baseParams = { date_preset: currentPreset, compare: compareEnabled };
-
-  // ── Data fetching ────────────────────────────────────────────────────────
-
-  const { data: summaryResp, loading: summaryLoading, error: summaryError } = useApiQuery(
-    () => reportsApi.execute('sales_summary', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: destResp, loading: destLoading, error: destError } = useApiQuery(
-    () => reportsApi.execute('sales_by_destination', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: salesPersonResp, loading: salesPersonLoading, error: salesPersonError } = useApiQuery(
-    () => reportsApi.execute('sales_by_salesperson', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: tripTypeResp, loading: tripTypeLoading, error: tripTypeError } = useApiQuery(
-    () => reportsApi.execute('sales_by_trip_type', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: sourceResp, loading: sourceLoading, error: sourceError } = useApiQuery(
-    () => reportsApi.execute('sales_by_source', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: dealSizeResp, loading: dealSizeLoading, error: dealSizeError } = useApiQuery(
-    () => reportsApi.execute('avg_deal_size', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: forecastResp, loading: forecastLoading, error: forecastError } = useApiQuery(
-    () => reportsApi.execute('revenue_forecast', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  const { data: winLossResp, loading: winLossLoading, error: winLossError } = useApiQuery(
-    () => reportsApi.execute('win_loss_analysis', baseParams),
-    [dateRange, compareEnabled, retryKey],
-  );
-
-  // ── Derived data ─────────────────────────────────────────────────────────
-
-  const summaryData: any[] = (summaryResp as any)?.data?.data ?? [];
-  const destData: any[] = (destResp as any)?.data?.data ?? [];
-  const salesPersonData: any[] = (salesPersonResp as any)?.data?.data ?? [];
-  const tripTypeData: any[] = (tripTypeResp as any)?.data?.data ?? [];
-  const sourceData: any[] = (sourceResp as any)?.data?.data ?? [];
-  const dealSizeData: any[] = (dealSizeResp as any)?.data?.data ?? [];
-  const forecastData: any[] = (forecastResp as any)?.data?.data ?? [];
-  const winLossData: any[] = (winLossResp as any)?.data?.data ?? [];
-
-  // ── KPI derivations ──────────────────────────────────────────────────────
-
-  const totalRevenue = summaryData.reduce((sum: number, d: any) => sum + (d.total_revenue ?? 0), 0);
-  const totalSalesCount = summaryData.reduce((sum: number, d: any) => sum + (d.total_leads ?? 0), 0);
-  const avgConversionRate = summaryData.length > 0
-    ? (summaryData.reduce((sum: number, d: any) => sum + (d.conversion_rate ?? 0), 0) / summaryData.length).toFixed(1)
-    : '0';
-
-  const growthLabel = compareEnabled
-    ? (() => {
-        const prev = (summaryResp as any)?.data?.previous_period;
-        if (prev && typeof prev === 'object' && 'total_revenue' in prev) {
-          const prevRev = (prev as any).total_revenue ?? 0;
-          if (prevRev > 0) {
-            const pct = (((totalRevenue - prevRev) / prevRev) * 100).toFixed(1);
-            return `${Number(pct) >= 0 ? '+' : ''}${pct}% vs previous period`;
-          }
-        }
-        return '+0% vs previous period';
-      })()
-    : '+0% from previous period';
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
-  const handleExport = async () => {
-    try {
-      const resp = await reportsApi.export('sales_summary', 'excel', { date_preset: currentPreset });
-      const blob = (resp as any)?.data instanceof Blob ? (resp as any).data : new Blob([resp as any]);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sales-report-${currentPreset}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('Export downloaded');
-    } catch {
-      toast.error('Failed to export report');
-    }
-  };
-
-  const handleRetry = () => setRetryKey((k) => k + 1);
-
-  // ── KPI header cards ─────────────────────────────────────────────────────
-
-  const kpiCards = summaryLoading ? (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <KPISkeleton />
-      <KPISkeleton />
-      <KPISkeleton />
-      <KPISkeleton />
-    </div>
-  ) : summaryError ? (
-    <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-  ) : (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <SummaryCard
-        label="Total Revenue"
-        value={totalRevenue >= 100000 ? `\u20B9${(totalRevenue / 100000).toFixed(1)}L` : `\u20B9${totalRevenue.toLocaleString()}`}
-        subtext="Selected period"
-      />
-      <SummaryCard
-        label="Total Sales"
-        value={String(totalSalesCount)}
-        subtext="Bookings made"
-      />
-      <SummaryCard
-        label="Conversion Rate"
-        value={`${avgConversionRate}%`}
-        subtext="Avg across period"
-      />
-      <SummaryCard
-        label="Growth"
-        value={growthLabel.split('%')[0] + '%'}
-        subtext={growthLabel.split('% ').slice(1).join('% ')}
-      />
-    </div>
-  );
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <ReportPageTemplate
       title="Sales Reports"
       description="Detailed sales analysis and performance metrics"
-      selectedPeriod={dateRange}
-      onPeriodChange={setDateRange}
-      isLoading={summaryLoading}
-      error={undefined}
-      onRetry={handleRetry}
-      exportFn={handleExport}
-      compareEnabled={compareEnabled}
-      onCompareChange={setCompareEnabled}
-      headerCards={kpiCards}
+      showCompare
+      renderExport={(ctx) => (
+        <ReportExportButton
+          reportId="sales_summary"
+          params={ctx.params}
+          filenamePrefix="sales-report"
+          rangeLabel={ctx.rangeLabel}
+          allowPdf={false}
+        />
+      )}
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:grid-cols-8 mb-6">
+      <Tabs defaultValue="summary" className="w-full">
+        <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="destination">Destination</TabsTrigger>
           <TabsTrigger value="salesperson">Salesperson</TabsTrigger>
           <TabsTrigger value="triptype">Trip Type</TabsTrigger>
           <TabsTrigger value="source">Source</TabsTrigger>
-          <TabsTrigger value="dealsize" className="hidden lg:flex">Deal Size</TabsTrigger>
-          <TabsTrigger value="forecast" className="hidden lg:flex">Forecast</TabsTrigger>
-          <TabsTrigger value="winloss" className="hidden lg:flex">Win/Loss</TabsTrigger>
+          <TabsTrigger value="dealsize">Deal Size</TabsTrigger>
+          <TabsTrigger value="forecast">Forecast</TabsTrigger>
+          <TabsTrigger value="winloss">Win/Loss</TabsTrigger>
         </TabsList>
-
-        {/* Summary Tab */}
-        <TabsContent value="summary" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {summaryLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : summaryError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : summaryData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={summaryData}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Area type="monotone" dataKey="total_revenue" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
-                    {compareEnabled && (
-                      <Area type="monotone" dataKey="prev_revenue" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Prev Period" />
-                    )}
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Destination Tab */}
-        <TabsContent value="destination" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Top Destinations by Revenue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {destLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : destError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : destData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={destData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip formatter={(value) => `\u20B9${((value as number) / 1000000).toFixed(1)}M`} />
-                    <Bar dataKey="revenue" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Salesperson Tab */}
-        <TabsContent value="salesperson" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales by Salesperson</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {salesPersonLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : salesPersonError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : salesPersonData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={salesPersonData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="#10b981" name="Revenue (\u20B9)" />
-                    <Bar dataKey="target" fill="#f59e0b" name="Target (\u20B9)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Trip Type Tab */}
-        <TabsContent value="triptype" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales by Trip Type</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {tripTypeLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : tripTypeError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : tripTypeData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={tripTypeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} (${value}%)`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {tripTypeData.map((_entry: any, index: any) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value}%`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Source Tab */}
-        <TabsContent value="source" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales by Source</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sourceLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : sourceError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : sourceData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={sourceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} (${value}%)`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {sourceData.map((_entry: any, index: any) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value}%`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Deal Size Tab */}
-        <TabsContent value="dealsize" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Average Deal Size Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dealSizeLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : dealSizeError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : dealSizeData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={dealSizeData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Line type="monotone" dataKey="avgSize" stroke="#8b5cf6" name="Average Size" />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Forecast Tab */}
-        <TabsContent value="forecast" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales Forecast with Projection</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {forecastLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : forecastError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : forecastData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={forecastData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="Actual" />
-                    <Area type="monotone" dataKey="projected" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Projected" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Win/Loss Tab */}
-        <TabsContent value="winloss" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Win/Loss Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {winLossLoading ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : winLossError ? (
-                <ReportErrorState message="Failed to load report" onRetry={handleRetry} />
-              ) : winLossData.length === 0 ? (
-                <ReportEmptyState />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={winLossData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="won" fill="#10b981" name="Won" />
-                    <Bar dataKey="lost" fill="#ef4444" name="Lost" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <TabsContent value="summary"><SummaryTab /></TabsContent>
+        <TabsContent value="destination"><DestinationTab /></TabsContent>
+        <TabsContent value="salesperson"><SalespersonTab /></TabsContent>
+        <TabsContent value="triptype"><TripTypeTab /></TabsContent>
+        <TabsContent value="source"><SourceTab /></TabsContent>
+        <TabsContent value="dealsize"><DealSizeTab /></TabsContent>
+        <TabsContent value="forecast"><ForecastTab /></TabsContent>
+        <TabsContent value="winloss"><WinLossTab /></TabsContent>
       </Tabs>
     </ReportPageTemplate>
   );

@@ -1,0 +1,75 @@
+{
+  "slice": "fleet-drivers",
+  "title": "Fleet — Drivers",
+  "status": "existing",
+  "showcaseOrder": 17,
+  "endpoints": [
+    "DELETE /api/v1/fleet/drivers/:driverId/documents/:docId",
+    "DELETE /api/v1/fleet/drivers/:id",
+    "GET /api/v1/fleet/documents/drivers/expiring",
+    "GET /api/v1/fleet/drivers",
+    "GET /api/v1/fleet/drivers/:driverId/documents/:docId/download",
+    "GET /api/v1/fleet/drivers/:id",
+    "GET /api/v1/fleet/drivers/:id/documents",
+    "GET /api/v1/fleet/drivers/:id/schedule",
+    "GET /api/v1/fleet/drivers/:id/trips",
+    "GET /api/v1/fleet/drivers/schedule",
+    "POST /api/v1/fleet/drivers",
+    "POST /api/v1/fleet/drivers/:id/documents",
+    "POST /api/v1/fleet/drivers/:id/rate",
+    "PUT /api/v1/fleet/drivers/:id",
+    "PUT /api/v1/fleet/drivers/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/drivers/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/[id]/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/fleet-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/18-m18-fleet.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/fleet-drivers.spec.ts",
+  "seedHelpers": [
+    "seedDriver"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/drivers/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/src/components/domain/fleet/**",
+    "desktop/e2e/fleet-drivers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": null,
+    "urlPrefill": null,
+    "phoneInput": true,
+    "addressAutocomplete": false,
+    "currencyInput": null,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Rebuilt onto ListPage/EntityForm/DetailPage archetypes. Removed fleet-mock-data import from driver-schedule-calendar.tsx — now sources real data from fleetApi.drivers.getSingleSchedule. Added fleetApi.drivers.rate() wiring the previously-orphaned POST /fleet/drivers/:id/rate endpoint, plus a Rate dialog on the detail page. Documents tab now lists/uploads/downloads real driver documents via fleetApi.drivers.{listDocuments,uploadDocument,downloadDocument}. License expiry badge is now computed from licenseExpiry (danger/warning/success) instead of a static \"valid\" label. Address field uses a plain Input — no relation, currency, or Google Places field exists on this entity, so those contract items are not applicable (null). No parent-entity flow feeds this form, so urlPrefill is not applicable.",
+  "showcaseScript": [
+    "Open Fleet → Drivers and filter by availability",
+    "Add a driver with licence number and expiry",
+    "Upload licence and ID documents",
+    "Open the driver schedule calendar for the week",
+    "Rate the driver after a completed trip"
+  ]
+}

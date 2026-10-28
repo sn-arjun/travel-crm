@@ -1,0 +1,47 @@
+{
+  "id": "B39",
+  "title": "Backend follow-ups from the first story recording: document numbering prefixes, trip passenger phone normalisation, tenant summary on login",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W7",
+  "dependsOn": ["B37"],
+  "parallelGroup": "W7-backend",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 12,
+  "goal": "Close the backend gaps that were visible on camera in the first full story take.",
+  "context": "Added by the orchestrator 2026-10-07 from the showcase part-2a hand-off. Baseline: backend vitest 45 files / 1163 passed, tsc 0. B37 (merged) added tenant-local date helpers in backend/src/utils/tz.ts and touched the numbering utility's financial-year logic - build on it. B08 added backend/src/utils/phone.ts (normalizePhone, phoneLookupVariants). The schema-drift guard test requires every new column to have BOTH a migration and a tenant-schema.ts entry (next free migration number: 0040). Response shapes must stay additive for the Flutter apps (grep packages/shared/lib, packages/crm_app/lib, packages/driver_app/lib) and the desktop (desktop/src/lib/api).",
+  "steps": [
+    "Numbering prefixes: the company settings let a tenant configure document numbering (the demo tenant sets an invoice prefix such as SH-INV; find where: settings/company numbering section on the desktop -> its API -> the settings keys), but new invoices are still numbered INV-2026-27-xxxx. Find the numbering utility and every document type that generates a number (tax invoice, proforma, credit note, debit note, voucher, quotation / itinerary reference, receipt) and make each honour the tenant's configured prefix / format when one is set, falling back to today's default when not. Numbers must stay unique and sequential per tenant, per document type and per financial year (the financial year in the tenant's local calendar - B37). Do not renumber existing documents. Tests: configured prefix applied for each type; default unchanged when unset; sequence continues correctly after the prefix is changed; two creations in a row never collide.",
+    "Trip passenger phone: POST and PUT /fleet/trips must normalise passengerPhone to E.164 with normalizePhone (as drivers already are) so 9820144562, 098201 44562 and +91 98201 44562 all store +919820144562; an empty value stays null. The driver API then returns E.164 and the driver app shows it formatted. Also normalise any other phone the fleet routes accept (emergency contact, etc. - check). Tests.",
+    "Login tenant summary: POST /auth/login (and the refresh / me endpoints if they return the user) should additionally return a small tenant object {id, name, timezone, currency} sourced from the same place the company profile endpoint reads the company name, so clients can show the workspace name and fill {{company_name}} without an extra call. Additive only; never include secrets or plan internals. Tests.",
+    "GET /itineraries/templates (or whichever endpoint lists the tenant's itinerary templates): confirm it returns everything the desktop needs to create an itinerary from a template in one call (id, name, destination, category, days with items). If the list omits days/items and there is a detail endpoint, that is fine - just report the exact shapes in your final message so the desktop batch can wire the from-template dialog.",
+    "Run the full suite 3 times and tsc; fresh-DB migration apply if you add a migration."
+  ],
+  "filesAllowlist": [
+    "backend/drizzle/tenant/0040_*.sql",
+    "backend/src/db/tenant-schema.ts",
+    "backend/src/utils/**",
+    "backend/src/routes/auth.ts",
+    "backend/src/routes/fleet.ts",
+    "backend/src/routes/invoices.ts",
+    "backend/src/routes/credit-notes.ts",
+    "backend/src/routes/debit-notes.ts",
+    "backend/src/routes/vouchers.ts",
+    "backend/src/routes/payments.ts",
+    "backend/src/routes/itineraries.ts",
+    "backend/src/routes/settings*.ts",
+    "backend/src/services/**",
+    "backend/src/validators/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/.dev.vars", "desktop/**", "packages/**", "backend/drizzle/tenant/00[0-3]*"],
+  "acceptance": [
+    "A tenant with a configured invoice prefix gets that prefix on new invoices (and the other document types honour their own settings); defaults unchanged otherwise; numbers unique and sequential.",
+    "Trip passenger phones are stored as E.164.",
+    "Login returns a tenant summary with the company name.",
+    "backend vitest 0 failed on 3 consecutive runs, passed >= 1163; tsc 0."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": []},
+  "notes": "Report the exact settings keys and number formats so the showcase seed can configure Sahyadri Holidays' prefixes, and the exact login response addition so the desktop can use it."
+}

@@ -28,7 +28,6 @@ import {
   DollarSign,
   Users,
   MoreHorizontal,
-  ArrowUpDown,
   XCircle,
   Plus,
 } from 'lucide-react';
@@ -78,10 +77,10 @@ export default function SubscriptionsPage() {
     const params = new URLSearchParams({ page: String(page) });
     if (statusFilter) params.set('status', statusFilter);
     const res = await fetch(`/api/subscriptions?${params}`);
-    const data = (await res.json()) as { subscriptions: SubRow[]; totalPages: number; revenue: Revenue };
-    setSubs(data.subscriptions || []);
-    setTotalPages(data.totalPages || 1);
-    setRevenue(data.revenue);
+    const data = (await res.json()) as { data?: SubRow[]; pagination?: { totalPages: number }; revenue?: Revenue };
+    setSubs(data.data || []);
+    setTotalPages(data.pagination?.totalPages || 1);
+    if (data.revenue) setRevenue(data.revenue);
     setLoading(false);
   }, [page, statusFilter]);
 

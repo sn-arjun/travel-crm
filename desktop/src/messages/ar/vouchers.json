@@ -1,0 +1,12 @@
+{
+  "vouchers.voucherCode": "رمز القسيمة",
+  "vouchers.type": "النوع",
+  "vouchers.supplier": "المورد",
+  "vouchers.amount": "المبلغ",
+  "vouchers.expiryDate": "تاريخ الانتهاء",
+  "vouchers.status": "الحالة",
+  "vouchers.createVoucher": "إنشاء قسيمة",
+  "vouchers.editVoucher": "تعديل القسيمة",
+  "vouchers.deleteVoucher": "حذف القسيمة",
+  "vouchers.used": "مستخدمة"
+}

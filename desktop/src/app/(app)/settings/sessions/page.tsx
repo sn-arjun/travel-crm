@@ -1,68 +1,56 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  Loader2,
-  Monitor,
-  Smartphone,
-  Trash2,
-  LogOut,
-  Shield,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Monitor, Smartphone, Trash2, LogOut, Shield } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button, DataTable, EmptyState, PageHeader, Badge, Skeleton, useConfirm } from '@/components/ui';
+import type { DataTableColumn } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { authApi } from '@/lib/api/auth';
+import { authApi, type SessionData } from '@/lib/api/auth';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
-import { cn } from '@/lib/utils';
-
-interface BackendSession {
-  id: string;
-  device: string;
-  browser: string;
-  os: string;
-  ipAddress: string;
-  loginAt: string;
-  isCurrent: boolean;
-}
+import { PageContainer } from '@/components/layout/page-container';
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString();
+    return formatLocaleDateTime(iso);
   } catch {
     return iso;
   }
 }
 
-export default function SessionsSettingsPage() {
+function SessionsSettingsPageContent() {
   const router = useRouter();
+  const { confirm, dialog } = useConfirm();
 
   const { data: sessionsResponse, loading, refetch } = useApiQuery(
     () => authApi.getSessions(),
     [],
   );
 
-  const sessions: BackendSession[] = React.useMemo(() => {
-    if (!sessionsResponse || !('data' in sessionsResponse)) return [];
-    return (sessionsResponse.data as BackendSession[]) ?? [];
-  }, [sessionsResponse]);
+  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
 
-  const handleRevokeSession = async (sessionId: string) => {
+  const sessions: SessionData[] = React.useMemo(() => {
+    const list = sessionsResponse?.data ?? [];
+    return [...list].sort((a, b) => {
+      const diff = new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime();
+      return sortDirection === 'asc' ? diff : -diff;
+    });
+  }, [sessionsResponse, sortDirection]);
+
+  const handleRevokeSession = async (session: SessionData) => {
+    const ok = await confirm({
+      title: 'Revoke session?',
+      description: `This will sign out the session on ${session.device || 'this device'} (${session.browser || 'unknown browser'}).`,
+      confirmLabel: 'Revoke',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     try {
-      await client.delete(`${API_ENDPOINTS.auth.sessions}/${sessionId}`);
+      await client.delete(`${API_ENDPOINTS.auth.sessions}/${session.id}`);
       toast.success('Session revoked');
       refetch();
     } catch {
@@ -71,6 +59,13 @@ export default function SessionsSettingsPage() {
   };
 
   const handleRevokeAllOthers = async () => {
+    const ok = await confirm({
+      title: 'Revoke all other sessions?',
+      description: 'Every device except this one will be signed out immediately.',
+      confirmLabel: 'Revoke all',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     try {
       await client.delete(API_ENDPOINTS.auth.sessions);
       toast.success('All other sessions revoked');
@@ -80,112 +75,122 @@ export default function SessionsSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const columns: DataTableColumn<SessionData>[] = [
+    {
+      key: 'device',
+      header: 'Device',
+      cell: (s) => {
+        const isMobile = s.device?.toLowerCase() === 'mobile';
+        return (
+          <div className="flex items-center gap-ds-2">
+            {isMobile ? (
+              <Smartphone className="size-4 text-ds-foreground-muted" />
+            ) : (
+              <Monitor className="size-4 text-ds-foreground-muted" />
+            )}
+            <span className="capitalize">{s.device || 'Desktop'}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'browser',
+      header: 'Browser / OS',
+      cell: (s) => (
+        <div>
+          <p className="text-sm font-medium text-ds-foreground">{s.browser || 'Unknown'}</p>
+          <p className="text-xs text-ds-foreground-muted">{s.os || 'Unknown'}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'ipAddress',
+      header: 'IP Address',
+      cell: (s) => <span className="font-mono text-sm">{s.ipAddress ?? '-'}</span>,
+    },
+    {
+      key: 'loginAt',
+      header: 'Login Time',
+      sortable: true,
+      cell: (s) => <span className="text-sm">{formatDate(s.loginAt)}</span>,
+    },
+    {
+      key: 'isCurrent',
+      header: 'Status',
+      cell: (s) =>
+        s.isCurrent ? (
+          <Badge className="bg-ds-success-subtle text-ds-success-on-subtle">Current</Badge>
+        ) : (
+          <Badge variant="secondary">Active</Badge>
+        ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Active Sessions</h1>
-          <p className="text-muted-foreground mt-1">Manage your active login sessions across devices</p>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Sessions ({sessions.length})
-            </CardTitle>
-            <CardDescription>Devices and browsers where you are currently logged in</CardDescription>
-          </div>
-          {sessions.length > 1 && (
-            <Button variant="destructive" size="sm" className="gap-2" onClick={handleRevokeAllOthers}>
-              <LogOut className="h-4 w-4" />
-              Revoke All Others
+    <div className="space-y-ds-6">
+      <PageHeader
+        title="Active Sessions"
+        description="Manage your active login sessions across devices"
+        count={sessions.length}
+        back={
+          <Button variant="ghost" size="icon-sm" aria-label="Back" onClick={() => router.push('/settings')}>
+            <Shield className="size-4" />
+          </Button>
+        }
+        actions={
+          sessions.length > 1 ? (
+            <Button variant="destructive" size="sm" className="gap-ds-2" onClick={handleRevokeAllOthers}>
+              <LogOut className="size-4" />
+              Revoke all others
             </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {sessions.length === 0 ? (
-            <div className="text-center py-12">
-              <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No active sessions found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Browser / OS</TableHead>
-                  <TableHead>IP Address</TableHead>
-                  <TableHead>Login Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sessions.map((session) => {
-                  const isMobile = session.device?.toLowerCase() === 'mobile';
-                  return (
-                    <TableRow key={session.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {isMobile ? (
-                            <Smartphone className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <Monitor className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <span className="capitalize">{session.device || 'Desktop'}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium">{session.browser || 'Unknown'}</p>
-                          <p className="text-xs text-muted-foreground">{session.os || 'Unknown'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{session.ipAddress ?? '-'}</TableCell>
-                      <TableCell className="text-sm">{formatDate(session.loginAt)}</TableCell>
-                      <TableCell>
-                        {session.isCurrent ? (
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                            Current
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Active</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {!session.isCurrent && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleRevokeSession(session.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          ) : undefined
+        }
+      />
+
+      {loading ? (
+        <div className="space-y-ds-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          icon={<Shield className="size-10" />}
+          title="No active sessions found"
+          description="You currently have no recorded login sessions."
+        />
+      ) : (
+        <DataTable<SessionData>
+          columns={columns}
+          data={sessions}
+          getRowId={(s) => s.id}
+          sortColumn="loginAt"
+          sortDirection={sortDirection}
+          onSort={(_column, direction) => setSortDirection(direction)}
+          rowActions={(s) =>
+            !s.isCurrent ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Revoke session"
+                className="text-ds-danger hover:text-ds-danger"
+                onClick={() => handleRevokeSession(s)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            ) : null
+          }
+        />
+      )}
+      {dialog}
     </div>
+  );
+}
+
+export default function SessionsSettingsPage() {
+  return (
+    <PageContainer>
+      <SessionsSettingsPageContent />
+    </PageContainer>
   );
 }

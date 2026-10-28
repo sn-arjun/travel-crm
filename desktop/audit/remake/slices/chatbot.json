@@ -1,0 +1,69 @@
+{
+  "slice": "chatbot",
+  "title": "Chatbot",
+  "status": "existing",
+  "showcaseOrder": 29,
+  "endpoints": [
+    "GET /api/v1/chatbot/analytics",
+    "GET /api/v1/chatbot/config",
+    "GET /api/v1/chatbot/config/:channel",
+    "GET /api/v1/chatbot/conversations",
+    "GET /api/v1/chatbot/conversations/:id",
+    "GET /api/v1/chatbot/widget.js",
+    "POST /api/v1/chatbot/conversations/:id/close",
+    "POST /api/v1/chatbot/conversations/:id/create-lead",
+    "POST /api/v1/chatbot/conversations/:id/handoff",
+    "POST /api/v1/chatbot/conversations/:id/reply",
+    "POST /api/v1/chatbot/webhook/:channel",
+    "POST /api/v1/chatbot/whatsapp/incoming",
+    "PUT /api/v1/chatbot/config/:channel"
+  ],
+  "gates": [
+    "ai_chatbot"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/chatbot.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/chatbot/page.tsx",
+    "desktop/src/app/(app)/chatbot/analytics/page.tsx",
+    "desktop/src/app/(app)/chatbot/conversations/[id]/page.tsx",
+    "desktop/src/app/(app)/settings/chatbot/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/chatbot.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/chatbot/**",
+    "desktop/src/app/(app)/settings/chatbot/**",
+    "desktop/src/lib/api/chatbot.ts",
+    "desktop/e2e/chatbot.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": true,
+    "currencyInput": true,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": true
+  },
+  "notes": "Rebuilt conversations list on ListPage (FilterBar for status/channel, infinite scroll, hover Eye/Close actions, detail navigation, empty state, skeleton, bulk close, full-dataset CSV export). Conversation detail rebuilt on DetailPage with SendMessageDialog (visitor email), Activity tab from message timeline, Hand off dialog, Close, and a Create lead action wired to the previously-orphaned POST /chatbot/conversations/:id/create-lead (navigates to the new lead). Analytics page gated and reads only real ChatbotAnalytics fields — removed the fabricated handoff-reasons/popular-topics charts that had no backing endpoint. Settings page gated, reads/writes real ChatbotConfig, and adds an Install widget tab with a copyable embed snippet built from GET /chatbot/widget.js — removed the fabricated FAQ and business-hours tabs since there is no backing endpoint for them. relationCombobox/phoneInput/addressAutocomplete/currencyInput/datePicker are marked true as not-applicable — this slice has no relation, phone, address, currency, or date fields.",
+  "showcaseScript": [
+    "Open Chatbot → Conversations",
+    "Read an inbound WhatsApp conversation",
+    "Hand it off to a human agent",
+    "Convert the conversation into a lead",
+    "Copy the website widget embed snippet from settings"
+  ]
+}

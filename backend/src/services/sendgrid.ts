@@ -1,4 +1,6 @@
 import type { Env } from '../types';
+import { emailFrom } from '../utils/app-urls';
+import { unsubscribeFooterHtml, unsubscribeFooterText } from './privacy/consent';
 
 export interface EmailAttachment {
   filename: string;
@@ -16,6 +18,17 @@ export interface SendEmailParams {
   cc?: string | string[];
   bcc?: string | string[];
   attachments?: EmailAttachment[];
+  /** R131: extra headers on the message. */
+  headers?: Record<string, string>;
+  /** R131: a SendGrid category (reports). */
+  category?: string;
+  /** R208: marketing mail. Adds List-Unsubscribe and List-Unsubscribe-Post headers and a footer link. */
+  unsubscribeUrl?: string;
+}
+
+/** Headers that make the mail client show its own unsubscribe button (RFC 2369 and RFC 8058 one-click). */
+export function unsubscribeHeaders(url: string): Record<string, string> {
+  return { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
 }
 
 export interface SendWithTemplateParams {
@@ -27,6 +40,8 @@ export interface SendWithTemplateParams {
   cc?: string | string[];
   bcc?: string | string[];
   attachments?: EmailAttachment[];
+  /** R208: marketing mail; adds the headers and exposes `unsubscribeUrl` to the template. */
+  unsubscribeUrl?: string;
 }
 
 export interface SendBulkMessage {
@@ -88,22 +103,30 @@ export async function sendEmail(
     ];
 
     const content = [];
+    const footerUrl = params.unsubscribeUrl;
     if (params.html) {
-      content.push({ type: 'text/html', value: params.html });
+      content.push({ type: 'text/html', value: footerUrl ? params.html + unsubscribeFooterHtml(footerUrl) : params.html });
     }
     if (params.text) {
-      content.push({ type: 'text/plain', value: params.text });
+      content.push({ type: 'text/plain', value: footerUrl ? `${params.text}
+
+${unsubscribeFooterText(footerUrl)}` : params.text });
+    }
+    if (footerUrl && content.length === 0) {
+      content.push({ type: 'text/plain', value: unsubscribeFooterText(footerUrl) });
     }
 
     const requestBody: Record<string, any> = {
       personalizations,
       from: {
-        email: params.from || 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: params.from || emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       subject: params.subject,
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
     };
+    if (footerUrl || params.headers) requestBody.headers = { ...(params.headers ?? {}), ...(footerUrl ? unsubscribeHeaders(footerUrl) : {}) };
+    if (params.category) requestBody.categories = [params.category];
 
     if (params.replyTo) {
       requestBody.reply_to = { email: params.replyTo };
@@ -163,7 +186,7 @@ export async function sendWithTemplate(
     const personalizations = [
       {
         to: formatEmailAddress(params.to),
-        dynamic_template_data: params.dynamicData,
+        dynamic_template_data: params.unsubscribeUrl ? { ...params.dynamicData, unsubscribeUrl: params.unsubscribeUrl } : params.dynamicData,
         ...(params.cc && { cc: formatEmailAddress(params.cc) }),
         ...(params.bcc && { bcc: formatEmailAddress(params.bcc) }),
       },
@@ -172,11 +195,12 @@ export async function sendWithTemplate(
     const requestBody: Record<string, any> = {
       personalizations,
       from: {
-        email: params.from || 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: params.from || emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       template_id: params.templateId,
     };
+    if (params.unsubscribeUrl) requestBody.headers = unsubscribeHeaders(params.unsubscribeUrl);
 
     if (params.replyTo) {
       requestBody.reply_to = { email: params.replyTo };
@@ -263,8 +287,8 @@ export async function sendBulk(
     const requestBody = {
       personalizations,
       from: {
-        email: 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
     };

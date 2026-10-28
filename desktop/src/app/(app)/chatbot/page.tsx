@@ -1,254 +1,292 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-  MessageCircle, Search, Clock, User, ArrowRight,
-  Loader, AlertCircle, Filter, Globe, MessageSquare,
+  BarChart3, Bot, Eye, Globe, Lock, MessageCircle, MessageSquare, Settings, Sparkles, X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { ListPage } from '@/components/domain';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
+  Button, Skeleton, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui';
+import { useApiMutation } from '@/hooks/use-api';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, type ChatbotConversation } from '@/lib/api/chatbot';
+import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
-function statusBadge(status: string) {
-  switch (status) {
-    case 'active':
-      return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-transparent">Active</Badge>;
-    case 'closed':
-      return <Badge variant="outline" className="text-muted-foreground">Closed</Badge>;
-    case 'handed_off':
-      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-transparent">Handed Off</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
+function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'active') return 'success';
+  if (status === 'handed_off') return 'warning';
+  return 'neutral';
 }
 
 function channelIcon(channel: string) {
-  switch (channel) {
-    case 'web': return <Globe className="h-3.5 w-3.5" />;
-    case 'whatsapp': return <MessageSquare className="h-3.5 w-3.5" />;
-    case 'facebook': return <MessageCircle className="h-3.5 w-3.5" />;
-    default: return <MessageCircle className="h-3.5 w-3.5" />;
+  if (channel === 'web') return <Globe className="size-3.5" aria-hidden="true" />;
+  if (channel === 'whatsapp') return <MessageSquare className="size-3.5" aria-hidden="true" />;
+  return <MessageCircle className="size-3.5" aria-hidden="true" />;
+}
+
+function toCsvValue(v: unknown): string {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function ChatbotConversationsContent() {
+  const router = useRouter();
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [channelFilter, setChannelFilter] = React.useState('');
+
+  const { mutate: closeConvo } = useApiMutation((id: string) => chatbotApi.conversations.close(id));
+
+  const activeFilters = [
+    statusFilter && { id: 'status', label: 'Status', value: statusFilter },
+    channelFilter && { id: 'channel', label: 'Channel', value: channelFilter },
+  ].filter(Boolean) as { id: string; label: string; value: string }[];
+
+  function removeFilter(id: string) {
+    if (id === 'status') setStatusFilter('');
+    if (id === 'channel') setChannelFilter('');
   }
-}
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = now - then;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-
-export default function ChatbotConversationsPage() {
-  const [search, setSearch] = React.useState('');
-  const [statusFilter, setStatusFilter] = React.useState('all');
-  const [channelFilter, setChannelFilter] = React.useState('all');
-
-  const { data: response, loading, error } = useApiQuery<any>(
-    () => chatbotApi.conversations.list({
-      limit: 50,
-      status: statusFilter !== 'all' ? statusFilter : undefined,
-      channel: channelFilter !== 'all' ? channelFilter : undefined,
-    }),
-    [statusFilter, channelFilter],
-  );
-
-  const conversations: ChatbotConversation[] = React.useMemo(() => {
-    const data = response?.data;
-    const items: ChatbotConversation[] = Array.isArray(data) ? data : (data?.data ?? []);
-    if (!search.trim()) return items;
-    const q = search.toLowerCase();
-    return items.filter((c) =>
-      (c.visitorName ?? '').toLowerCase().includes(q)
-      || (c.visitorEmail ?? '').toLowerCase().includes(q)
-      || c.messages?.some((m) => m.text.toLowerCase().includes(q)),
-    );
-  }, [response, search]);
-
-  // Stats
-  const activeCount = conversations.filter((c) => c.status === 'active').length;
-  const handedOffCount = conversations.filter((c) => c.status === 'handed_off').length;
-  const closedCount = conversations.filter((c) => c.status === 'closed').length;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Chatbot Conversations
-          </h1>
-          <p className="text-sm text-muted-foreground">{conversations.length} conversations</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <ListPage<ChatbotConversation>
+      title="Chatbot"
+      description="Conversations handled by your AI chatbot across web, WhatsApp, and more."
+      getRowId={(c) => c.id}
+      fetcher={({ page, limit, search }) =>
+        chatbotApi.conversations.list({
+          page,
+          limit,
+          status: statusFilter || undefined,
+          channel: channelFilter || undefined,
+          sortBy: 'startedAt',
+          sortOrder: 'desc',
+        }).then((res) => {
+          if (!search.trim()) return res;
+          const data = res.data;
+          const items: ChatbotConversation[] = data?.data ?? [];
+          const q = search.toLowerCase();
+          const filtered = items.filter((c) =>
+            (c.visitorName ?? '').toLowerCase().includes(q)
+            || (c.visitorEmail ?? '').toLowerCase().includes(q)
+            || c.messages?.some((m) => m.text.toLowerCase().includes(q)),
+          );
+          return {
+            ...res,
+            data: Array.isArray(data)
+              ? filtered
+              : { ...data, data: filtered, pagination: { ...data.pagination, total: filtered.length } },
+          };
+        })
+      }
+      searchPlaceholder="Search conversations..."
+      columns={[
+        {
+          key: 'visitor', header: 'Visitor',
+          cell: (c) => (
+            <span className="text-sm font-medium">{c.visitorName || c.visitorEmail || 'Anonymous visitor'}</span>
+          ),
+        },
+        {
+          key: 'channel', header: 'Channel',
+          cell: (c) => (
+            <Tag tone="neutral" className="flex w-fit items-center gap-1 capitalize">
+              {channelIcon(c.channel)} {c.channel}
+            </Tag>
+          ),
+        },
+        {
+          key: 'status', header: 'Status',
+          cell: (c) => <Tag tone={statusTone(c.status)}>{c.status.replace('_', ' ')}</Tag>,
+        },
+        {
+          key: 'lastMessage', header: 'Last message',
+          cell: (c) => {
+            const last = c.messages?.[c.messages.length - 1];
+            if (!last) return <span className="text-ds-foreground-muted">—</span>;
+            return (
+              <span className="block max-w-xs truncate text-sm text-ds-foreground-muted">
+                {last.sender === 'bot' ? 'Bot: ' : ''}{last.text}
+              </span>
+            );
+          },
+        },
+        {
+          key: 'startedAt', header: 'Started', sortable: true,
+          cell: (c) => formatLocaleDateTime(c.startedAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        },
+      ]}
+      headerActions={
+        <>
+          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-9 w-36"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="handed_off">Handed off</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={channelFilter || 'all'} onValueChange={(v) => setChannelFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-9 w-32"><SelectValue placeholder="All channels" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All channels</SelectItem>
+              <SelectItem value="website">Web</SelectItem>
+              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              <SelectItem value="facebook">Facebook</SelectItem>
+              <SelectItem value="telegram">Telegram</SelectItem>
+            </SelectContent>
+          </Select>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/chatbot/analytics">Analytics</Link>
+            <Link href="/chatbot/analytics"><BarChart3 aria-hidden="true" /> Analytics</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/settings/chatbot">Settings</Link>
+            <Link href="/settings/chatbot"><Settings aria-hidden="true" /> Settings</Link>
           </Button>
-        </div>
-      </div>
+        </>
+      }
+      filters={activeFilters}
+      onRemoveFilter={removeFilter}
+      onClearFilters={() => { setStatusFilter(''); setChannelFilter(''); }}
+      rowActions={(c) => (
+        <>
+          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/chatbot/conversations/${c.id}`)}>
+            <Eye />
+          </Button>
+          {c.status === 'active' && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close conversation"
+              onClick={async () => {
+                const result = await closeConvo(c.id);
+                if (result) toast.success('Conversation closed');
+                else toast.error('Failed to close conversation');
+              }}
+            >
+              <X />
+            </Button>
+          )}
+        </>
+      )}
+      onRowClick={(c) => router.push(`/chatbot/conversations/${c.id}`)}
+      bulkActions={[
+        {
+          label: 'Close',
+          icon: <X aria-hidden="true" />,
+          onSelect: async (rows) => {
+            await Promise.all(rows.filter((r) => r.status === 'active').map((r) => chatbotApi.conversations.close(r.id)));
+            toast.success(`${rows.length} conversation(s) closed`);
+          },
+        },
+      ]}
+      onExport={async (rows) => {
+        try {
+          const allItems: ChatbotConversation[] = [...rows];
+          const seen = new Set(allItems.map((r) => r.id));
+          let page = 1;
+          const limit = 200;
+          for (;;) {
+            const res = await chatbotApi.conversations.list({
+              page,
+              limit,
+              status: statusFilter || undefined,
+              channel: channelFilter || undefined,
+            });
+            const data = res.data;
+            const items: ChatbotConversation[] = data?.data ?? [];
+            const total: number = data?.pagination?.total ?? items.length;
+            for (const item of items) {
+              if (!seen.has(item.id)) {
+                seen.add(item.id);
+                allItems.push(item);
+              }
+            }
+            if (items.length === 0 || allItems.length >= total) break;
+            page += 1;
+          }
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 px-6 py-4 border-b">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <MessageCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold">{activeCount}</p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <User className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold">{handedOffCount}</p>
-              <p className="text-xs text-muted-foreground">Handed Off</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-            </div>
-            <div>
-              <p className="text-lg font-bold">{closedCount}</p>
-              <p className="text-xs text-muted-foreground">Closed</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search conversations..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32 h-9">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-            <SelectItem value="handed_off">Handed Off</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="w-28 h-9">
-            <SelectValue placeholder="Channel" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="web">Web</SelectItem>
-            <SelectItem value="whatsapp">WhatsApp</SelectItem>
-            <SelectItem value="facebook">Facebook</SelectItem>
-            <SelectItem value="telegram">Telegram</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Conversation List */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-            <AlertCircle className="h-8 w-8" />
-            <p>Failed to load conversations</p>
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-            <MessageCircle className="h-10 w-10 opacity-50" />
-            <p className="text-sm">No conversations found</p>
-          </div>
-        ) : (
-          <div className="divide-y">
-            {conversations.map((convo) => {
-              const lastMessage = convo.messages?.[convo.messages.length - 1];
-              return (
-                <Link
-                  key={convo.id}
-                  href={`/chatbot/conversations/${convo.id}`}
-                  className="flex items-center gap-4 px-6 py-4 hover:bg-muted/50 transition-colors"
-                >
-                  <div className={cn(
-                    'h-10 w-10 rounded-full flex items-center justify-center shrink-0',
-                    convo.status === 'active'
-                      ? 'bg-green-100 dark:bg-green-900/30'
-                      : convo.status === 'handed_off'
-                      ? 'bg-amber-100 dark:bg-amber-900/30'
-                      : 'bg-gray-100 dark:bg-gray-800',
-                  )}>
-                    <User className={cn(
-                      'h-5 w-5',
-                      convo.status === 'active'
-                        ? 'text-green-600 dark:text-green-400'
-                        : convo.status === 'handed_off'
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-gray-500',
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-medium truncate">
-                        {convo.visitorName || convo.visitorEmail || 'Anonymous Visitor'}
-                      </p>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        {channelIcon(convo.channel)}
-                        <span className="text-[10px] capitalize">{convo.channel}</span>
-                      </div>
-                    </div>
-                    {lastMessage && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {lastMessage.sender === 'bot' ? 'Bot: ' : ''}
-                        {lastMessage.text}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    {statusBadge(convo.status)}
-                    <span className="text-[10px] text-muted-foreground">
-                      {timeAgo(convo.startedAt)}
-                    </span>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+          const headers = ['Visitor', 'Email', 'Channel', 'Status', 'Started', 'Ended', 'Messages'];
+          const csvRows = [headers.join(',')];
+          for (const c of allItems) {
+            csvRows.push([
+              toCsvValue(c.visitorName ?? ''),
+              toCsvValue(c.visitorEmail ?? ''),
+              toCsvValue(c.channel),
+              toCsvValue(c.status),
+              toCsvValue(formatLocaleDateTime(c.startedAt)),
+              toCsvValue(c.endedAt ? formatLocaleDateTime(c.endedAt) : ''),
+              toCsvValue(c.messages?.length ?? 0),
+            ].join(','));
+          }
+          const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `chatbot_conversations_${toLocalDateString(new Date())}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          toast.success('Conversations exported successfully');
+        } catch {
+          toast.error('Failed to export conversations');
+        }
+      }}
+      exportLabel="Export CSV"
+      emptyTitle="No conversations yet"
+      emptyDescription="Conversations from your website, WhatsApp, and other channels will appear here once the chatbot is live."
+      emptyIcon={<Bot className="size-8" aria-hidden="true" />}
+      emptyAction={
+        <Button size="sm" asChild>
+          <Link href="/settings/chatbot"><Settings aria-hidden="true" /> Configure chatbot</Link>
+        </Button>
+      }
+    />
   );
+}
+
+export default function ChatbotPage() {
+  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_chatbot');
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
+        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
+          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-ds-foreground">
+            {reason === 'cap_exceeded' ? "Today's chatbot quota is used up" : 'AI Chatbot is not on your plan'}
+          </p>
+          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
+            {reason === 'cap_exceeded'
+              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
+              : 'Upgrade your plan to unlock the AI chatbot across web and WhatsApp.'}
+          </p>
+        </div>
+        <Button asChild size="sm" className="gap-ds-2">
+          <Link href={upgradeHref}>
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return <ChatbotConversationsContent />;
 }

@@ -1,0 +1,71 @@
+{
+  "id": "B31",
+  "title": "Final: full E2E suite, residual triage, all gates, mark remake jobs resolved",
+  "lane": "tests",
+  "backend": false,
+  "wave": "W8",
+  "dependsOn": [
+    "B30",
+    "B13",
+    "B15",
+    "B05"
+  ],
+  "parallelGroup": "W8",
+  "bugIds": [],
+  "fixReqs": [
+    "FR-1",
+    "FR-2",
+    "FR-3",
+    "FR-5",
+    "FR-6",
+    "FR-7",
+    "FR-8",
+    "FR-9",
+    "FR-10",
+    "FR-11"
+  ],
+  "estFiles": 15,
+  "goal": "Prove the whole system: full desktop e2e green (incl. travellers.spec.ts), backend and driver tests green, FR register checks pass, remake pipeline shows all jobs ok.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Baseline: 560 passed / 179 failed / 10 skipped / 46 did not run of 795 (56 min). After B09 the auth cascade is gone; the remaining failures should be few. FR detection checks are in desktop/showcase/STORYBOARD.md section 0.4.",
+  "steps": [
+    "Reset slot 0 DB (`fix-stack up --slot 0 --reset-db`), run `npx playwright test` (full, excluding showcase/), collect failures.",
+    "Classify each failure: spec staleness -> fix the spec; small app bug (<= ~10 files total across all fixes) -> fix; anything larger -> stop and report to the planner with evidence (do not start a refactor).",
+    "Re-run backend vitest, desktop tsc/vitest/lint/build, flutter analyze/test and the driver smoke integration test (B13 recipe).",
+    "Run every FR detection check from STORYBOARD 0.4 (FR-1 curl, FR-2 smoke test, FR-2b grep, FR-3 sidebar, FR-4 pubspec, FR-5 template body, FR-6 picker, FR-7 trip type + Book transfer, FR-8 timeline label, FR-9 notification click, FR-10 New template, FR-11 30-min idle: emulate by expiring the access token as in token-refresh.spec) and record pass/fail in desktop/audit/fix/gates/FINAL.json.",
+    "Mark remake jobs resolved: `node scripts/remake-pipeline.js --mark-ok verify:travellers --note \"fixed in fix pass\"` and likewise cleanup and showcase (showcase note: re-recorded by the showcase agent).",
+    "From the B17 triage: flaky under the full run - fleet-trips.spec.ts:494 and test-harness.spec.ts:23 (seed fetch failed: SocketError other side closed from wrangler dev), communication-inbox.spec.ts:45/:80/:92 (seen once). Make e2e/helpers/api-seed.ts retry idempotent seed calls on transport errors (not on HTTP errors), and root-cause the communication-inbox flake. Target: 3 consecutive full-suite runs with 0 failures."
+  ],
+  "filesAllowlist": [
+    "desktop/e2e/**",
+    "desktop/src/** (small residual fixes only)",
+    "desktop/audit/fix/gates/FINAL.json",
+    "desktop/audit/remake/state.json (via the pipeline CLI only)"
+  ],
+  "mustNotTouch": [
+    "backend/** (report backend issues instead)",
+    "packages/** (report instead)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Full e2e: 0 failed (skips must each have a reason).",
+    "All unit/type/lint/build/backend/flutter gates green.",
+    "FINAL.json lists every FR as pass.",
+    "state.json: 105 jobs ok."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": true,
+    "backendTests": true,
+    "flutter": true,
+    "specs": [
+      "ALL"
+    ]
+  },
+  "notes": "This is the final gate before the showcase executor records."
+}

@@ -18,16 +18,16 @@ import {
 } from 'lucide-react';
 
 const activityIcons: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
-  call: { icon: Phone, color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
-  email: { icon: Mail, color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400' },
-  message: { icon: MessageSquare, color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' },
-  document: { icon: FileText, color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' },
-  meeting: { icon: Calendar, color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
-  payment: { icon: DollarSign, color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' },
-  contact: { icon: UserPlus, color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400' },
-  completed: { icon: CheckCircle2, color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' },
-  alert: { icon: AlertCircle, color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' },
-  edit: { icon: Edit3, color: 'bg-muted text-muted-foreground' },
+  call: { icon: Phone, color: 'bg-ds-info-subtle text-ds-info' },
+  email: { icon: Mail, color: 'bg-ds-primary-subtle text-ds-primary' },
+  message: { icon: MessageSquare, color: 'bg-ds-success-subtle text-ds-success' },
+  document: { icon: FileText, color: 'bg-ds-warning-subtle text-ds-warning' },
+  meeting: { icon: Calendar, color: 'bg-ds-info-subtle text-ds-info' },
+  payment: { icon: DollarSign, color: 'bg-ds-success-subtle text-ds-success' },
+  contact: { icon: UserPlus, color: 'bg-ds-primary-subtle text-ds-primary' },
+  completed: { icon: CheckCircle2, color: 'bg-ds-success-subtle text-ds-success' },
+  alert: { icon: AlertCircle, color: 'bg-ds-danger-subtle text-ds-danger' },
+  edit: { icon: Edit3, color: 'bg-ds-surface-sunken text-ds-foreground-muted' },
 };
 
 interface ActivityItem {
@@ -54,7 +54,7 @@ export function ActivityTimeline({ activities, className, maxItems }: ActivityTi
   return (
     <div role="list" className={cn('relative', className)}>
       {/* Timeline line */}
-      <div aria-hidden="true" className="absolute left-[17px] top-2 bottom-2 w-px bg-border" />
+      <div aria-hidden="true" className="absolute start-5 top-2 bottom-2 w-px bg-border" />
 
       <div className="space-y-4">
         {items.map((activity, idx) => {
@@ -84,7 +84,7 @@ export function ActivityTimeline({ activities, className, maxItems }: ActivityTi
                   </time>
                 </div>
                 {activity.description && (
-                  <p className="mt-0.5 text-[13px] text-muted-foreground line-clamp-2">
+                  <p className="mt-0.5 text-ds-sm text-muted-foreground line-clamp-2">
                     {activity.description}
                   </p>
                 )}
@@ -92,7 +92,7 @@ export function ActivityTimeline({ activities, className, maxItems }: ActivityTi
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <Avatar size="sm">
                       {activity.user.avatar && <AvatarImage src={activity.user.avatar} />}
-                      <AvatarFallback className="text-[10px]">{getInitials(activity.user.name)}</AvatarFallback>
+                      <AvatarFallback className="text-ds-xs">{getInitials(activity.user.name)}</AvatarFallback>
                     </Avatar>
                     <span className="text-xs text-muted-foreground">{activity.user.name}</span>
                   </div>

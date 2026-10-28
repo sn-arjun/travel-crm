@@ -1,85 +1,95 @@
 'use client';
 
+
+import { formatTightCurrency, formatLocaleDate } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Phone, Mail, Shield, Calendar, MapPin,
-  Truck, Award, DollarSign, FileText, User, Loader2, AlertTriangle,
-  Star, Download, CheckCircle2,
+  Loader2, AlertTriangle, Download, FileText, MapPin, Pencil, Power, Star, Upload,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { DetailPage } from '@/components/domain';
+import {
+  Button, Tag, SectionCard, Stat, Avatar, AvatarFallback,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  FileDropzone, EmptyState, Skeleton,
+} from '@/components/ui';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { fleetApi, type DriverDocument } from '@/lib/api/fleet';
+import { fleetApi, type Driver, type DriverDocument, type Trip } from '@/lib/api/fleet';
+import { formatTripWhen, formatTripWhenShort } from '@/components/domain/fleet/trip-format';
 import { toast } from 'sonner';
-import { DRIVER_STATUS_LABELS, DRIVER_STATUS_COLORS, TRIP_STATUS_LABELS, TRIP_STATUS_COLORS } from '@travelcrm/shared';
+import { DRIVER_STATUS_LABELS, TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { DriverScheduleCalendar } from '@/components/domain/fleet/driver-schedule-calendar';
+import type { TimelineItem } from '@/components/ui/timeline';
+import { useT } from '@/lib/i18n';
+import { crewRoleLabel } from '../_components/crew-section';
 
-function ExpiryBadge({ expiryDate }: { expiryDate: string }) {
-  const days = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000);
-  const color = days < 0
-    ? 'text-red-600 bg-red-50 border-red-200 dark:bg-red-900/20'
-    : days < 30
-      ? 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-900/20'
-      : 'text-green-600 bg-green-50 border-green-200 dark:bg-green-900/20';
-  return (
-    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-medium', color)}>
-      {days < 0 ? <AlertTriangle className="h-3 w-3" /> : days < 30 ? <Shield className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-      {new Date(expiryDate).toLocaleDateString('en-IN')} {days < 0 ? `(${Math.abs(days)}d overdue)` : days < 30 ? `(${days}d left)` : ''}
-    </span>
-  );
+function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'active') return 'success';
+  if (status === 'on_trip') return 'info';
+  if (status === 'on_leave') return 'warning';
+  return 'neutral'; // off_duty
+}
+
+function licenseTone(licenseExpiry?: string): { tone: 'success' | 'danger' | 'warning' | 'neutral'; label: string } {
+  if (!licenseExpiry) return { tone: 'neutral', label: 'No license date' };
+  const days = Math.ceil((new Date(licenseExpiry).getTime() - Date.now()) / 86400000);
+  if (days < 0) return { tone: 'danger', label: `Expired ${Math.abs(days)}d ago` };
+  if (days < 30) return { tone: 'warning', label: `Expires in ${days}d` };
+  return { tone: 'success', label: `Valid — ${formatLocaleDate(licenseExpiry)}` };
 }
 
 const DRIVER_DOC_TYPE_LABELS: Record<string, string> = {
   license: 'Driver License', id_proof: 'ID Proof', police_verification: 'Police Verification',
 };
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star key={star} className={cn('h-4 w-4', star <= Math.round(rating) ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/30')} />
-      ))}
-      <span className="text-sm ml-1 font-medium">{rating > 0 ? rating.toFixed(1) : '—'}</span>
-    </div>
-  );
-}
-
 export default function DriverDetailPage() {
+  const t = useT();
   const router = useRouter();
   const params = useParams();
   const driverId = params.id as string;
+
   const [showDeactivateDialog, setShowDeactivateDialog] = React.useState(false);
+  const [showRateDialog, setShowRateDialog] = React.useState(false);
+  const [showUploadDialog, setShowUploadDialog] = React.useState(false);
+  const [ratingValue, setRatingValue] = React.useState('5');
+  const [ratingTripId, setRatingTripId] = React.useState('');
+  const [uploadType, setUploadType] = React.useState<'license' | 'id_proof' | 'police_verification'>('license');
+  const [uploadFiles, setUploadFiles] = React.useState<File[]>([]);
 
-  const driverQuery = useApiQuery(() => fleetApi.drivers.getById(driverId).then(res => res.data), [driverId]);
-  const tripsQuery = useApiQuery(() => fleetApi.drivers.getTrips(driverId, { limit: 50 }).then(res => res.data), [driverId]);
-  const docsQuery = useApiQuery(() => fleetApi.drivers.listDocuments(driverId).then(res => res.data), [driverId]);
+  const driverQuery = useApiQuery(() => fleetApi.drivers.getById(driverId), [driverId]);
+  const tripsQuery = useApiQuery(() => fleetApi.drivers.getTrips(driverId, { limit: 50 }), [driverId]);
+  const docsQuery = useApiQuery(() => fleetApi.drivers.listDocuments(driverId), [driverId]);
 
-  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<any, any>(
-    (data: any) => fleetApi.drivers.updateStatus(driverId, data.status),
+  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, unknown>(
+    (data) => fleetApi.drivers.updateStatus(driverId, data.status),
+  );
+  const { mutate: rateDriver, loading: isRating } = useApiMutation<{ rating: number; tripId: string }, unknown>(
+    (data) => fleetApi.drivers.rate(driverId, data),
+  );
+  const { mutate: uploadDoc, loading: isUploading } = useApiMutation<FormData, unknown>(
+    (fd) => fleetApi.drivers.uploadDocument(driverId, fd),
   );
 
   React.useEffect(() => {
     if (driverQuery.error) toast.error('Failed to load driver details');
   }, [driverQuery.error]);
 
-  const driver = driverQuery.data as any;
-  const driverTrips: any[] = Array.isArray(tripsQuery.data) ? tripsQuery.data as any[] : ((tripsQuery.data as any)?.data ?? []);
-  const docs: DriverDocument[] = Array.isArray(docsQuery.data) ? docsQuery.data as DriverDocument[] : [];
-  const completedTrips = driverTrips.filter((t: any) => t.status === 'completed');
-  const totalRevenue = driverTrips.reduce((sum: any, t: any) => sum + (t.fare ?? 0), 0);
+  const driver = driverQuery.data?.data as Driver | undefined;
+  const tripsData = tripsQuery.data?.data as Trip[] | { data?: Trip[] } | undefined;
+  const driverTrips: Trip[] = Array.isArray(tripsData) ? tripsData : (tripsData?.data ?? []);
+  const docsData: unknown = docsQuery.data?.data;
+  const docs: DriverDocument[] = Array.isArray(docsData) ? (docsData as DriverDocument[]) : [];
+  const completedTrips = driverTrips.filter((t: Trip) => t.status === 'completed');
+  const totalRevenue = driverTrips.reduce((sum: number, t: Trip) => sum + (t.fare ?? 0), 0);
 
   async function handleDeactivate() {
-    const newStatus = driver?.status === 'inactive' ? 'active' : 'inactive';
+    const newStatus = driver?.status === 'off_duty' ? 'active' : 'off_duty';
     const result = await updateStatus({ status: newStatus });
     if (result) {
-      toast.success(`Driver ${newStatus === 'inactive' ? 'deactivated' : 'activated'}`);
+      toast.success(`Driver ${newStatus === 'off_duty' ? 'deactivated' : 'activated'}`);
       driverQuery.refetch();
       setShowDeactivateDialog(false);
     } else {
@@ -87,231 +97,224 @@ export default function DriverDetailPage() {
     }
   }
 
-  if (driverQuery.loading) {
-    return <div className="flex flex-col items-center justify-center h-full gap-4"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /><p className="text-muted-foreground">Loading driver details...</p></div>;
-  }
-  if (!driver) {
-    return <div className="flex flex-col items-center justify-center h-full gap-4"><User className="h-12 w-12 text-muted-foreground/50" /><p className="text-muted-foreground">Driver not found</p><Button variant="outline" onClick={() => router.push('/fleet/drivers')}>Back to Drivers</Button></div>;
+  async function handleRate() {
+    if (!ratingTripId) {
+      toast.error('Select a completed trip to rate');
+      return;
+    }
+    const result = await rateDriver({ rating: Number(ratingValue), tripId: ratingTripId });
+    if (result) {
+      toast.success('Driver rated successfully');
+      driverQuery.refetch();
+      tripsQuery.refetch();
+      setShowRateDialog(false);
+      setRatingTripId('');
+    } else {
+      toast.error('Failed to rate driver');
+    }
   }
 
-  const statusColor = DRIVER_STATUS_COLORS[driver.status as keyof typeof DRIVER_STATUS_COLORS] || '#64748B';
-  const statusLabel = DRIVER_STATUS_LABELS[driver.status as keyof typeof DRIVER_STATUS_LABELS] || driver.status;
-  const isInactive = driver.status === 'inactive';
+  async function handleUpload() {
+    if (uploadFiles.length === 0) return;
+    const fd = new FormData();
+    fd.append('file', uploadFiles[0] as File);
+    fd.append('type', uploadType);
+    const result = await uploadDoc(fd);
+    if (result) {
+      toast.success('Document uploaded');
+      docsQuery.refetch();
+      setUploadFiles([]);
+      setShowUploadDialog(false);
+    } else {
+      toast.error('Failed to upload document');
+    }
+  }
+
+  if (driverQuery.loading) {
+    return (
+      <div className="flex flex-col gap-ds-4 p-ds-4">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!driver) {
+    return (
+      <EmptyState
+        title="Driver not found"
+        description="This driver may have been removed."
+        action={<Button variant="outline" onClick={() => router.push('/fleet/drivers')}>Back to drivers</Button>}
+      />
+    );
+  }
+
+  const isInactive = driver.status === 'off_duty';
+  const license = licenseTone(driver.licenseExpiry);
+  const activity: TimelineItem[] = driverTrips.slice(0, 20).map((t: Trip) => ({
+    id: t.id,
+    title: `Trip ${TRIP_STATUS_LABELS[t.status as keyof typeof TRIP_STATUS_LABELS] || t.status}`,
+    description: `${t.startLocation || ''} → ${t.endLocation || ''}`,
+    timestamp: formatTripWhen(t.startTime),
+  }));
 
   return (
     <>
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon-sm" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" /></Button>
-            <Avatar className="h-12 w-12"><AvatarFallback className="text-base">{(driver.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback></Avatar>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{driver.name}</h1>
-                <Badge variant="outline" className="text-[10px] border-transparent" style={{ backgroundColor: `${statusColor}15`, color: statusColor }}>{statusLabel}</Badge>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{driver.phone}</span>
-                {driver.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{driver.email}</span>}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" asChild><Link href={`/fleet/drivers/${driverId}/edit`}>Edit Driver</Link></Button>
-            <Button
-              variant="outline"
-              className={isInactive ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'text-red-600 hover:text-red-700 hover:bg-red-50'}
-              onClick={() => setShowDeactivateDialog(true)}
-              disabled={isUpdatingStatus}
-            >
-              {isInactive ? 'Activate' : 'Deactivate'}
+      <DetailPage
+        entity={driver}
+        title={driver.name}
+        subtitle={driver.phone}
+        status={<Tag tone={statusTone(driver.status)}>{DRIVER_STATUS_LABELS[driver.status as keyof typeof DRIVER_STATUS_LABELS] || driver.status}</Tag>}
+        onBack={() => router.push('/fleet/drivers')}
+        messaging={{
+          recipientId: driver.id,
+          recipientName: driver.name,
+          email: driver.email,
+          phone: driver.phone,
+        }}
+        primaryActions={
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/fleet/drivers/${driverId}/edit`}><Pencil aria-hidden="true" />Edit</Link>
             </Button>
-          </div>
-        </div>
-
-        <Tabs defaultValue="overview" className="flex-1 flex flex-col">
-          <div className="px-6 pt-3 border-b">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="documents">Documents ({docs.length})</TabsTrigger>
-              <TabsTrigger value="schedule">Schedule</TabsTrigger>
-              <TabsTrigger value="trips">Trip History ({driverTrips.length})</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <div className="flex-1 overflow-auto p-6">
-            <TabsContent value="overview" className="mt-0">
-              <div className="max-w-4xl space-y-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <Truck className="h-5 w-5 mx-auto text-blue-500 mb-1" />
-                      <p className="text-2xl font-bold">{driverTrips.length}</p>
-                      <p className="text-xs text-muted-foreground">Total Trips</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <DollarSign className="h-5 w-5 mx-auto text-green-500 mb-1" />
-                      <p className="text-2xl font-bold">₹{(totalRevenue / 1000).toFixed(0)}K</p>
-                      <p className="text-xs text-muted-foreground">Revenue</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <Award className="h-5 w-5 mx-auto text-purple-500 mb-1" />
-                      <p className="text-2xl font-bold">{driver.experience ?? 0}</p>
-                      <p className="text-xs text-muted-foreground">Years Exp</p>
-                    </CardContent>
-                  </Card>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">Personal Information</CardTitle></CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Full Name</span><span className="text-sm font-medium">{driver.name}</span></div>
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Phone</span><span className="text-sm font-medium">{driver.phone}</span></div>
-                      {driver.email && <div className="flex justify-between"><span className="text-sm text-muted-foreground">Email</span><span className="text-sm font-medium">{driver.email}</span></div>}
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Rating</span><StarRating rating={driver.rating ?? 0} /></div>
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Status</span><Badge variant="outline" className="text-[10px] border-transparent" style={{ backgroundColor: `${statusColor}15`, color: statusColor }}>{statusLabel}</Badge></div>
-                      {(driver.emergencyContactName || driver.emergencyContact) && (
-                        <div className="flex justify-between"><span className="text-sm text-muted-foreground">Emergency Contact</span><span className="text-sm font-medium">{driver.emergencyContactName || driver.emergencyContact}</span></div>
+            <Button variant="outline" size="sm" onClick={() => setShowRateDialog(true)} disabled={completedTrips.length === 0}>
+              <Star aria-hidden="true" />Rate
+            </Button>
+          </>
+        }
+        actions={[
+          {
+            label: isInactive ? 'Activate driver' : 'Deactivate driver',
+            icon: <Power aria-hidden="true" />,
+            onSelect: () => setShowDeactivateDialog(true),
+            destructive: !isInactive,
+          },
+        ]}
+        activity={activity}
+        activityLoading={tripsQuery.loading}
+        related={[
+          {
+            title: 'Trip history',
+            content: driverTrips.length === 0 ? (
+              <EmptyState title="No trips yet" description="Trips assigned to this driver will appear here." />
+            ) : (
+              <div className="flex flex-col gap-ds-2">
+                {driverTrips.map((trip: Trip) => (
+                  <Link key={trip.id} href={`/fleet/trips/${trip.id}`} className="flex items-center gap-ds-4 p-ds-3 rounded-ds-md border border-ds-border hover:bg-ds-surface-sunken transition-colors">
+                    <MapPin className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-ds-2">
+                        <p className="text-sm font-medium">Trip #{String(trip.id).slice(0, 8)}</p>
+                        <Tag tone={trip.status === 'completed' ? 'success' : 'info'}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>
+                      </div>
+                      <p className="text-xs text-ds-foreground-muted truncate">{trip.startLocation} → {trip.endLocation}</p>
+                    </div>
+                    <p className="text-sm font-semibold shrink-0">{formatCurrency(trip.fare ?? 0)}</p>
+                  </Link>
+                ))}
+              </div>
+            ),
+          },
+          {
+            title: 'Schedule',
+            content: <DriverScheduleCalendar driverId={driverId} />,
+          },
+        ]}
+        documents={
+          <div className="flex flex-col gap-ds-4">
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setShowUploadDialog(true)}>
+                <Upload aria-hidden="true" />Upload document
+              </Button>
+            </div>
+            {docsQuery.loading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : docs.length === 0 ? (
+              <EmptyState
+                title="No documents uploaded yet"
+                description="Upload License, ID Proof, or Police Verification documents."
+                action={<Button size="sm" onClick={() => setShowUploadDialog(true)}><Upload aria-hidden="true" />Upload document</Button>}
+              />
+            ) : (
+              <div className="flex flex-col gap-ds-2">
+                {docs.map((doc) => {
+                  const dl = doc.expiryDate ? licenseTone(doc.expiryDate) : null;
+                  return (
+                    <div key={doc.id} className="flex items-center gap-ds-4 p-ds-3 rounded-ds-md border border-ds-border hover:bg-ds-surface-sunken">
+                      <FileText className="h-6 w-6 text-ds-primary shrink-0" aria-hidden="true" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{DRIVER_DOC_TYPE_LABELS[doc.type] || doc.type}</p>
+                        {dl && <Tag tone={dl.tone}>{dl.label}</Tag>}
+                      </div>
+                      {doc.documentUrl && (
+                        <Button variant="ghost" size="icon-sm" aria-label="Download" onClick={async () => {
+                          try {
+                            const res = await fleetApi.drivers.downloadDocument(driverId, doc.id);
+                            const url = (res as { data?: { url?: string } }).data?.url;
+                            if (url) window.open(url, '_blank');
+                          } catch { toast.error('Failed to download'); }
+                        }}>
+                          <Download />
+                        </Button>
                       )}
-                      {(driver.emergencyContactPhone) && (
-                        <div className="flex justify-between"><span className="text-sm text-muted-foreground">Emergency Phone</span><span className="text-sm font-medium">{driver.emergencyContactPhone}</span></div>
-                      )}
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">License Information</CardTitle></CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">License Number</span><span className="text-sm font-mono font-medium">{driver.licenseNumber || '—'}</span></div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Expiry Date</span>
-                        {driver.licenseExpiry ? <ExpiryBadge expiryDate={driver.licenseExpiry} /> : <span className="text-sm text-muted-foreground">—</span>}
-                      </div>
-                      <div className="flex justify-between"><span className="text-sm text-muted-foreground">Experience</span><span className="text-sm font-medium">{driver.experience ?? 0} years</span></div>
-                    </CardContent>
-                  </Card>
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            </TabsContent>
-
-            <TabsContent value="documents" className="mt-0">
-              <div className="max-w-3xl">
-                {docsQuery.loading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center"><Loader2 className="h-4 w-4 animate-spin" /><span>Loading documents...</span></div>
-                ) : docs.length === 0 ? (
-                  <Card><CardContent className="p-8 text-center text-muted-foreground"><FileText className="h-8 w-8 mx-auto mb-2 opacity-50" /><p className="text-sm">No documents uploaded yet</p><p className="text-xs mt-1">Upload License, ID Proof, or Police Verification documents</p></CardContent></Card>
-                ) : (
-                  <div className="space-y-3">
-                    {docs.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-4 p-4 rounded-lg border hover:bg-muted/50">
-                        <FileText className="h-8 w-8 text-blue-500 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{DRIVER_DOC_TYPE_LABELS[doc.type] || doc.type}</p>
-                          {doc.expiryDate && (<div className="mt-1"><ExpiryBadge expiryDate={doc.expiryDate} /></div>)}
-                        </div>
-                        {doc.documentUrl && (
-                          <Button variant="ghost" size="icon-sm" onClick={async () => {
-                            try {
-                              const res = await fleetApi.drivers.downloadDocument(driverId, doc.id);
-                              const url = (res as any).data?.url;
-                              if (url) window.open(url, '_blank');
-                            } catch { toast.error('Failed to download'); }
-                          }}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="schedule" className="mt-0">
-              <div className="max-w-3xl">
-                <DriverScheduleCalendar driverId={driverId} />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="trips" className="mt-0">
-              <div className="max-w-4xl">
-                {tripsQuery.loading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center"><Loader2 className="h-4 w-4 animate-spin" /><span>Loading trips...</span></div>
-                ) : driverTrips.length === 0 ? (
-                  <Card><CardContent className="p-8 text-center text-muted-foreground"><MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" /><p className="text-sm">No trips assigned to this driver yet</p></CardContent></Card>
-                ) : (
-                  <div className="space-y-2">
-                    {driverTrips.map((trip: any) => {
-                      const tripStatusColor = TRIP_STATUS_COLORS[trip.status as keyof typeof TRIP_STATUS_COLORS] || '#64748B';
-                      const tripStatusLabel = TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status;
-                      return (
-                        <Link key={trip.id} href={`/fleet/trips/${trip.id}`}>
-                          <div className="flex items-center gap-4 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium">Trip #{trip.id.slice(0, 8)}</p>
-                                <Badge variant="outline" className="text-[10px] border-transparent" style={{ backgroundColor: `${tripStatusColor}15`, color: tripStatusColor }}>{tripStatusLabel}</Badge>
-                              </div>
-                              <p className="text-xs text-muted-foreground truncate mt-0.5">{trip.startLocation} → {trip.endLocation}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-sm font-medium">{trip.distance}km</p>
-                              <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end"><Calendar className="h-3 w-3" />{(trip.startTime || '').split('T')[0]}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-sm font-semibold">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
-                            </div>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="performance" className="mt-0">
-              <div className="max-w-3xl space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <Card>
-                    <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground">Completion Rate</p>
-                      <p className="text-2xl font-bold mt-1">{driverTrips.length > 0 ? Math.round((completedTrips.length / driverTrips.length) * 100) : 0}%</p>
-                      <div className="h-2 rounded-full bg-muted mt-2">
-                        <div className="h-full rounded-full bg-green-500" style={{ width: `${driverTrips.length > 0 ? (completedTrips.length / driverTrips.length) * 100 : 0}%` }} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground">Avg. Trip Revenue</p>
-                      <p className="text-2xl font-bold mt-1">₹{driverTrips.length > 0 ? (totalRevenue / driverTrips.length).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : 0}</p>
-                    </CardContent>
-                  </Card>
-                </div>
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Trip Summary</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between"><span className="text-sm text-muted-foreground">Total Trips</span><span className="text-sm font-medium">{driverTrips.length}</span></div>
-                    <div className="flex justify-between"><span className="text-sm text-muted-foreground">Completed</span><span className="text-sm font-medium text-green-600">{completedTrips.length}</span></div>
-                    <div className="flex justify-between"><span className="text-sm text-muted-foreground">In Progress</span><span className="text-sm font-medium text-blue-600">{driverTrips.filter((t: any) => ['accepted', 'en_route', 'started'].includes(t.status)).length}</span></div>
-                    <div className="flex justify-between border-t pt-3"><span className="text-sm font-medium">Total Revenue</span><span className="text-sm font-bold">₹{totalRevenue.toLocaleString('en-IN')}</span></div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
+            )}
           </div>
-        </Tabs>
-      </div>
+        }
+        overview={
+          <div className="flex flex-col gap-ds-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
+              <Stat label="Total trips" value={driverTrips.length} icon={<MapPin aria-hidden="true" />} />
+              <Stat label="Revenue" value={formatTightCurrency(totalRevenue)} />
+              <Stat label="Years experience" value={driver.experience ?? 0} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
+              <SectionCard title="Personal information">
+                <div className="flex flex-col gap-ds-3">
+                  <div className="flex items-center gap-ds-3">
+                    <Avatar className="h-10 w-10"><AvatarFallback>{(driver.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback></Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{driver.name}</p>
+                      <p className="text-xs text-ds-foreground-muted">{driver.phone}</p>
+                    </div>
+                  </div>
+                  <Row label={t('fleet.crew.column')} value={crewRoleLabel(driver.crewRole, t)} />
+                  {driver.userName && <Row label={t('fleet.crew.userLabel')} value={driver.userName} />}
+                  {driver.email && <Row label="Email" value={driver.email} />}
+                  {driver.address && <Row label="Address" value={driver.address} />}
+                  {driver.dateOfBirth && <Row label="Date of birth" value={formatLocaleDate(driver.dateOfBirth)} />}
+                  <Row label="Rating" value={<span className="flex items-center gap-ds-1"><Star className="h-3.5 w-3.5 text-ds-warning fill-ds-warning" aria-hidden="true" />{driver.rating ? driver.rating.toFixed(1) : '—'}</span>} />
+                  {(driver.emergencyContactName) && <Row label="Emergency contact" value={driver.emergencyContactName} />}
+                  {(driver.emergencyContactPhone) && <Row label="Emergency phone" value={driver.emergencyContactPhone} />}
+                </div>
+              </SectionCard>
+              <SectionCard title="License information">
+                <div className="flex flex-col gap-ds-3">
+                  <Row label="License number" value={driver.licenseNumber || '—'} />
+                  <Row label="Expiry" value={<Tag tone={license.tone}>{license.label}</Tag>} />
+                  {driver.licenseType && <Row label="License type" value={driver.licenseType} />}
+                  {driver.badgeNumber && <Row label="Badge number" value={driver.badgeNumber} />}
+                  <Row label="Experience" value={`${driver.experience ?? 0} years`} />
+                </div>
+              </SectionCard>
+            </div>
+            {license.tone === 'danger' && (
+              <div className="flex items-center gap-ds-2 p-ds-3 rounded-ds-md border border-ds-danger bg-ds-danger-subtle text-ds-on-subtle text-sm">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                This driver's license has expired. Renew before assigning new trips.
+              </div>
+            )}
+          </div>
+        }
+      />
 
       <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
         <DialogContent>
           <DialogHeader><DialogTitle>{isInactive ? 'Activate Driver' : 'Deactivate Driver'}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{isInactive ? 'Mark driver as active.' : 'Mark driver as inactive. They will not be available for new trip assignments.'}</p>
+          <p className="text-sm text-ds-foreground-muted">{isInactive ? 'Mark driver as active.' : 'Mark driver as inactive. They will not be available for new trip assignments.'}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeactivateDialog(false)}>Cancel</Button>
             <Button variant={isInactive ? 'default' : 'destructive'} onClick={handleDeactivate} disabled={isUpdatingStatus}>
@@ -321,6 +324,74 @@ export default function DriverDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showRateDialog} onOpenChange={(v) => { setShowRateDialog(v); if (!v) setRatingTripId(''); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Rate Driver</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-ds-3">
+            <Select value={ratingTripId} onValueChange={setRatingTripId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select a completed trip" /></SelectTrigger>
+              <SelectContent>
+                {completedTrips.map((t: Trip) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {(t.startLocation || 'Trip')} → {t.endLocation || ''} ({formatTripWhenShort(t.startTime)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ratingValue} onValueChange={setRatingValue}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[5, 4, 3, 2, 1].map((n) => <SelectItem key={n} value={String(n)}>{n} star{n === 1 ? '' : 's'}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRateDialog(false)}>Cancel</Button>
+            <Button onClick={handleRate} disabled={isRating || !ratingTripId}>
+              {isRating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Submit rating
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showUploadDialog} onOpenChange={(v) => { setShowUploadDialog(v); if (!v) setUploadFiles([]); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-ds-3">
+            <Select value={uploadType} onValueChange={(v) => setUploadType(v as typeof uploadType)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(DRIVER_DOC_TYPE_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <FileDropzone
+              files={uploadFiles}
+              onFiles={(files) => setUploadFiles(files.slice(0, 1))}
+              onRemove={() => setUploadFiles([])}
+              accept=".pdf,.jpg,.jpeg,.png"
+              label="Drop a file here, or browse"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUploadDialog(false)}>Cancel</Button>
+            <Button onClick={handleUpload} disabled={isUploading || uploadFiles.length === 0}>
+              {isUploading && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Upload
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-sm text-ds-foreground-muted">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
   );
 }

@@ -6,13 +6,17 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:staging": "wrangler deploy --env staging",
-    "deploy:production": "wrangler deploy --env production",
+    "deploy": "node scripts/predeploy-guard.mjs production && wrangler deploy -c .wrangler.production.toml --env production",
+    "deploy:staging": "node scripts/predeploy-guard.mjs staging && wrangler deploy -c .wrangler.staging.toml --env staging",
+    "deploy:production": "node scripts/predeploy-guard.mjs production && wrangler deploy -c .wrangler.production.toml --env production",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply travelcrm-master --local",
-    "db:studio": "drizzle-kit studio"
+    "db:migrate": "node scripts/migrate-tenants.mjs --local",
+    "db:studio": "drizzle-kit studio",
+    "gen:wrangler": "node scripts/gen-wrangler.mjs",
+    "migrate:tenants": "node scripts/migrate-tenants.mjs",
+    "db:bundle-tenant": "node scripts/bundle-tenant-migrations.mjs",
+    "test:gen-wrangler": "node scripts/gen-wrangler.selftest.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
@@ -42,6 +46,6 @@
     "drizzle-kit": "^0.31.9",
     "typescript": "^5.9.3",
     "vitest": "2.1.8",
-    "wrangler": "^4.67.0"
+    "wrangler": "^4.148.0"
   }
 }
